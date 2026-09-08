@@ -3,8 +3,14 @@
   "packageManager": "pnpm@12.3.4",
   "main": "expo-router/entry",
   "version": "1.0.0",
+  "engines": {
+    "node": ">=22.9.0"
+  },
   "dependencies": {
     "@expo/ui": "~57.0.16",
+    "@zerodev/passkey-validator": "5.6.0",
+    "@zerodev/sdk": "5.5.10",
+    "@zerodev/webauthn-key": "5.5.0",
     "expo": "~57.0.20",
     "expo-constants": "~57.0.17",
     "expo-device": "~57.0.1",
@@ -26,9 +32,11 @@
     "react-native-safe-area-context": "~5.7.0",
     "react-native-screens": "~4.26.0",
     "react-native-web": "~0.21.0",
-    "react-native-worklets": "0.10.1"
+    "react-native-worklets": "0.10.1",
+    "viem": "2.28.0"
   },
   "devDependencies": {
+    "@noble/curves": "1.9.7",
     "@testing-library/react-native": "14.0.1",
     "@types/jest": "29.5.14",
     "@types/react": "~19.2.2",
@@ -36,6 +44,9 @@
     "eslint-config-expo": "~57.0.2",
     "jest": "29.7.0",
     "jest-expo": "57.0.5",
+    "solc": "0.8.30",
+    "solc-0-8-23": "npm:solc@0.8.23",
+    "solc-0-8-28": "npm:solc@0.8.28",
     "test-renderer": "1.0.0",
     "typescript": "~6.0.3"
   },
@@ -46,7 +57,11 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "lint": "expo lint",
-    "test": "jest"
+    "test": "jest",
+    "verify:kernel-webauthn": "node --env-file-if-exists=.env.local ./scripts/verify-kernel-webauthn.mjs",
+    "verify:kernel-live": "node --env-file-if-exists=.env.local ./scripts/verify-kernel-live.mjs",
+    "verify:webauthn-provenance": "node --env-file-if-exists=.env.local ./scripts/verify-webauthn-provenance.mjs",
+    "verify:webauthn-vectors": "node --env-file-if-exists=.env.local ./scripts/verify-webauthn-vectors.mjs"
   },
   "jest": {
     "preset": "jest-expo"
