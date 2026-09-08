@@ -1,6 +1,6 @@
 # Sodera — Web3-First Android Launcher
 
-> **Historical architecture reference, not the current hackathon baseline.** This v0.5 source is retained for architectural context. The [current hackathon decisions](docs/hackathon-decisions.md) and [hackathon specs index](docs/hackathon-specs.md) override conflicting requirements here, including the old Base/mainnet rollout, Arc priorities, wallpaper support, software-backed signer fallback, and feature priorities. The current build is testnet-only with Ethereum Sepolia as its single required network, Base deferred, Arc stretch, and wallpaper out of scope; production rollout remains unresolved. Apart from this notice and the section 2 ADR extraction, the original source is preserved below and must not be read as newly approved implementation scope.
+> **Historical architecture reference, not the current hackathon baseline.** This v0.5 source is retained for architectural context. The [current hackathon decisions](hackathon-decisions.md), [hackathon specs index](hackathon-specs.md), and [ADR-0010](adr/0010-direct-kernel-passkey.md) override conflicting requirements here, including the old Base/mainnet rollout, raw Android Keystore root, mandatory Google-free support, Arc priorities, wallpaper support, and feature priorities. The current build is testnet-only with Ethereum Sepolia as its single required network, a direct platform passkey using ZeroDev's released WebAuthn validator, Google-free GrapheneOS support deferred, Base deferred, Arc stretch, and wallpaper out of scope; production rollout remains unresolved. Apart from this notice and the section 2 ADR extraction, the original source is preserved below and must not be read as newly approved implementation scope.
 
 **Product & Technical Specification**  
 **Version:** 0.5  
@@ -75,20 +75,20 @@ Base / Ethereum
 
 # 2. Locked Architecture Decisions
 
-The original embedded decisions have been extracted into [standalone ADRs](docs/adr/README.md). Their old identifiers map directly to zero-padded record numbers; the records preserve historical rationale and explicitly identify current hackathon scope changes.
+The original embedded decisions have been extracted into [standalone ADRs](adr/README.md). Their old identifiers map directly to zero-padded record numbers; the records preserve historical rationale and explicitly identify current hackathon scope changes.
 
 | Original ID | Standalone Record |
 | --- | --- |
-| ADR-001 | [ADR-0001: Smart accounts instead of EOAs](docs/adr/0001-smart-accounts.md) |
-| ADR-002 | [ADR-0002: No default seed phrase](docs/adr/0002-no-default-seed-phrase.md) |
-| ADR-003 | [ADR-0003: Device-bound P-256 signer](docs/adr/0003-device-bound-p256-signer.md), with hardware-only hackathon clarification |
-| ADR-004 | [ADR-0004: Biometrics authorize signing](docs/adr/0004-biometrics-authorize-signing.md) |
-| ADR-005 | [ADR-0005: Base first](docs/adr/0005-base-first.md), superseded for hackathon scope only by ADR-0009 |
-| ADR-006 | [ADR-0006: ZeroDev account abstraction](docs/adr/0006-zerodev-account-abstraction.md), with Sepolia requirement and optional Arc infrastructure exception |
-| ADR-007 | [ADR-0007: No required Google services](docs/adr/0007-no-required-google-services.md) |
-| ADR-008 | [ADR-0008: Play Integrity cannot gate assets](docs/adr/0008-play-integrity-cannot-gate-assets.md) |
+| ADR-001 | [ADR-0001: Smart accounts instead of EOAs](adr/0001-smart-accounts.md) |
+| ADR-002 | [ADR-0002: No default seed phrase](adr/0002-no-default-seed-phrase.md) |
+| ADR-003 | [ADR-0003: Device-bound P-256 signer](adr/0003-device-bound-p256-signer.md), superseded for hackathon scope by ADR-0010 |
+| ADR-004 | [ADR-0004: Biometrics authorize signing](adr/0004-biometrics-authorize-signing.md), with its Keystore flow superseded by ADR-0010 |
+| ADR-005 | [ADR-0005: Base first](adr/0005-base-first.md), superseded for hackathon scope only by ADR-0009 |
+| ADR-006 | [ADR-0006: ZeroDev account abstraction](adr/0006-zerodev-account-abstraction.md), with Sepolia requirement and optional Arc infrastructure exception |
+| ADR-007 | [ADR-0007: No required Google services](adr/0007-no-required-google-services.md), deferred for hackathon scope by ADR-0010 |
+| ADR-008 | [ADR-0008: Play Integrity cannot gate assets](adr/0008-play-integrity-cannot-gate-assets.md) |
 
-[ADR-0009: Ethereum Sepolia as the single required hackathon testnet](docs/adr/0009-ethereum-sepolia-hackathon.md) records the subsequent spec-review decision. It does not resolve production rollout. See the [ADR index](docs/adr/README.md) for approval provenance and status, and [CONTEXT.md](CONTEXT.md) for the resolved domain vocabulary.
+[ADR-0009: Ethereum Sepolia as the single required hackathon testnet](adr/0009-ethereum-sepolia-hackathon.md) records the subsequent network decision. [ADR-0010: Platform passkey directly authorizes Kernel](adr/0010-direct-kernel-passkey.md) records the later signer pivot. Neither resolves production rollout. See the [ADR index](adr/README.md) for approval provenance and status, and [CONTEXT.md](../CONTEXT.md) for the resolved domain vocabulary.
 
 ---
 

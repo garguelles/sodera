@@ -6,6 +6,6 @@ For the 10-day, testnet-only hackathon build, Ethereum Sepolia is the single req
 
 ## Consequences
 
-Verify the raw P-256/Kernel execution path, ZeroDev-hosted infrastructure and sponsorship, ENSv2 deployment compatibility, executable Uniswap swaps and testnet liquidity, Morpho deployment and a compatible USDC vault, and live Graph coverage before treating dependent specs as ready. Exact versions and validator selection remain open pending these checks; an agreed target is not a claim that every integration is available or working.
+Verify the released ZeroDev WebAuthn validator/Kernel execution path, ZeroDev-hosted infrastructure and sponsorship, ENSv2 deployment compatibility, executable Uniswap swaps and testnet liquidity, Morpho deployment and a compatible USDC vault, and live Graph coverage before treating dependent specs as ready. Exact versions and deployment configuration remain open pending these checks; an agreed target is not a claim that every integration is available or working.
 
 Do not silently switch required flows to Base, Arc, another provider, or mainnet when feasibility checks fail; bring failures back to spec review. [ADR-0006](0006-zerodev-account-abstraction.md) retains the optional Arc infrastructure exception without changing the account framework or signer. This decision neither makes the build production-ready nor resolves production network selection or rollout order.

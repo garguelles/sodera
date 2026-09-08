@@ -1,15 +1,15 @@
 # Hackathon Specs
 
-The approved build has eight required specs and two stretch specs. The delivery window is 10 days and the required network is Ethereum Sepolia only. Implementation has not started; external capabilities remain subject to each spec's verification gates.
+The approved build has eight required specs and two stretch specs. The delivery window is 10 days and the required network is Ethereum Sepolia only. Implementation is underway; external capabilities remain subject to each spec's verification gates.
 
 ## Required
 
 | Spec | Linear | Outcome |
 | --- | --- | --- |
-| Device signer and smart account | [PRA-175](https://linear.app/pragmacollective/issue/PRA-175/spec-device-signer-and-smart-account) | Hardware-backed Android key authorizes a real Kernel operation |
+| Passkey signer and smart account | [PRA-175](https://linear.app/pragmacollective/issue/PRA-175/spec-passkey-signer-and-smart-account) | User-controlled platform passkey directly authorizes a real Kernel operation |
 | Launcher and onboarding | [PRA-176](https://linear.app/pragmacollective/issue/PRA-176/spec-launcher-and-onboarding) | Default Home, installed apps, and mandatory wallet/username onboarding |
 | Payments and sponsorship | [PRA-177](https://linear.app/pragmacollective/issue/PRA-177/spec-payments-and-sponsorship) | ETH/USDC payments and shared, service-enforced sponsorship |
-| Passkey recovery | [PRA-180](https://linear.app/pragmacollective/issue/PRA-180/spec-passkey-recovery) | Proton Pass restores the same account and revokes the lost signer |
+| Passkey recovery | [PRA-180](https://linear.app/pragmacollective/issue/PRA-180/spec-passkey-recovery) | Independent Proton Pass authority restores the same account and revokes the lost primary passkey |
 | ENS identity and avatars | [PRA-179](https://linear.app/pragmacollective/issue/PRA-179/spec-ens-identity-and-avatars) | User-controlled username, resolution, and avatar updates |
 | Uniswap swaps | [PRA-174](https://linear.app/pragmacollective/issue/PRA-174/spec-uniswap-swaps) | USDC/ETH swaps in both directions |
 | Morpho USDC vault | [PRA-178](https://linear.app/pragmacollective/issue/PRA-178/spec-morpho-usdc-vault) | Deposit, display a position, and withdraw from one curated vault |
@@ -24,14 +24,14 @@ The approved build has eight required specs and two stretch specs. The delivery 
 
 ## Published Implementation Tickets
 
-All ten specs were individually decomposed with `to-tickets`, reviewed, and approved. Linear contains 40 required implementation tickets, seven stretch implementation tickets, and one separate human setup checklist. All remain in Backlog at completion of this planning session; approval does not mean implementation or external feasibility has been verified.
+All ten specs were individually decomposed with `to-tickets`, reviewed, and approved. Linear contains 40 required implementation tickets, seven stretch implementation tickets, and one separate human setup checklist. Their current status is tracked in Linear; approval does not mean implementation or external feasibility has been verified.
 
 | Ticket | Outcome | Native Blockers |
 | --- | --- | --- |
-| [PRA-185](https://linear.app/pragmacollective/issue/PRA-185) | Hardware-authorized Android P-256 proof | None |
-| [PRA-184](https://linear.app/pragmacollective/issue/PRA-184) | Pinned Kernel raw-P256 validator proof | None |
-| [PRA-187](https://linear.app/pragmacollective/issue/PRA-187) | Real device-signed Kernel execution | PRA-185, PRA-184 |
-| [PRA-188](https://linear.app/pragmacollective/issue/PRA-188) | Restart-safe identity and key-failure handling | PRA-187 |
+| [PRA-185](https://linear.app/pragmacollective/issue/PRA-185) | Native Android platform-passkey ceremony proof | None |
+| [PRA-184](https://linear.app/pragmacollective/issue/PRA-184) | Pinned released Kernel WebAuthn validator proof | None |
+| [PRA-187](https://linear.app/pragmacollective/issue/PRA-187) | Real passkey-authorized Kernel execution | PRA-185, PRA-184 |
+| [PRA-188](https://linear.app/pragmacollective/issue/PRA-188) | Restart-safe identity and credential-failure handling | PRA-187 |
 | [PRA-189](https://linear.app/pragmacollective/issue/PRA-189) | Integrated account, payment, identity, and recovery evidence | PRA-188, PRA-192, PRA-194, PRA-198, PRA-205, PRA-208 |
 | [PRA-190](https://linear.app/pragmacollective/issue/PRA-190) | Android Home and installed-app launching | None |
 | [PRA-191](https://linear.app/pragmacollective/issue/PRA-191) | Search, favorites, and basic preferences | PRA-190 |
@@ -47,14 +47,14 @@ All ten specs were individually decomposed with `to-tickets`, reviewed, and appr
 | [PRA-201](https://linear.app/pragmacollective/issue/PRA-201) | Independent Proton Pass and account discovery proof | None; relevant human setup needed for live probes |
 | [PRA-202](https://linear.app/pragmacollective/issue/PRA-202) | Pinned Kernel recovery mechanism | PRA-201, PRA-187 |
 | [PRA-203](https://linear.app/pragmacollective/issue/PRA-203) | Confirmed passkey recovery enrollment | PRA-202, PRA-198 |
-| [PRA-204](https://linear.app/pragmacollective/issue/PRA-204) | Clean-install account recovery and old-signer revocation | PRA-203, PRA-188 |
+| [PRA-204](https://linear.app/pragmacollective/issue/PRA-204) | Clean-install account recovery and lost-primary-passkey revocation | PRA-203, PRA-188 |
 | [PRA-205](https://linear.app/pragmacollective/issue/PRA-205) | Interrupted recovery, sponsorship, and identity retention | PRA-204, PRA-199, PRA-208, PRA-209, PRA-211 |
 | [PRA-206](https://linear.app/pragmacollective/issue/PRA-206) | Namespace authority and lifecycle decisions | None; relevant owner setup needed for private actions |
 | [PRA-207](https://linear.app/pragmacollective/issue/PRA-207) | Emancipated Sodera registry configuration | PRA-206 |
 | [PRA-208](https://linear.app/pragmacollective/issue/PRA-208) | Confirmed one-name claim and per-account resolver | PRA-207, PRA-188, PRA-199 |
 | [PRA-209](https://linear.app/pragmacollective/issue/PRA-209) | ENS resolution and verified identity profiles | PRA-206, PRA-208 |
 | [PRA-210](https://linear.app/pragmacollective/issue/PRA-210) | Uploaded and confirmed ENS avatar | PRA-208, PRA-209 |
-| [PRA-211](https://linear.app/pragmacollective/issue/PRA-211) | Transfer, expiry, and signer-change identity behavior | PRA-208, PRA-209 |
+| [PRA-211](https://linear.app/pragmacollective/issue/PRA-211) | Transfer, expiry, and credential-change identity behavior | PRA-208, PRA-209 |
 | [PRA-212](https://linear.app/pragmacollective/issue/PRA-212) | Verified bidirectional Uniswap quote flow | PRA-196, PRA-187 |
 | [PRA-213](https://linear.app/pragmacollective/issue/PRA-213) | Kernel swaps returning the intended native/token assets | PRA-212, PRA-198 |
 | [PRA-214](https://linear.app/pragmacollective/issue/PRA-214) | Swap sponsorship, expiry, and interruption handling | PRA-213, PRA-199 |
@@ -82,7 +82,7 @@ These low-priority tickets do not block required delivery. Scheduling is seconda
 | [PRA-227](https://linear.app/pragmacollective/issue/PRA-227) | Arc sponsorship, isolation, and demo evidence | PRA-226, PRA-199, PRA-190 |
 | [PRA-228](https://linear.app/pragmacollective/issue/PRA-228) | Second-device authority and pairing verification | PRA-202 |
 | [PRA-229](https://linear.app/pragmacollective/issue/PRA-229) | Independent Android recovery-device enrollment | PRA-228, PRA-198 |
-| [PRA-230](https://linear.app/pragmacollective/issue/PRA-230) | Second-phone recovery and lost-signer revocation | PRA-229, PRA-205 |
+| [PRA-230](https://linear.app/pragmacollective/issue/PRA-230) | Second-phone recovery and lost-primary-passkey revocation | PRA-229, PRA-205 |
 | [PRA-231](https://linear.app/pragmacollective/issue/PRA-231) | Recovery-device revocation and interrupted flows | PRA-230, PRA-199, PRA-194 |
 
 ## Human Setup
@@ -95,7 +95,7 @@ Only the relevant setup subset gates each feature. In particular PRA-187 needs B
 
 ## Sequencing
 
-- Start native signing proof and launcher-shell work independently. Run provider/deployment feasibility checks early rather than waiting for complete feature UIs.
+- Start the native passkey ceremony proof, released validator proof, and launcher-shell work independently. Run provider/deployment feasibility checks early rather than waiting for complete feature UIs.
 - Kernel execution enables the shared operation lifecycle owned by Payments and Sponsorship. ENS writes, recovery, swaps, and vault actions reuse this lifecycle rather than building competing transaction engines.
 - Complete wallet and ENS creation before completing new-user onboarding. Shell development does not wait for every wallet feature.
 - Resolve the exact USDC test token jointly across payments, Uniswap, and Morpho; verify Graph coverage of that token and vault. Do not discover incompatible tokens after building the three flows separately.
@@ -107,8 +107,8 @@ Only the relevant setup subset gates each feature. In particular PRA-187 needs B
 
 These required tickets have no native implementation blockers and can begin independently. Live checks still need relevant device access, credentials, or owner approvals from PRA-186.
 
-- PRA-184: verify the Kernel raw-P256 validator path.
-- PRA-185: prove hardware-authorized Android signing.
+- PRA-184: verify and pin the released Kernel WebAuthn validator path.
+- PRA-185: prove the native Android platform-passkey ceremony.
 - PRA-190: build the Android Home shell.
 - PRA-195: verify sponsorship-service capabilities and configuration.
 - PRA-196: verify one shared Sepolia USDC asset, Uniswap route, and Morpho vault.
@@ -119,11 +119,11 @@ The published dependency map is acyclic and has no required ticket depending on 
 
 ## Testing
 
-The user approved user-visible flow tests as the primary boundary, supplemented by focused native/contract tests for authorization, signature correctness, and replay protection. Real Android hardware, GrapheneOS without Google services, live providers, and testnet receipts supply integration evidence. The starter has no existing test suite; no integration support or test result is implied by publication.
+The user approved user-visible flow tests as the primary boundary, supplemented by focused integration tests for authorization, WebAuthn challenge/signature correctness, and replay protection. Real supported Android hardware, live credential providers, live infrastructure, and testnet receipts supply integration evidence. Google-free GrapheneOS support is deferred for the hackathon. The starter has no existing wallet test suite; no integration support or test result is implied by publication.
 
 ## Sources of Truth
 
 - [Hackathon decisions and sponsorship rules](hackathon-decisions.md) capture the agreed scope and outstanding policy details.
-- [Architecture decisions](adr/README.md) preserve the original decisions and the Ethereum Sepolia revision.
+- [Architecture decisions](adr/README.md) preserve the original decisions, the Ethereum Sepolia revision, and the Primary Passkey pivot.
 - [Domain glossary](../CONTEXT.md) defines the installation, wallet user, smart account, username, and credentials.
-- [Original v0.5 source](../sodera.md) is historical context, not an additional backlog. These specs and agreed decisions override its conflicting requirements.
+- [Original v0.5 source](sodera.md) is historical context, not an additional backlog. These specs and agreed decisions override its conflicting requirements.

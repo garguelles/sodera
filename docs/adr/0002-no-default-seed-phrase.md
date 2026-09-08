@@ -2,7 +2,7 @@
 
 **Status:** Accepted; extracted from original ADR-002 during the current spec review. See [approval provenance](README.md).
 
-Normal wallet creation MUST NOT generate or display a BIP-39 mnemonic. Recovery changes or adds authorized smart-account signers rather than reconstructing an EOA private key, allowing loss of a phone without loss of the wallet when recovery has been configured.
+Normal wallet creation MUST NOT generate or display a BIP-39 mnemonic. Recovery changes authorized smart-account passkeys rather than reconstructing an EOA private key, allowing loss of a phone without loss of the wallet when an independent recovery passkey has been configured.
 
 ## Consequences
 

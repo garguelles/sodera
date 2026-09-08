@@ -17,8 +17,8 @@ The user associated with an installation and its single smart account, not a sep
 _Avoid_: Verified person, login account
 
 **Smart Account**:
-The persistent on-chain wallet holding the user's assets and governing who may authorize operations. Its address remains the same when a device signer is replaced through recovery.
-_Avoid_: Device signer, installation, user account
+The persistent on-chain wallet holding the user's assets and governing which credentials may authorize operations. Its address remains the same when a primary passkey is replaced through recovery.
+_Avoid_: Passkey, installation, user account
 
 **Wallet Identity**:
 The persistent identity of the smart account, identified by its address and presented through its Sodera username. It is distinct from the phone, the credentials controlling the wallet, and the authentication authorizing their use.
@@ -28,22 +28,22 @@ _Avoid_: Device identity, biometric identity, signing key
 The wallet's single human-readable Sodera name, expressed as `<username>.sodera.eth` and owned by the smart account. The hackathon's one-name model excludes in-app username changes and multiple names per wallet without removing on-chain name ownership or transfer rights.
 _Avoid_: Login, device name, wallet credential
 
-**Device Signer**:
-The replaceable, device-bound cryptographic credential authorized to control the smart account from a phone. It is not the wallet identity and is distinct from a recovery credential.
-_Avoid_: Wallet, biometric key, recovery credential
+**Primary Passkey**:
+The user-controlled platform WebAuthn credential installed as the smart account's primary Kernel authority. It directly authorizes the smart account through an on-chain WebAuthn validator; it is not a remotely managed wallet key, the wallet identity, or the recovery passkey.
+_Avoid_: Wallet, Turnkey wallet, biometric key, recovery passkey
 
-**Recovery Credential**:
-An independently accessible credential enrolled to restore control of the existing smart account when the original device signer is lost. A credential accessible only on the lost phone is not an independent recovery credential.
-_Avoid_: Backup of the device key, wallet identity
+**Recovery Passkey**:
+An independently accessible platform WebAuthn credential enrolled as separate recovery authority for the existing smart account. A copy of the primary passkey or a credential accessible only on the lost phone is not an independent recovery passkey.
+_Avoid_: Primary-passkey backup, wallet identity
 
-**Biometric Authorization**:
-The user's fingerprint or face authentication authorizing use of the device signer, not cryptographic key material or proof of a separately verified human identity.
+**User Verification**:
+The authenticator ceremony that verifies the user through biometrics, PIN, pattern, password, or another supported method before using a passkey. It is not cryptographic key material or proof of a separately verified human identity.
 _Avoid_: Biometric key, fingerprint wallet, wallet identity
 
-**Device Credential Authorization**:
-Authentication using the phone's PIN, pattern, or password to authorize device-signer use as an alternative to biometrics. It is not a wallet password or a recovery credential.
-_Avoid_: Wallet password, recovery credential
+**Credential Provider**:
+The platform facility that creates, stores, discovers, and uses a passkey. It may synchronize passkeys according to its own security model, but it is not permitted to hold a separate wallet-signing key or replace Kernel's on-chain authority.
+_Avoid_: Wallet custodian, smart account, validator
 
 **Recovery**:
-Restoration of control over the same smart account and username by authorizing a replacement device signer and revoking the lost signer's authority. It is not reconstruction of the old private key or creation of a new wallet.
+Restoration of control over the same smart account and username using the independently enrolled recovery passkey, followed by authorization of a replacement primary passkey and revocation of the lost primary passkey. It is not restoration of the old private key, synchronized discovery of the primary passkey alone, or creation of a new wallet.
 _Avoid_: Key restoration, new wallet
