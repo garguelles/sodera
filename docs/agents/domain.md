@@ -20,7 +20,10 @@ This is a single-context repository:
 |   `-- adr/
 |       |-- 0001-example-decision.md
 |       `-- 0002-another-decision.md
-`-- src/
+|-- app/
+|   `-- src/
+`-- landing/
+    `-- src/
 ```
 
 ## Use the glossary's vocabulary

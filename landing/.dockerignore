@@ -1,11 +1,5 @@
-.git
-.expo
-.kotlin
-android
-ios
 node_modules
-**/node_modules
-**/dist
+dist
 .env*
 *.jks
 *.keystore
@@ -17,4 +11,3 @@ node_modules
 credentials.json
 google-services.json
 GoogleService-Info.plist
-web-build
