@@ -8,6 +8,13 @@ node_modules
 **/dist
 .env*
 *.jks
+*.keystore
 *.key
+*.p8
 *.p12
 *.pem
+*.mobileprovision
+credentials.json
+google-services.json
+GoogleService-Info.plist
+web-build

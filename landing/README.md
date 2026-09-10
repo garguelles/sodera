@@ -19,9 +19,12 @@ pnpm --filter @sodera/landing build
 
 ## Configure Android association
 
-Before deploying the passkey proof, replace `REPLACE_WITH_APK_CERTIFICATE_SHA256` in `public/.well-known/assetlinks.json` with the colon-delimited SHA-256 fingerprint of the certificate that signs the APK installed on the test device.
+`public/.well-known/assetlinks.json` currently trusts two public certificate fingerprints for `xyz.sodera.app`:
 
-Use a dedicated development or hackathon signing certificate. Do not commit the keystore or its passwords. To inspect a built APK:
+- The local debug certificate used by `expo run:android` during physical-device development.
+- The EAS-managed Android certificate used by internal EAS builds and as the Google Play upload key.
+
+Certificate fingerprints are public identifiers required by Digital Asset Links. Never commit the corresponding keystore or its passwords. To inspect a built APK:
 
 ```bash
 apksigner verify --print-certs path/to/sodera.apk
@@ -39,7 +42,7 @@ Verify the response after deployment:
 curl --fail --include https://sodera.xyz/.well-known/assetlinks.json
 ```
 
-Confirm that the response is the JSON file, uses `Content-Type: application/json`, contains `xyz.sodera.app`, and contains the fingerprint of the installed APK. Do not proceed with passkey testing while the placeholder remains.
+Confirm that the response is the JSON file, uses `Content-Type: application/json`, contains `xyz.sodera.app`, and contains the fingerprint of the installed APK. After the first internal-testing AAB upload, add the Google Play App Signing fingerprint used for Play-installed builds. Remove the local debug fingerprint before a broader production release.
 
 ## Deploy on Railway
 
