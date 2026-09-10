@@ -9,7 +9,7 @@ import { hexToBytes, sha256, toBytes, type Hex } from 'viem';
 
 import { encodePasskeyAssertion, type NativePasskeyAssertion } from './kernel-webauthn';
 
-const RP_ID = 'sodera.xyz';
+export const PASSKEY_RP_ID = 'sodera.xyz';
 const ALLOWED_ANDROID_ORIGINS = new Set([
   'android:apk-key-hash:-sYXRdwJA3hvue3mKpYrOZ9zSPC7b4mbgzJmdZEDO5w',
   'android:apk-key-hash:p1yJx3Q5vok-W74lrkuuWoBCPeiCm3I4N21udeSWgbA',
@@ -90,7 +90,7 @@ export function createPasskeyCeremonyClient(
     isForeground = () => true,
   }: {
     randomBytes?: (length: number) => Promise<Uint8Array>;
-    isForeground?: () => boolean;
+    isForeground?: () => boolean | Promise<boolean>;
   } = {},
 ): PasskeyCeremonyClient {
   let operationGeneration = 0;
@@ -123,7 +123,7 @@ export function createPasskeyCeremonyClient(
       }
       const requestJson = JSON.stringify({
         challenge,
-        rp: { id: RP_ID, name: 'Sodera' },
+        rp: { id: PASSKEY_RP_ID, name: 'Sodera' },
         user: {
           id: userHandle,
           name: input.userName,
@@ -143,10 +143,10 @@ export function createPasskeyCeremonyClient(
       if (startedGeneration !== operationGeneration) {
         return { ok: false, error: { kind: 'canceled', message: 'Ceremony was superseded' } };
       }
-      if (!isForeground()) {
+      if (result.status === 'error') return { ok: false, error: result.error };
+      if (!(await isForeground())) {
         return { ok: false, error: { kind: 'canceled', message: 'App is not in foreground' } };
       }
-      if (result.status === 'error') return { ok: false, error: result.error };
 
       try {
         return { ok: true, credential: parseRegistration(result.responseJson, challenge) };
@@ -165,7 +165,7 @@ export function createPasskeyCeremonyClient(
       adapter.cancel();
       const requestJson = JSON.stringify({
         challenge: input.challenge,
-        rpId: RP_ID,
+        rpId: PASSKEY_RP_ID,
         allowCredentials: [{ type: 'public-key', id: input.credential.id }],
         userVerification: 'required',
       });
@@ -174,10 +174,10 @@ export function createPasskeyCeremonyClient(
       if (startedGeneration !== operationGeneration) {
         return { ok: false, error: { kind: 'canceled', message: 'Ceremony was superseded' } };
       }
-      if (!isForeground()) {
+      if (result.status === 'error') return { ok: false, error: result.error };
+      if (!(await isForeground())) {
         return { ok: false, error: { kind: 'canceled', message: 'App is not in foreground' } };
       }
-      if (result.status === 'error') return { ok: false, error: result.error };
 
       try {
         return {
@@ -304,7 +304,7 @@ function parseAuthentication(
     throw new Error('Authenticator data is too short');
   }
   const rpIdHash = uint8ArrayToHexString(authenticatorBytes.slice(0, 32));
-  if (rpIdHash !== sha256(toBytes(RP_ID))) {
+  if (rpIdHash !== sha256(toBytes(PASSKEY_RP_ID))) {
     throw new Error('Authenticator data does not match the Sodera RP ID');
   }
   const flags = authenticatorBytes[32];
@@ -372,7 +372,7 @@ function validateRegistrationAuthenticatorData(
   if (!(authenticatorBytes instanceof Uint8Array) || authenticatorBytes.length < 56) {
     throw new Error('Registration attestation is missing authenticator data');
   }
-  if (uint8ArrayToHexString(authenticatorBytes.slice(0, 32)) !== sha256(toBytes(RP_ID))) {
+  if (uint8ArrayToHexString(authenticatorBytes.slice(0, 32)) !== sha256(toBytes(PASSKEY_RP_ID))) {
     throw new Error('Registration authenticator data does not match the Sodera RP ID');
   }
 

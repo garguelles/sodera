@@ -50,9 +50,9 @@ async function rpc(rpcUrl, method, params) {
 }
 
 export function requireSepoliaRpcUrl() {
-  const rpcUrl = process.env.SEPOLIA_RPC_URL ?? process.env.ZERODEV_SEPOLIA_BUNDLER_RPC;
+  const rpcUrl = process.env.SEPOLIA_RPC_URL;
   if (!rpcUrl) {
-    throw new Error('SEPOLIA_RPC_URL or ZERODEV_SEPOLIA_BUNDLER_RPC is required');
+    throw new Error('SEPOLIA_RPC_URL is required');
   }
   return rpcUrl;
 }

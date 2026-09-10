@@ -1,187 +1,268 @@
 import { useEffect, useRef, useState } from 'react';
+import * as Device from 'expo-device';
 import { router } from 'expo-router';
 import { AppState, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { keccak256, sha256, toBytes } from 'viem';
+import { sha256, toBytes, type Hash } from 'viem';
 
 import {
+  createKernelPasskeyExecutionClient,
+  type KernelOperationEvidence,
+  type KernelOperationReview,
+  type KernelPasskeyExecutionClient,
+} from '@/wallet/kernel-passkey-execution';
+import {
   createPasskeyCeremonyClient,
+  PASSKEY_RP_ID,
   type RegisteredPrimaryPasskey,
 } from '@/wallet/passkey-ceremony';
 import { passkeyNativeAdapter } from '@/wallet/passkey-native-adapter';
-import { passkeyProofUserOperation } from '@/wallet/passkey-proof-operation';
-import { createPasskeyChallenge } from '@/wallet/kernel-webauthn';
 
-const client = createPasskeyCeremonyClient(passkeyNativeAdapter, {
-  isForeground: () => AppState.currentState === 'active',
+const defaultCeremonyClient = createPasskeyCeremonyClient(passkeyNativeAdapter, {
+  isForeground: waitForAppForeground,
 });
-const proofOperation = createPasskeyChallenge(passkeyProofUserOperation);
 
-export function PasskeyProofScreen() {
+function waitForAppForeground(): Promise<boolean> {
+  if (AppState.currentState === 'active') return Promise.resolve(true);
+
+  return new Promise((resolve) => {
+    let timeout: ReturnType<typeof setTimeout>;
+    let subscription: ReturnType<typeof AppState.addEventListener>;
+    const finish = (isForeground: boolean) => {
+      clearTimeout(timeout);
+      subscription.remove();
+      resolve(isForeground);
+    };
+
+    subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') finish(true);
+    });
+    timeout = setTimeout(() => finish(false), 1000);
+
+    if (AppState.currentState === 'active') finish(true);
+  });
+}
+
+export function PasskeyProofScreen({
+  client = defaultCeremonyClient,
+  createExecutionClient = createKernelPasskeyExecutionClient,
+}: {
+  client?: ReturnType<typeof createPasskeyCeremonyClient>;
+  createExecutionClient?: typeof createKernelPasskeyExecutionClient;
+} = {}) {
   const [credential, setCredential] = useState<RegisteredPrimaryPasskey | null>(null);
-  const [confirmed, setConfirmed] = useState(false);
+  const [executionClient, setExecutionClient] = useState<KernelPasskeyExecutionClient | null>(null);
+  const [review, setReview] = useState<KernelOperationReview | null>(null);
+  const [confirmedHash, setConfirmedHash] = useState<Hash | null>(null);
   const [busy, setBusy] = useState(false);
-  const [status, setStatus] = useState('Ready to register a Primary Passkey.');
-  const [evidence, setEvidence] = useState<Record<string, unknown> | null>(null);
+  const [status, setStatus] = useState('Ready to create a passkey-controlled Kernel account.');
+  const [executionState, setExecutionState] = useState<'idle' | 'pending' | 'confirmed' | 'failed'>(
+    'idle',
+  );
+  const [evidence, setEvidence] = useState<KernelOperationEvidence | Record<string, unknown> | null>(
+    null,
+  );
   const invocation = useRef(0);
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (state) => {
-      if (state !== 'active') setConfirmed(false);
+      if (state !== 'active') setConfirmedHash(null);
     });
     return () => {
       invocation.current += 1;
       client.cancelPending();
       subscription.remove();
     };
-  }, []);
+  }, [client]);
 
   const register = async () => {
     const currentInvocation = ++invocation.current;
     setBusy(true);
-    setConfirmed(false);
+    setConfirmedHash(null);
+    setReview(null);
+    setExecutionClient(null);
+    setExecutionState('idle');
     setStatus('Waiting for Credential Manager registration...');
-    let result;
     try {
-      result = await client.registerPrimaryPasskey({
+      const result = await client.registerPrimaryPasskey({
         userName: 'sodera-device-proof',
         userDisplayName: 'Sodera Device Proof',
       });
-    } catch {
-      if (currentInvocation === invocation.current) {
-        setStatus('unknown / Credential Manager request failed unexpectedly');
+      if (currentInvocation !== invocation.current) return;
+      if (!result.ok) {
+        setStatus(describeCeremonyError(result.error));
+        return;
       }
-      return;
+
+      setCredential(result.credential);
+      setEvidence({
+        ceremony: 'registration',
+        rpId: PASSKEY_RP_ID,
+        credentialIdHash: sha256(toBytes(result.credential.id)),
+        publicKeyX: result.credential.publicKeyX,
+        publicKeyY: result.credential.publicKeyY,
+        aaguid: result.credential.aaguid,
+        origin: result.credential.origin,
+        authenticatorAttachment: result.credential.authenticatorAttachment,
+        privateKeyExported: false,
+      });
+      setStatus('Deriving the pinned counterfactual Kernel account...');
+      const kernelClient = await createExecutionClient({
+        ceremonyClient: client,
+        credential: result.credential,
+      });
+      if (currentInvocation !== invocation.current) return;
+      setExecutionClient(kernelClient);
+      setStatus('Kernel account derived. Prepare the bounded Sepolia operation for review.');
+    } catch (error) {
+      if (currentInvocation === invocation.current) {
+        setExecutionState('failed');
+        setStatus(describeExecutionError(error));
+      }
     } finally {
       if (currentInvocation === invocation.current) setBusy(false);
     }
-    if (currentInvocation !== invocation.current) return;
-
-    if (!result.ok) {
-      setStatus(describeError(result.error));
-      return;
-    }
-
-    setCredential(result.credential);
-    setStatus('Primary Passkey registered. Confirm the proof operation before authenticating.');
-    setEvidence({
-      ceremony: 'registration',
-      rpId: 'sodera.xyz',
-      credentialIdHash: sha256(toBytes(result.credential.id)),
-      publicKeyX: result.credential.publicKeyX,
-      publicKeyY: result.credential.publicKeyY,
-      aaguid: result.credential.aaguid,
-      origin: result.credential.origin,
-      authenticatorAttachment: result.credential.authenticatorAttachment,
-      privateKeyExported: false,
-    });
   };
 
-  const authenticate = async () => {
-    if (!credential || !confirmed) return;
+  const prepare = async () => {
+    if (!executionClient) return;
     const currentInvocation = ++invocation.current;
-    setConfirmed(false);
+    setConfirmedHash(null);
+    setReview(null);
     setBusy(true);
-    setStatus('Waiting for Credential Manager user verification...');
-    let result;
+    setExecutionState('pending');
+    setStatus('Preparing and sponsoring the complete UserOperation...');
     try {
-      result = await client.authenticatePrimaryPasskey({
-        challenge: proofOperation.challenge,
-        credential,
-      });
-    } catch {
+      const nextReview = await executionClient.prepare();
+      if (currentInvocation !== invocation.current) return;
+      setReview(nextReview);
+      setExecutionState('idle');
+      setStatus('Operation prepared. Review every field before confirming.');
+    } catch (error) {
       if (currentInvocation === invocation.current) {
-        setStatus('unknown / Credential Manager request failed unexpectedly');
+        setExecutionState('failed');
+        setStatus(describeExecutionError(error));
       }
-      return;
     } finally {
       if (currentInvocation === invocation.current) setBusy(false);
     }
-    if (currentInvocation !== invocation.current) return;
+  };
 
-    if (!result.ok) {
-      setStatus(describeError(result.error));
-      return;
+  const execute = async () => {
+    if (!executionClient || !review || confirmedHash !== review.userOperationHash) return;
+    const currentInvocation = ++invocation.current;
+    const approvedHash = confirmedHash;
+    setConfirmedHash(null);
+    setBusy(true);
+    setExecutionState('pending');
+    setStatus('Pending user verification. No operation has been submitted yet.');
+    try {
+      const result = await executionClient.execute(approvedHash);
+      if (currentInvocation !== invocation.current) return;
+      setEvidence({
+        ...result,
+        capturedAt: new Date().toISOString(),
+        rpId: PASSKEY_RP_ID,
+        supportedDevice: {
+          isPhysicalDevice: Device.isDevice,
+          manufacturer: Device.manufacturer,
+          modelName: Device.modelName,
+          osName: Device.osName,
+          osVersion: Device.osVersion,
+          platformApiLevel: Device.platformApiLevel,
+        },
+        googleFreeGrapheneOsAccepted: false,
+      });
+      setReview(null);
+      setExecutionState('confirmed');
+      setStatus('Confirmed: the UserOperation and independent Sepolia state checks succeeded.');
+    } catch (error) {
+      if (currentInvocation === invocation.current) {
+        setExecutionState('failed');
+        setStatus(describeExecutionError(error));
+      }
+    } finally {
+      if (currentInvocation === invocation.current) setBusy(false);
     }
-
-    setStatus('Assertion signature validated locally and encoded for the released ZeroDev validator.');
-    setEvidence({
-      ceremony: 'authentication',
-      rpId: 'sodera.xyz',
-      userOperationHash: proofOperation.userOperationHash,
-      credentialIdHash: sha256(toBytes(result.assertion.credentialId)),
-      publicKeyX: credential.publicKeyX,
-      publicKeyY: credential.publicKeyY,
-      origin: result.assertion.origin,
-      userPresent: result.assertion.userPresent,
-      userVerified: result.assertion.userVerified,
-      signCount: result.assertion.signCount,
-      authenticatorData: result.assertion.authenticatorData,
-      clientDataJSON: result.assertion.clientDataJSON,
-      signature: result.assertion.signature,
-      validatorEnvelope: result.assertion.validatorEnvelope,
-      validatorEnvelopeHash: keccak256(result.assertion.validatorEnvelope),
-      privateKeyExported: false,
-    });
   };
 
   return (
     <SafeAreaView style={styles.screen}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={styles.content} contentInsetAdjustmentBehavior="automatic">
         <Pressable accessibilityRole="button" onPress={() => router.back()}>
           <Text style={styles.back}>Back to Home</Text>
         </Pressable>
         <View style={styles.heading}>
-          <Text style={styles.eyebrow}>PRA-185 DEVICE PROOF</Text>
-          <Text style={styles.title}>Native passkey ceremony</Text>
+          <Text style={styles.eyebrow}>PRA-187 SEPOLIA EXECUTION</Text>
+          <Text style={styles.title}>Passkey-controlled Kernel</Text>
           <Text style={styles.body}>
-            Credential Manager owns key generation and signing. Sodera receives only public
-            registration data and signed WebAuthn responses.
+            Register a Primary Passkey, review one bounded operation, then authorize its exact
+            UserOperation hash through Android Credential Manager.
           </Text>
         </View>
 
         <View style={styles.card}>
           <Text style={styles.step}>1. Register</Text>
           <Text style={styles.body}>
-            Creates an ES256 resident credential for sodera.xyz with user verification required.
+            Creates an ES256 resident credential for sodera.xyz and derives its deterministic
+            Kernel account. No signing secret enters JavaScript.
           </Text>
           <ActionButton disabled={busy} label="Register Primary Passkey" onPress={register} />
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.step}>2. Review and confirm</Text>
-          <Text style={styles.mono}>Operation hash: {proofOperation.userOperationHash}</Text>
+          <Text style={styles.step}>2. Prepare</Text>
           <Text style={styles.body}>
-            Synthetic proof only. This does not submit a transaction or move assets.
+            Obtains final nonce, call, gas, fee, deployment, and paymaster fields before any
+            passkey prompt appears.
           </Text>
           <ActionButton
-            disabled={busy || !credential}
-            label={confirmed ? 'Operation confirmed' : 'Confirm proof operation'}
-            onPress={() => setConfirmed(true)}
+            disabled={busy || !credential || !executionClient}
+            label="Prepare Sepolia operation"
+            onPress={prepare}
+          />
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.step}>3. Review and confirm</Text>
+          {review ? (
+            <OperationReview review={review} />
+          ) : (
+            <Text style={styles.body}>Prepare an operation first.</Text>
+          )}
+          <ActionButton
+            disabled={busy || !review}
+            label={confirmedHash ? 'Exact operation confirmed' : 'Confirm exact operation'}
+            onPress={() => {
+              if (review) setConfirmedHash(review.userOperationHash);
+            }}
             secondary
           />
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.step}>3. Authenticate</Text>
+          <Text style={styles.step}>4. Verify and execute</Text>
           <Text style={styles.body}>
-            Requests only the registered credential and requires user presence and verification.
+            Credential Manager requests the registered passkey with user verification. Submission
+            occurs only if its locally validated assertion matches the confirmed hash.
           </Text>
           <ActionButton
-            disabled={busy || !credential || !confirmed}
-            label="Authenticate confirmed operation"
-            onPress={authenticate}
+            disabled={busy || !review || confirmedHash !== review.userOperationHash}
+            label="Authorize and submit"
+            onPress={execute}
           />
         </View>
 
-        <View accessibilityRole="alert" style={styles.status}>
+        <View accessibilityRole="alert" style={[styles.status, styles[executionState]]}>
           <Text style={styles.statusLabel}>STATUS</Text>
-          <Text style={styles.body}>{status}</Text>
+          <Text selectable style={styles.body}>
+            {status}
+          </Text>
         </View>
 
         {evidence ? (
           <View style={styles.evidence}>
-            <Text style={styles.statusLabel}>PUBLIC CEREMONY EVIDENCE</Text>
+            <Text style={styles.statusLabel}>PUBLIC EXECUTION EVIDENCE</Text>
             <Text selectable style={styles.mono}>
               {JSON.stringify(evidence, null, 2)}
             </Text>
@@ -189,6 +270,39 @@ export function PasskeyProofScreen() {
         ) : null}
       </ScrollView>
     </SafeAreaView>
+  );
+}
+
+function OperationReview({ review }: { review: KernelOperationReview }) {
+  return (
+    <View style={styles.review}>
+      <ReviewRow label="Account" value={review.account} />
+      <ReviewRow label="Chain" value={`${review.chain} (${review.chainId})`} />
+      <ReviewRow label="EntryPoint" value={review.entryPoint} />
+      <ReviewRow label="Validator" value={review.validator} />
+      <ReviewRow label="Deploy account" value={review.deploymentRequired ? 'Yes' : 'No'} />
+      <ReviewRow label="Recipient" value={review.calls[0].to} />
+      <ReviewRow label="Value" value="0 wei" />
+      <ReviewRow label="Call data" value={review.calls[0].data} />
+      <ReviewRow label="Sponsored" value={review.sponsored ? 'Yes' : 'No'} />
+      <ReviewRow label="Paymaster" value={review.paymaster ?? 'None'} />
+      <ReviewRow label="Maximum network fee" value={`${review.maximumNetworkFeeWei} wei`} />
+      <ReviewRow label="UserOperation hash" value={review.userOperationHash} />
+      <Text selectable style={styles.mono}>
+        {JSON.stringify(review.userOperation, null, 2)}
+      </Text>
+    </View>
+  );
+}
+
+function ReviewRow({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.reviewRow}>
+      <Text style={styles.reviewLabel}>{label}</Text>
+      <Text selectable style={styles.reviewValue}>
+        {value}
+      </Text>
+    </View>
   );
 }
 
@@ -219,8 +333,18 @@ function ActionButton({
   );
 }
 
-function describeError(error: { kind: string; type?: string; domError?: string; message?: string }) {
+function describeCeremonyError(error: {
+  kind: string;
+  type?: string;
+  domError?: string;
+  message?: string;
+}) {
   return [error.kind, error.domError, error.type, error.message].filter(Boolean).join(' / ');
+}
+
+function describeExecutionError(error: unknown) {
+  const message = error instanceof Error ? error.message : 'Kernel execution failed';
+  return message.replace(/https?:\/\/\S+/g, '[redacted RPC URL]');
 }
 
 const styles = StyleSheet.create({
@@ -247,7 +371,15 @@ const styles = StyleSheet.create({
   disabled: { opacity: 0.4 },
   pressed: { opacity: 0.7 },
   status: { backgroundColor: '#1d3448', borderRadius: 14, padding: 16, gap: 6 },
+  idle: {},
+  pending: { backgroundColor: '#483b1d' },
+  confirmed: { backgroundColor: '#1d4830' },
+  failed: { backgroundColor: '#481d25' },
   statusLabel: { color: '#8cc8ff', fontSize: 11, fontWeight: '800', letterSpacing: 1.2 },
   evidence: { backgroundColor: '#10100d', borderRadius: 14, padding: 16, gap: 10 },
   mono: { color: '#d8d4c8', fontFamily: 'monospace', fontSize: 12, lineHeight: 18 },
+  review: { gap: 10 },
+  reviewRow: { gap: 3 },
+  reviewLabel: { color: '#929188', fontSize: 11, fontWeight: '700', letterSpacing: 0.7 },
+  reviewValue: { color: '#f3f0e8', fontFamily: 'monospace', fontSize: 12, lineHeight: 18 },
 });
