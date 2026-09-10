@@ -61,6 +61,7 @@
     "test": "jest",
     "verify:kernel-webauthn": "node --env-file-if-exists=.env.local ./scripts/verify-kernel-webauthn.mjs",
     "verify:kernel-live": "node --env-file-if-exists=.env.local ./scripts/verify-kernel-live.mjs",
+    "verify:device-webauthn": "node --env-file-if-exists=.env.local ./scripts/verify-device-webauthn.mjs",
     "verify:webauthn-provenance": "node --env-file-if-exists=.env.local ./scripts/verify-webauthn-provenance.mjs",
     "verify:webauthn-vectors": "node --env-file-if-exists=.env.local ./scripts/verify-webauthn-vectors.mjs"
   },

@@ -85,7 +85,13 @@ export type PasskeyCeremonyClient = {
 
 export function createPasskeyCeremonyClient(
   adapter: PasskeyNativeAdapter,
-  { randomBytes = getRandomBytesAsync }: { randomBytes?: (length: number) => Promise<Uint8Array> } = {},
+  {
+    randomBytes = getRandomBytesAsync,
+    isForeground = () => true,
+  }: {
+    randomBytes?: (length: number) => Promise<Uint8Array>;
+    isForeground?: () => boolean;
+  } = {},
 ): PasskeyCeremonyClient {
   let operationGeneration = 0;
 
@@ -137,6 +143,9 @@ export function createPasskeyCeremonyClient(
       if (startedGeneration !== operationGeneration) {
         return { ok: false, error: { kind: 'canceled', message: 'Ceremony was superseded' } };
       }
+      if (!isForeground()) {
+        return { ok: false, error: { kind: 'canceled', message: 'App is not in foreground' } };
+      }
       if (result.status === 'error') return { ok: false, error: result.error };
 
       try {
@@ -164,6 +173,9 @@ export function createPasskeyCeremonyClient(
 
       if (startedGeneration !== operationGeneration) {
         return { ok: false, error: { kind: 'canceled', message: 'Ceremony was superseded' } };
+      }
+      if (!isForeground()) {
+        return { ok: false, error: { kind: 'canceled', message: 'App is not in foreground' } };
       }
       if (result.status === 'error') return { ok: false, error: result.error };
 

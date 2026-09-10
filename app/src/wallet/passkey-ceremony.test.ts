@@ -170,6 +170,32 @@ describe('Primary Passkey ceremony client', () => {
     });
   });
 
+  it('discards an assertion returned while the app is backgrounded', async () => {
+    let resolveGet: (result: Awaited<ReturnType<PasskeyNativeAdapter['getCredential']>>) => void;
+    const adapter = {
+      createCredential: jest.fn(),
+      getCredential: jest.fn(
+        () =>
+          new Promise<Awaited<ReturnType<PasskeyNativeAdapter['getCredential']>>>((resolve) => {
+            resolveGet = resolve;
+          }),
+      ),
+      cancel: jest.fn(),
+    };
+    const client = createPasskeyCeremonyClient(adapter, { isForeground: () => false });
+    const pending = client.authenticatePrimaryPasskey({
+      challenge,
+      credential: registeredCredential(),
+    });
+
+    resolveGet!({ status: 'success', responseJson: authenticationResponse(challenge) });
+
+    await expect(pending).resolves.toEqual({
+      ok: false,
+      error: { kind: 'canceled', message: 'App is not in foreground' },
+    });
+  });
+
   it('fails closed when native secure randomness is unavailable', async () => {
     const adapter = createAdapter({ status: 'success', responseJson: '' });
     const client = createPasskeyCeremonyClient(adapter, {

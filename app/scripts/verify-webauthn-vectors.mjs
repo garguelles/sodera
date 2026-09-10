@@ -4,11 +4,7 @@ import { p256 } from '@noble/curves/nist.js';
 import { findQuoteIndices } from '@zerodev/webauthn-key';
 import {
   bytesToBigInt,
-  decodeFunctionResult,
-  encodeAbiParameters,
-  encodeFunctionData,
   hexToBytes,
-  keccak256,
   toHex,
 } from 'viem';
 import { getUserOperationHash } from 'viem/account-abstraction';
@@ -20,41 +16,19 @@ import {
   SYNTHETIC_PUBLIC_KEY,
   SYNTHETIC_RP_ID,
 } from './lib/synthetic-webauthn-test-credential.mjs';
+import {
+  assertSepoliaRpc,
+  createPublicKeyStorageOverride,
+  requireSepoliaRpcUrl,
+  SEPOLIA_CHAIN_ID,
+  validateUserOperation,
+} from './lib/zerodev-webauthn-validator.mjs';
 
-const CHAIN_ID = 11155111;
+const CHAIN_ID = Number(SEPOLIA_CHAIN_ID);
 const ENTRY_POINT = '0x0000000071727De22E5E9d8BAf0edAc6f37da032';
-const VALIDATOR = '0x7ab16Ff354AcB328452F1D445b3Ddee9a91e9e69';
 const TEST_CALLER = '0x0000000000000000000000000000000000001840';
 const WRONG_CALLER = '0x0000000000000000000000000000000000001841';
-if (!process.env.SEPOLIA_RPC_URL) {
-  throw new Error('SEPOLIA_RPC_URL is required');
-}
-const validatorAbi = [
-  {
-    type: 'function',
-    name: 'validateUserOp',
-    stateMutability: 'payable',
-    inputs: [
-      {
-        name: '_userOp',
-        type: 'tuple',
-        components: [
-          { name: 'sender', type: 'address' },
-          { name: 'nonce', type: 'uint256' },
-          { name: 'initCode', type: 'bytes' },
-          { name: 'callData', type: 'bytes' },
-          { name: 'accountGasLimits', type: 'bytes32' },
-          { name: 'preVerificationGas', type: 'uint256' },
-          { name: 'gasFees', type: 'bytes32' },
-          { name: 'paymasterAndData', type: 'bytes' },
-          { name: 'signature', type: 'bytes' },
-        ],
-      },
-      { name: '_userOpHash', type: 'bytes32' },
-    ],
-    outputs: [{ name: 'validationData', type: 'uint256' }],
-  },
-];
+const rpcUrl = requireSepoliaRpcUrl();
 const unpackedUserOperation = {
   sender: TEST_CALLER,
   nonce: 7n,
@@ -99,59 +73,24 @@ function userOperationHash(overrides = {}, domain = {}) {
 }
 
 function storageOverride(x = pubX, y = pubY) {
-  const xSlot = keccak256(
-    encodeAbiParameters(
-      [{ type: 'address' }, { type: 'uint256' }],
-      [TEST_CALLER, 0n],
-    ),
+  return createPublicKeyStorageOverride(
+    TEST_CALLER,
+    toHex(x, { size: 32 }),
+    toHex(y, { size: 32 }),
   );
-  const ySlot = toHex(BigInt(xSlot) + 1n, { size: 32 });
-  return {
-    [VALIDATOR]: {
-      stateDiff: {
-        [xSlot]: toHex(x, { size: 32 }),
-        [ySlot]: toHex(y, { size: 32 }),
-      },
-    },
-  };
 }
 
 async function validate(hash, signature, { from = TEST_CALLER, override = storageOverride() } = {}) {
-  const data = encodeFunctionData({
-    abi: validatorAbi,
-    functionName: 'validateUserOp',
-    args: [{ ...packedUserOperation, signature }, hash],
+  return validateUserOperation({
+    rpcUrl,
+    account: from,
+    packedUserOperation: { ...packedUserOperation, signature },
+    userOperationHash: hash,
+    stateOverride: override,
   });
-  const response = await fetch(
-    process.env.SEPOLIA_RPC_URL,
-    {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        id: 1,
-        method: 'eth_call',
-        params: [{ from, to: VALIDATOR, data }, 'latest', override],
-      }),
-    },
-  );
-  const payload = await response.json();
-  if (!response.ok || payload.error) {
-    throw new Error(payload.error?.message || `RPC failed with HTTP ${response.status}`);
-  }
-  return decodeFunctionResult({ abi: validatorAbi, functionName: 'validateUserOp', data: payload.result });
 }
 
-const chainResponse = await fetch(process.env.SEPOLIA_RPC_URL, {
-  method: 'POST',
-  headers: { 'content-type': 'application/json' },
-  body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_chainId', params: [] }),
-});
-const chainPayload = await chainResponse.json();
-if (!chainResponse.ok || chainPayload.error) {
-  throw new Error(chainPayload.error?.message || `RPC failed with HTTP ${chainResponse.status}`);
-}
-assert.equal(BigInt(chainPayload.result), BigInt(CHAIN_ID));
+await assertSepoliaRpc(rpcUrl);
 
 const hash = userOperationHash();
 const assertion = createSyntheticAssertion(hash);

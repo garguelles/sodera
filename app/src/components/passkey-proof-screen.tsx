@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { router } from 'expo-router';
 import { AppState, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { sha256, toBytes } from 'viem';
+import { keccak256, sha256, toBytes } from 'viem';
 
 import {
   createPasskeyCeremonyClient,
@@ -12,7 +12,9 @@ import { passkeyNativeAdapter } from '@/wallet/passkey-native-adapter';
 import { passkeyProofUserOperation } from '@/wallet/passkey-proof-operation';
 import { createPasskeyChallenge } from '@/wallet/kernel-webauthn';
 
-const client = createPasskeyCeremonyClient(passkeyNativeAdapter);
+const client = createPasskeyCeremonyClient(passkeyNativeAdapter, {
+  isForeground: () => AppState.currentState === 'active',
+});
 const proofOperation = createPasskeyChallenge(passkeyProofUserOperation);
 
 export function PasskeyProofScreen() {
@@ -108,6 +110,8 @@ export function PasskeyProofScreen() {
       rpId: 'sodera.xyz',
       userOperationHash: proofOperation.userOperationHash,
       credentialIdHash: sha256(toBytes(result.assertion.credentialId)),
+      publicKeyX: credential.publicKeyX,
+      publicKeyY: credential.publicKeyY,
       origin: result.assertion.origin,
       userPresent: result.assertion.userPresent,
       userVerified: result.assertion.userVerified,
@@ -116,6 +120,7 @@ export function PasskeyProofScreen() {
       clientDataJSON: result.assertion.clientDataJSON,
       signature: result.assertion.signature,
       validatorEnvelope: result.assertion.validatorEnvelope,
+      validatorEnvelopeHash: keccak256(result.assertion.validatorEnvelope),
       privateKeyExported: false,
     });
   };
