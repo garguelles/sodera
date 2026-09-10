@@ -15,9 +15,10 @@ import type { LauncherApp, LauncherClient } from '@/launcher/launcher-client';
 
 type LauncherScreenProps = {
   client: LauncherClient;
+  onOpenPasskeyProof?: () => void;
 };
 
-export function LauncherScreen({ client }: LauncherScreenProps) {
+export function LauncherScreen({ client, onOpenPasskeyProof }: LauncherScreenProps) {
   const [apps, setApps] = useState<LauncherApp[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -67,7 +68,14 @@ export function LauncherScreen({ client }: LauncherScreenProps) {
     <SafeAreaView style={styles.screen}>
       <View style={styles.header}>
         <Text style={styles.wordmark}>Sodera</Text>
-        <Text style={styles.count}>{apps.length} apps</Text>
+        <View style={styles.headerActions}>
+          {onOpenPasskeyProof ? (
+            <Pressable accessibilityRole="button" onPress={onOpenPasskeyProof}>
+              <Text style={styles.proofLink}>Passkey proof</Text>
+            </Pressable>
+          ) : null}
+          <Text style={styles.count}>{apps.length} apps</Text>
+        </View>
       </View>
       {error ? (
         <View accessibilityRole="alert" style={styles.error}>
@@ -135,6 +143,8 @@ const styles = StyleSheet.create({
   },
   wordmark: { color: '#f3f0e8', fontSize: 28, fontWeight: '700', letterSpacing: -1 },
   count: { color: '#929188', fontSize: 13 },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  proofLink: { color: '#8cc8ff', fontSize: 13, fontWeight: '600' },
   grid: { paddingHorizontal: 12, paddingBottom: 32 },
   app: { width: '25%', alignItems: 'center', paddingHorizontal: 6, paddingVertical: 14 },
   pressed: { opacity: 0.55, transform: [{ scale: 0.96 }] },

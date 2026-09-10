@@ -1,4 +1,4 @@
-package com.pragmacollective.sodera.launcher
+package xyz.sodera.app.launcher
 
 import android.content.ActivityNotFoundException
 import android.content.BroadcastReceiver

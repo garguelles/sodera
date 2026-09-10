@@ -8,11 +8,13 @@
   },
   "dependencies": {
     "@expo/ui": "~57.0.16",
+    "@noble/curves": "1.9.7",
     "@zerodev/passkey-validator": "5.6.0",
     "@zerodev/sdk": "5.5.10",
     "@zerodev/webauthn-key": "5.5.0",
     "expo": "~57.0.20",
     "expo-constants": "~57.0.17",
+    "expo-crypto": "~57.0.2",
     "expo-device": "~57.0.1",
     "expo-font": "~57.0.3",
     "expo-glass-effect": "~57.0.1",
@@ -36,7 +38,6 @@
     "viem": "2.28.0"
   },
   "devDependencies": {
-    "@noble/curves": "1.9.7",
     "@testing-library/react-native": "14.0.1",
     "@types/jest": "29.5.14",
     "@types/react": "~19.2.2",

@@ -1,6 +1,6 @@
 {
   "platforms": ["android"],
   "android": {
-    "modules": ["com.pragmacollective.sodera.launcher.SoderaLauncherModule"]
+    "modules": ["xyz.sodera.app.launcher.SoderaLauncherModule"]
   }
 }

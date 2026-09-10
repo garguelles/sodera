@@ -3,11 +3,11 @@ plugins {
   id 'expo-module-gradle-plugin'
 }
 
-group = 'com.pragmacollective.sodera.launcher'
+group = 'xyz.sodera.app.launcher'
 version = '0.1.0'
 
 android {
-  namespace "com.pragmacollective.sodera.launcher"
+  namespace "xyz.sodera.app.launcher"
   defaultConfig {
     versionCode 1
     versionName "0.1.0"

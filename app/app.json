@@ -28,6 +28,7 @@
     "plugins": [
       "expo-router",
       "./plugins/with-sodera-launcher",
+      "./plugins/with-sodera-passkey",
       [
         "expo-splash-screen",
         {
