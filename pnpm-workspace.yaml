@@ -1,2 +1,5 @@
+packages:
+  - landing
+
 allowBuilds:
   unrs-resolver: false

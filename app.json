@@ -1,5 +1,6 @@
 {
   "expo": {
+    "owner": "pragma-collective",
     "name": "sodera",
     "slug": "sodera",
     "version": "1.0.0",
@@ -11,7 +12,7 @@
       "icon": "./assets/expo.icon"
     },
     "android": {
-      "package": "com.pragmacollective.sodera",
+      "package": "xyz.sodera.app",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -39,6 +40,12 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "528384a6-a965-47e1-baaf-c1ef3fdc1ccc"
+      }
     }
   }
 }
