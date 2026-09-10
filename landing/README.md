@@ -42,7 +42,7 @@ Verify the response after deployment:
 curl --fail --include https://sodera.xyz/.well-known/assetlinks.json
 ```
 
-Confirm that the response is the JSON file, uses `Content-Type: application/json`, contains `xyz.sodera.app`, and contains the fingerprint of the installed APK. After the first internal-testing AAB upload, add the Google Play App Signing fingerprint used for Play-installed builds. Remove the local debug fingerprint before a broader production release.
+Confirm that the response is the JSON file, uses `Content-Type: application/json`, grants both `delegate_permission/common.handle_all_urls` and `delegate_permission/common.get_login_creds`, contains `xyz.sodera.app`, and contains the fingerprint of the installed APK. After the first internal-testing AAB upload, add the Google Play App Signing fingerprint used for Play-installed builds. Remove the local debug fingerprint before a broader production release.
 
 ## Deploy on Railway
 
