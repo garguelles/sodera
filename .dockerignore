@@ -1,0 +1,13 @@
+.git
+.expo
+.kotlin
+android
+ios
+node_modules
+**/node_modules
+**/dist
+.env*
+*.jks
+*.key
+*.p12
+*.pem
