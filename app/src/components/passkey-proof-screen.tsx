@@ -12,7 +12,9 @@ import { passkeyNativeAdapter } from '@/wallet/passkey-native-adapter';
 import { passkeyProofUserOperation } from '@/wallet/passkey-proof-operation';
 import { createPasskeyChallenge } from '@/wallet/kernel-webauthn';
 
-const client = createPasskeyCeremonyClient(passkeyNativeAdapter);
+const client = createPasskeyCeremonyClient(passkeyNativeAdapter, {
+  isForeground: () => AppState.currentState === 'active',
+});
 const proofOperation = createPasskeyChallenge(passkeyProofUserOperation);
 
 export function PasskeyProofScreen() {

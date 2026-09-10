@@ -1,7 +1,22 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
-import { isHex, keccak256 } from 'viem';
+import { p256 } from '@noble/curves/nist.js';
+import {
+  b64ToBytes,
+  findQuoteIndices,
+  parseAndNormalizeSig,
+  uint8ArrayToHexString,
+} from '@zerodev/webauthn-key';
+import {
+  concat,
+  decodeAbiParameters,
+  hexToBytes,
+  isHex,
+  keccak256,
+  sha256,
+  toBytes,
+} from 'viem';
 
 import {
   assertSepoliaRpc,
@@ -14,15 +29,61 @@ import {
 const PROOF_ACCOUNT = '0x1111111111111111111111111111111111111111';
 
 const rpcUrl = requireSepoliaRpcUrl();
-if (!process.argv[2]) throw new Error('Usage: pnpm verify:device-webauthn <evidence.json>');
+const evidencePath = process.argv[2] ?? new URL('./fixtures/pra185-device-assertion.json', import.meta.url);
 
-const evidence = JSON.parse(await readFile(process.argv[2], 'utf8'));
+const evidence = JSON.parse(await readFile(evidencePath, 'utf8'));
 for (const field of ['userOperationHash', 'publicKeyX', 'publicKeyY', 'validatorEnvelope']) {
   if (!isHex(evidence[field])) throw new Error(`${field} must be hex`);
 }
 assert.equal(evidence.userOperationHash.length, 66);
 assert.equal(evidence.publicKeyX.length, 66);
 assert.equal(evidence.publicKeyY.length, 66);
+
+const authenticatorData = b64ToBytes(evidence.authenticatorData);
+const clientDataBytes = b64ToBytes(evidence.clientDataJSON);
+const clientDataJSON = new TextDecoder().decode(clientDataBytes);
+const clientData = JSON.parse(clientDataJSON);
+const expectedChallenge = Buffer.from(evidence.userOperationHash.slice(2), 'hex').toString('base64url');
+assert.equal(clientData.type, 'webauthn.get');
+assert.equal(clientData.challenge, expectedChallenge);
+assert.equal(clientData.origin, evidence.origin);
+assert.equal(uint8ArrayToHexString(authenticatorData.slice(0, 32)), sha256(toBytes(evidence.rpId)));
+assert.equal((authenticatorData[32] & 0x01) !== 0, evidence.userPresent);
+assert.equal((authenticatorData[32] & 0x04) !== 0, evidence.userVerified);
+assert.equal(
+  new DataView(
+    authenticatorData.buffer,
+    authenticatorData.byteOffset,
+    authenticatorData.byteLength,
+  ).getUint32(33),
+  evidence.signCount,
+);
+
+const [envelopeAuthenticatorData, envelopeClientDataJSON, responseTypeLocation, r, s, usePrecompiled] =
+  decodeAbiParameters(
+    [
+      { type: 'bytes' },
+      { type: 'string' },
+      { type: 'uint256' },
+      { type: 'uint256' },
+      { type: 'uint256' },
+      { type: 'bool' },
+    ],
+    evidence.validatorEnvelope,
+  );
+const normalizedSignature = parseAndNormalizeSig(
+  uint8ArrayToHexString(b64ToBytes(evidence.signature)),
+);
+assert.equal(envelopeAuthenticatorData, uint8ArrayToHexString(authenticatorData));
+assert.equal(envelopeClientDataJSON, clientDataJSON);
+assert.equal(responseTypeLocation, findQuoteIndices(clientDataJSON).beforeType);
+assert.deepEqual({ r, s }, normalizedSignature);
+assert.equal(usePrecompiled, true);
+
+const digest = sha256(concat([authenticatorData, hexToBytes(sha256(clientDataBytes))]));
+const publicKey = hexToBytes(`0x04${evidence.publicKeyX.slice(2)}${evidence.publicKeyY.slice(2)}`);
+assert.equal(p256.verify(normalizedSignature, hexToBytes(digest), publicKey), true);
+assert.equal(keccak256(evidence.validatorEnvelope), evidence.validatorEnvelopeHash);
 
 await assertSepoliaRpc(rpcUrl);
 
