@@ -102,8 +102,10 @@ describe('Primary Passkey ceremony client', () => {
 
   it.each([
     ['changed challenge', authenticationResponse('changed')],
+    ['wrong credential', authenticationResponse(challenge, 0x05, rpIdHash, 'another-credential')],
     ['missing user verification', authenticationResponse(challenge, 0x01)],
     ['wrong RP ID hash', authenticationResponse(challenge, 0x05, '00'.repeat(32))],
+    ['malformed assertion', JSON.stringify({ id: credentialId, rawId: credentialId, type: 'public-key' })],
   ])('rejects an assertion with %s', async (_name, responseJson) => {
     const adapter = createAdapter(
       { status: 'success', responseJson: registrationResponse(challenge) },
@@ -309,6 +311,7 @@ function authenticationResponse(
   expectedChallenge: string,
   flags = 0x05,
   rpIdHashValue = rpIdHash,
+  returnedCredentialId = credentialId,
 ) {
   const authenticatorData = `${rpIdHashValue}${flags.toString(16).padStart(2, '0')}00000001`;
   const clientDataJSON = encodeJson({
@@ -328,8 +331,8 @@ function authenticationResponse(
   });
 
   return JSON.stringify({
-    id: credentialId,
-    rawId: credentialId,
+    id: returnedCredentialId,
+    rawId: returnedCredentialId,
     type: 'public-key',
     authenticatorAttachment: 'platform',
     response: {
