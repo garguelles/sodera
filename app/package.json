@@ -1,5 +1,5 @@
 {
-  "name": "sodera",
+  "name": "@sodera/app",
   "packageManager": "pnpm@12.3.4",
   "main": "expo-router/entry",
   "version": "1.0.0",
