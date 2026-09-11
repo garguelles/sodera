@@ -35,7 +35,7 @@ import {
   type PrimaryPasskeyAssertionEvidence,
 } from './primary-passkey-webauthn-key';
 
-const VALIDATOR_ADDRESS = '0x7ab16Ff354AcB328452F1D445b3Ddee9a91e9e69';
+export const PASSKEY_VALIDATOR_ADDRESS = '0x7ab16Ff354AcB328452F1D445b3Ddee9a91e9e69';
 const PROOF_CALL = Object.freeze({ to: zeroAddress, value: 0n, data: '0x' as Hex });
 const kernelAccountAbi = [
   {
@@ -137,6 +137,8 @@ export type KernelOperationEvidence = {
 };
 
 export type KernelPasskeyExecutionClient = {
+  account: Address;
+  deployed: boolean;
   prepare(): Promise<KernelOperationReview>;
   execute(confirmedUserOperationHash: Hash): Promise<KernelOperationEvidence>;
 };
@@ -211,7 +213,7 @@ export async function createKernelPasskeyExecutionClient({
     kernelVersion: KERNEL_V3_3,
     validatorContractVersion: PasskeyValidatorContractVersion.V0_0_3_PATCHED,
   });
-  if (validator.address !== VALIDATOR_ADDRESS) {
+  if (validator.address !== PASSKEY_VALIDATOR_ADDRESS) {
     throw new Error('The released ZeroDev WebAuthn validator address does not match the pin');
   }
   const account = await createKernelAccount(publicClient, {
@@ -246,8 +248,11 @@ export async function createKernelPasskeyExecutionClient({
 
   let prepared: UserOperation<'0.7'> | undefined;
   let review: KernelOperationReview | undefined;
+  const deployed = await account.isDeployed();
 
   return {
+    account: account.address,
+    deployed,
     async prepare() {
       const draft = await bundlerClient.prepareUserOperation({ calls: [PROOF_CALL] });
       const operation: UserOperation<'0.7'> = Object.freeze({ ...draft, signature: '0x' });

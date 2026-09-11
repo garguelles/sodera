@@ -1,6 +1,9 @@
 import { NativeModule, registerWebModule } from 'expo';
 
-import type { NativePasskeyResult } from './SoderaPasskey.types';
+import type { NativePasskeyResult, RegistrationJournal } from './SoderaPasskey.types';
+
+let registrationJournal: RegistrationJournal | null = null;
+let walletIdentity: string | null = null;
 
 class SoderaPasskeyModule extends NativeModule {
   async createCredentialAsync(): Promise<NativePasskeyResult> {
@@ -9,6 +12,29 @@ class SoderaPasskeyModule extends NativeModule {
 
   async getCredentialAsync(): Promise<NativePasskeyResult> {
     return unsupportedResult();
+  }
+
+  async readRegistrationJournalAsync() {
+    return registrationJournal;
+  }
+
+  async clearRegistrationJournalAsync() {
+    registrationJournal = null;
+    return true;
+  }
+
+  async readWalletIdentityAsync() {
+    return walletIdentity;
+  }
+
+  async writeWalletIdentityAsync(value: string) {
+    walletIdentity = value;
+    return true;
+  }
+
+  async clearWalletIdentityAsync() {
+    walletIdentity = null;
+    return true;
   }
 
   cancelPendingOperation() {}

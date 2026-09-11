@@ -17,6 +17,12 @@ import {
   type RegisteredPrimaryPasskey,
 } from '@/wallet/passkey-ceremony';
 import { passkeyNativeAdapter } from '@/wallet/passkey-native-adapter';
+import {
+  createWalletIdentityClient,
+  type WalletIdentityResult,
+  type WalletIdentityStorage,
+} from '@/wallet/wallet-identity';
+import { walletIdentityNativeStorage } from '@/wallet/wallet-identity-native-storage';
 
 const defaultCeremonyClient = createPasskeyCeremonyClient(passkeyNativeAdapter, {
   isForeground: waitForAppForeground,
@@ -46,23 +52,41 @@ function waitForAppForeground(): Promise<boolean> {
 export function PasskeyProofScreen({
   client = defaultCeremonyClient,
   createExecutionClient = createKernelPasskeyExecutionClient,
+  storage = walletIdentityNativeStorage,
 }: {
   client?: ReturnType<typeof createPasskeyCeremonyClient>;
   createExecutionClient?: typeof createKernelPasskeyExecutionClient;
+  storage?: WalletIdentityStorage;
 } = {}) {
   const [credential, setCredential] = useState<RegisteredPrimaryPasskey | null>(null);
   const [executionClient, setExecutionClient] = useState<KernelPasskeyExecutionClient | null>(null);
   const [review, setReview] = useState<KernelOperationReview | null>(null);
   const [confirmedHash, setConfirmedHash] = useState<Hash | null>(null);
   const [busy, setBusy] = useState(false);
-  const [status, setStatus] = useState('Ready to create a passkey-controlled Kernel account.');
+  const [status, setStatus] = useState('Create a new Wallet Identity or reopen the existing one.');
   const [executionState, setExecutionState] = useState<'idle' | 'pending' | 'confirmed' | 'failed'>(
     'idle',
   );
+  const [showRecovery, setShowRecovery] = useState(false);
   const [evidence, setEvidence] = useState<KernelOperationEvidence | Record<string, unknown> | null>(
     null,
   );
   const invocation = useRef(0);
+  const walletIdentityClient = createWalletIdentityClient({
+    storage,
+    ceremonyClient: client,
+    async deriveAccount(primaryCredential) {
+      const kernelClient = await createExecutionClient({
+        ceremonyClient: client,
+        credential: primaryCredential,
+      });
+      return {
+        address: kernelClient.account,
+        deployed: kernelClient.deployed,
+        executionClient: kernelClient,
+      };
+    },
+  });
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (state) => {
@@ -82,22 +106,19 @@ export function PasskeyProofScreen({
     setReview(null);
     setExecutionClient(null);
     setExecutionState('idle');
+    setShowRecovery(false);
     setStatus('Waiting for Credential Manager registration...');
     try {
-      const result = await client.registerPrimaryPasskey({
-        userName: 'sodera-device-proof',
-        userDisplayName: 'Sodera Device Proof',
-      });
+      const result = await walletIdentityClient.create();
       if (currentInvocation !== invocation.current) return;
-      if (!result.ok) {
-        setStatus(describeCeremonyError(result.error));
+      if (!applyWalletIdentityResult(result)) {
         return;
       }
-
-      setCredential(result.credential);
       setEvidence({
-        ceremony: 'registration',
+        walletIdentity: 'persisted',
         rpId: PASSKEY_RP_ID,
+        account: result.account,
+        deployed: result.deployed,
         credentialIdHash: sha256(toBytes(result.credential.id)),
         publicKeyX: result.credential.publicKeyX,
         publicKeyY: result.credential.publicKeyY,
@@ -106,13 +127,6 @@ export function PasskeyProofScreen({
         authenticatorAttachment: result.credential.authenticatorAttachment,
         privateKeyExported: false,
       });
-      setStatus('Deriving the pinned counterfactual Kernel account...');
-      const kernelClient = await createExecutionClient({
-        ceremonyClient: client,
-        credential: result.credential,
-      });
-      if (currentInvocation !== invocation.current) return;
-      setExecutionClient(kernelClient);
       setStatus('Kernel account derived. Prepare the bounded Sepolia operation for review.');
     } catch (error) {
       if (currentInvocation === invocation.current) {
@@ -122,6 +136,54 @@ export function PasskeyProofScreen({
     } finally {
       if (currentInvocation === invocation.current) setBusy(false);
     }
+  };
+
+  const reopen = async () => {
+    const currentInvocation = ++invocation.current;
+    setBusy(true);
+    setConfirmedHash(null);
+    setReview(null);
+    setExecutionClient(null);
+    setExecutionState('idle');
+    setShowRecovery(false);
+    setStatus('Reopening the persisted Wallet Identity with the Primary Passkey...');
+    try {
+      const result = await walletIdentityClient.reopen();
+      if (currentInvocation !== invocation.current || !applyWalletIdentityResult(result)) return;
+      setEvidence({
+        walletIdentity: 'reopened',
+        account: result.account,
+        deployed: result.deployed,
+        credentialIdHash: sha256(toBytes(result.credential.id)),
+        pinsVerified: true,
+        samePrimaryCredentialVerified: true,
+        credentialAvailabilitySource: 'provider-not-reported',
+        independentRecoveryUsed: false,
+      });
+      setStatus('Existing Wallet Identity reopened. The account address and pinned metadata match.');
+    } catch (error) {
+      if (currentInvocation === invocation.current) {
+        setExecutionState('failed');
+        setStatus(describeExecutionError(error));
+      }
+    } finally {
+      if (currentInvocation === invocation.current) setBusy(false);
+    }
+  };
+
+  const applyWalletIdentityResult = (
+    result: WalletIdentityResult,
+  ): result is Extract<WalletIdentityResult, { status: 'ready' }> => {
+    if (result.status === 'blocked') {
+      setExecutionState('failed');
+      setShowRecovery(result.recoverWallet);
+      setStatus(result.message);
+      setEvidence({ walletIdentityError: result.reason, silentReplacementPrevented: true });
+      return false;
+    }
+    setCredential(result.credential);
+    setExecutionClient(result.executionClient ?? null);
+    return true;
   };
 
   const prepare = async () => {
@@ -159,6 +221,13 @@ export function PasskeyProofScreen({
     try {
       const result = await executionClient.execute(approvedHash);
       if (currentInvocation !== invocation.current) return;
+      let deploymentPersisted = true;
+      try {
+        await walletIdentityClient.markDeployed(result.account);
+      } catch {
+        deploymentPersisted = false;
+      }
+      if (currentInvocation !== invocation.current) return;
       setEvidence({
         ...result,
         capturedAt: new Date().toISOString(),
@@ -172,10 +241,15 @@ export function PasskeyProofScreen({
           platformApiLevel: Device.platformApiLevel,
         },
         googleFreeGrapheneOsAccepted: false,
+        deploymentPersisted,
       });
       setReview(null);
       setExecutionState('confirmed');
-      setStatus('Confirmed: the UserOperation and independent Sepolia state checks succeeded.');
+      setStatus(
+        deploymentPersisted
+          ? 'Confirmed: the UserOperation and independent Sepolia state checks succeeded.'
+          : 'Confirmed on Sepolia, but the local deployment marker could not be persisted. Reopen the existing wallet before another operation.',
+      );
     } catch (error) {
       if (currentInvocation === invocation.current) {
         setExecutionState('failed');
@@ -193,21 +267,43 @@ export function PasskeyProofScreen({
           <Text style={styles.back}>Back to Home</Text>
         </Pressable>
         <View style={styles.heading}>
-          <Text style={styles.eyebrow}>PRA-187 SEPOLIA EXECUTION</Text>
+          <Text style={styles.eyebrow}>PRA-188 WALLET CONTINUITY</Text>
           <Text style={styles.title}>Passkey-controlled Kernel</Text>
           <Text style={styles.body}>
-            Register a Primary Passkey, review one bounded operation, then authorize its exact
-            UserOperation hash through Android Credential Manager.
+            Create or reopen one persisted Wallet Identity, then authorize its exact UserOperation
+            hash through Android Credential Manager.
           </Text>
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.step}>1. Register</Text>
+          <Text style={styles.step}>1. Create or reopen</Text>
           <Text style={styles.body}>
-            Creates an ES256 resident credential for sodera.xyz and derives its deterministic
-            Kernel account. No signing secret enters JavaScript.
+            Creation persists public credential and exact Kernel metadata. Reopening verifies the
+            same Primary Passkey, pinned configuration, and Smart Account address.
           </Text>
-          <ActionButton disabled={busy} label="Register Primary Passkey" onPress={register} />
+          <Text style={styles.warning}>
+            Until an independent Recovery Passkey is enrolled, losing access to the Primary Passkey
+            can permanently lose access to this wallet.
+          </Text>
+          <ActionButton disabled={busy} label="Create Wallet" onPress={register} />
+          <ActionButton
+            disabled={busy}
+            label="Reopen existing wallet"
+            onPress={reopen}
+            secondary
+          />
+          {showRecovery ? (
+            <ActionButton
+              disabled={busy}
+              label="Recover Wallet"
+              onPress={() => {
+                setStatus(
+                  'Recover Wallet preserves this address through an independent Recovery Passkey. Recovery implementation is handled by PRA-180.',
+                );
+              }}
+              secondary
+            />
+          ) : null}
         </View>
 
         <View style={styles.card}>
@@ -333,15 +429,6 @@ function ActionButton({
   );
 }
 
-function describeCeremonyError(error: {
-  kind: string;
-  type?: string;
-  domError?: string;
-  message?: string;
-}) {
-  return [error.kind, error.domError, error.type, error.message].filter(Boolean).join(' / ');
-}
-
 function describeExecutionError(error: unknown) {
   const message = error instanceof Error ? error.message : 'Kernel execution failed';
   return message.replace(/https?:\/\/\S+/g, '[redacted RPC URL]');
@@ -355,6 +442,7 @@ const styles = StyleSheet.create({
   eyebrow: { color: '#929188', fontSize: 12, fontWeight: '700', letterSpacing: 1.4 },
   title: { color: '#f3f0e8', fontSize: 32, fontWeight: '700', letterSpacing: -1.2 },
   body: { color: '#c8c5bb', fontSize: 15, lineHeight: 22 },
+  warning: { color: '#f2c879', fontSize: 14, lineHeight: 20 },
   card: { backgroundColor: '#262620', borderRadius: 16, padding: 18, gap: 12 },
   step: { color: '#f3f0e8', fontSize: 19, fontWeight: '700' },
   button: {

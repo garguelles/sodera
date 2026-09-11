@@ -128,6 +128,43 @@ describe('Primary Passkey ceremony client', () => {
     expect(result).toMatchObject({ ok: false, error: { kind: 'invalidResponse' } });
   });
 
+  it('resumes the exact registration response journaled by the native module', async () => {
+    const responseJson = registrationResponse(challenge);
+    const adapter = createAdapter({ status: 'success', responseJson: 'should-not-run' });
+    adapter.readRegistrationJournal.mockResolvedValue({
+      requestJson: JSON.stringify({ challenge }),
+      responseJson,
+    });
+    const client = createPasskeyCeremonyClient(adapter);
+
+    await expect(client.resumePrimaryPasskeyRegistration()).resolves.toMatchObject({
+      ok: true,
+      credential: { id: credentialId },
+    });
+    expect(adapter.createCredential).not.toHaveBeenCalled();
+    expect(adapter.clearRegistrationJournal).not.toHaveBeenCalled();
+
+    await client.acknowledgePrimaryPasskeyRegistration();
+    expect(adapter.clearRegistrationJournal).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not create another credential when a journaled registration outcome is unknown', async () => {
+    const adapter = createAdapter({ status: 'success', responseJson: 'should-not-run' });
+    adapter.readRegistrationJournal.mockResolvedValue({
+      requestJson: JSON.stringify({ challenge }),
+    });
+    const client = createPasskeyCeremonyClient(adapter);
+
+    await expect(client.resumePrimaryPasskeyRegistration()).resolves.toEqual({
+      ok: false,
+      error: {
+        kind: 'interrupted',
+        message: 'Registration outcome is unknown; refusing to create another Primary Passkey',
+      },
+    });
+    expect(adapter.createCredential).not.toHaveBeenCalled();
+  });
+
   it.each([
     ['missing user verification', registrationResponse(challenge, 0x41)],
     ['wrong RP ID hash', registrationResponse(challenge, 0x45, '00'.repeat(32))],
@@ -155,6 +192,8 @@ describe('Primary Passkey ceremony client', () => {
     const adapter = {
       createCredential: jest.fn(),
       getCredential,
+      readRegistrationJournal: jest.fn().mockResolvedValue(null),
+      clearRegistrationJournal: jest.fn().mockResolvedValue(undefined),
       cancel: jest.fn(),
     };
     const client = createPasskeyCeremonyClient(adapter);
@@ -182,6 +221,8 @@ describe('Primary Passkey ceremony client', () => {
             resolveGet = resolve;
           }),
       ),
+      readRegistrationJournal: jest.fn().mockResolvedValue(null),
+      clearRegistrationJournal: jest.fn().mockResolvedValue(undefined),
       cancel: jest.fn(),
     };
     const client = createPasskeyCeremonyClient(adapter, { isForeground: () => false });
@@ -249,6 +290,8 @@ function createAdapter(
   return {
     createCredential: jest.fn().mockResolvedValue(createResult),
     getCredential: jest.fn().mockResolvedValue(getResult),
+    readRegistrationJournal: jest.fn().mockResolvedValue(null),
+    clearRegistrationJournal: jest.fn().mockResolvedValue(undefined),
     cancel: jest.fn(),
   };
 }

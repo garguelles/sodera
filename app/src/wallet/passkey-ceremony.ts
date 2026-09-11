@@ -14,6 +14,11 @@ const ALLOWED_ANDROID_ORIGINS = new Set([
   'android:apk-key-hash:-sYXRdwJA3hvue3mKpYrOZ9zSPC7b4mbgzJmdZEDO5w',
   'android:apk-key-hash:p1yJx3Q5vok-W74lrkuuWoBCPeiCm3I4N21udeSWgbA',
 ]);
+
+export function isAllowedPrimaryPasskeyOrigin(origin: string) {
+  return ALLOWED_ANDROID_ORIGINS.has(origin);
+}
+
 const P256_SPKI_PREFIX = '3059301306072a8648ce3d020106082a8648ce3d03010703420004';
 
 export type PasskeyErrorKind =
@@ -37,6 +42,8 @@ export type NativePasskeyResult =
 export type PasskeyNativeAdapter = {
   createCredential(requestJson: string): Promise<NativePasskeyResult>;
   getCredential(requestJson: string): Promise<NativePasskeyResult>;
+  readRegistrationJournal(): Promise<{ requestJson: string; responseJson?: string } | null>;
+  clearRegistrationJournal(): Promise<void>;
   cancel(): void;
 };
 
@@ -63,6 +70,13 @@ export type PasskeyCeremonyClient = {
   }): Promise<
     { ok: true; credential: RegisteredPrimaryPasskey } | { ok: false; error: CeremonyError }
   >;
+  resumePrimaryPasskeyRegistration(): Promise<
+    | { ok: true; credential: RegisteredPrimaryPasskey }
+    | { ok: false; error: CeremonyError }
+    | null
+  >;
+  hasPendingPrimaryPasskeyRegistration(): Promise<boolean>;
+  acknowledgePrimaryPasskeyRegistration(): Promise<void>;
   authenticatePrimaryPasskey(input: {
     challenge: string;
     credential: RegisteredPrimaryPasskey;
@@ -80,6 +94,9 @@ export type PasskeyCeremonyClient = {
       }
     | { ok: false; error: CeremonyError }
   >;
+  verifyPrimaryPasskey(
+    credential: RegisteredPrimaryPasskey,
+  ): Promise<{ ok: true } | { ok: false; error: CeremonyError }>;
   cancelPending(): void;
 };
 
@@ -160,6 +177,52 @@ export function createPasskeyCeremonyClient(
         };
       }
     },
+    async resumePrimaryPasskeyRegistration() {
+      const journal = await adapter.readRegistrationJournal();
+      if (!journal) return null;
+      let request: { challenge?: string };
+      try {
+        request = JSON.parse(journal.requestJson) as { challenge?: string };
+      } catch {
+        return {
+          ok: false,
+          error: { kind: 'invalidResponse', message: 'Registration journal is malformed' },
+        };
+      }
+      if (!request.challenge) {
+        return {
+          ok: false,
+          error: { kind: 'invalidResponse', message: 'Registration journal has no challenge' },
+        };
+      }
+      if (!journal.responseJson) {
+        return {
+          ok: false,
+          error: {
+            kind: 'interrupted',
+            message:
+              'Registration outcome is unknown; refusing to create another Primary Passkey',
+          },
+        };
+      }
+      try {
+        return { ok: true, credential: parseRegistration(journal.responseJson, request.challenge) };
+      } catch (error) {
+        return {
+          ok: false,
+          error: {
+            kind: 'invalidResponse',
+            message: error instanceof Error ? error.message : 'Invalid registration response',
+          },
+        };
+      }
+    },
+    async hasPendingPrimaryPasskeyRegistration() {
+      return (await adapter.readRegistrationJournal()) !== null;
+    },
+    acknowledgePrimaryPasskeyRegistration() {
+      return adapter.clearRegistrationJournal();
+    },
     async authenticatePrimaryPasskey(input) {
       const startedGeneration = ++operationGeneration;
       adapter.cancel();
@@ -197,6 +260,25 @@ export function createPasskeyCeremonyClient(
           },
         };
       }
+    },
+    async verifyPrimaryPasskey(credential) {
+      let challengeBytes: Uint8Array;
+      try {
+        challengeBytes = await randomBytes(32);
+        if (challengeBytes.length !== 32) {
+          throw new Error('Secure random source returned the wrong byte count');
+        }
+      } catch {
+        return {
+          ok: false,
+          error: { kind: 'unknown', message: 'Secure randomness is unavailable' },
+        };
+      }
+      const result = await this.authenticatePrimaryPasskey({
+        challenge: base64FromUint8Array(challengeBytes, true),
+        credential,
+      });
+      return result.ok ? { ok: true } : result;
     },
     cancelPending() {
       operationGeneration += 1;
