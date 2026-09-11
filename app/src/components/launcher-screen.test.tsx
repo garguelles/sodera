@@ -4,8 +4,10 @@ import { LauncherScreen } from './launcher-screen';
 import { WalletHome } from './wallet-home';
 import type { LauncherApp, LauncherClient } from '@/launcher/launcher-client';
 import type { LauncherPreferencesStorage } from '@/launcher/launcher-preferences';
-import { createWalletHomeFixtureProvider } from '@/wallet/wallet-home-fixtures';
-import type { WalletHomeProvider } from '@/wallet/wallet-home';
+import {
+  createWalletHomeFixtureProvider,
+  failedWalletHomeFixture,
+} from '@/wallet/wallet-home-fixtures';
 
 const calculator: LauncherApp = {
   componentName: 'com.android.calculator2/.Calculator',
@@ -260,11 +262,10 @@ describe('LauncherScreen', () => {
 
   it('keeps launcher controls usable when wallet data fails', async () => {
     const client = createClient();
-    const walletProvider: WalletHomeProvider = {
-      source: 'fixture',
-      load: jest.fn().mockRejectedValue(new Error('Wallet unavailable')),
-      subscribeToChanges: jest.fn().mockReturnValue(() => undefined),
-    };
+    const walletProvider = createWalletHomeFixtureProvider({
+      ...failedWalletHomeFixture,
+      message: 'Wallet unavailable',
+    });
     await render(
       <LauncherScreen
         client={client}

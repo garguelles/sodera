@@ -55,25 +55,49 @@ export const emptyWalletHomeFixture = {
   message: 'Balances and positions will appear after the first indexed activity.',
 } satisfies WalletHomeResult;
 
-export const walletHomeErrorFixture = new Error('Portfolio provider unavailable');
+export type WalletHomeFixture =
+  | { state: 'pending' }
+  | { state: 'failed'; message: string }
+  | { state: 'resolved'; result: WalletHomeResult };
+
+export const pendingWalletHomeFixture = { state: 'pending' } satisfies WalletHomeFixture;
+
+export const failedWalletHomeFixture = {
+  state: 'failed',
+  message: 'Portfolio provider unavailable',
+} satisfies WalletHomeFixture;
+
+export const resolvedWalletHomeFixtures = {
+  populated: { state: 'resolved', result: populatedWalletHomeFixture },
+  indexing: { state: 'resolved', result: indexingWalletHomeFixture },
+  empty: { state: 'resolved', result: emptyWalletHomeFixture },
+} satisfies Record<string, WalletHomeFixture>;
 
 export function createWalletHomeFixtureProvider(
-  initialResult: WalletHomeResult = populatedWalletHomeFixture,
+  initialFixture: WalletHomeFixture = resolvedWalletHomeFixtures.populated,
 ) {
-  let result = initialResult;
+  let fixture = initialFixture;
   const listeners = new Set<() => void>();
 
-  const provider: WalletHomeProvider & { update(nextResult: WalletHomeResult): void } = {
+  const provider: WalletHomeProvider & {
+    set(nextFixture: WalletHomeFixture): void;
+    update(nextFixture: WalletHomeFixture): void;
+  } = {
     source: 'fixture',
     async load() {
-      return result;
+      if (fixture.state === 'pending') return new Promise<WalletHomeResult>(() => undefined);
+      if (fixture.state === 'failed') throw new Error(fixture.message);
+      return fixture.result;
     },
     subscribeToChanges(listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
-    update(nextResult) {
-      result = nextResult;
+    set(nextFixture) {
+      fixture = nextFixture;
+    },
+    update(nextFixture) {
+      fixture = nextFixture;
       listeners.forEach((listener) => listener());
     },
   };

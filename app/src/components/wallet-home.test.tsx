@@ -4,12 +4,11 @@ import type { Address } from 'viem';
 import { WalletHome } from './wallet-home';
 import {
   createWalletHomeFixtureProvider,
-  emptyWalletHomeFixture,
-  indexingWalletHomeFixture,
-  populatedWalletHomeFixture,
-  walletHomeErrorFixture,
+  failedWalletHomeFixture,
+  pendingWalletHomeFixture,
+  resolvedWalletHomeFixtures,
 } from '@/wallet/wallet-home-fixtures';
-import type { WalletHomeProvider, WalletHomeResult } from '@/wallet/wallet-home';
+import type { WalletHomeResult } from '@/wallet/wallet-home';
 
 const identity = {
   username: 'alex.rivera.sodera.eth',
@@ -41,7 +40,11 @@ describe('WalletHome', () => {
       message: 'No indexed holdings yet.',
     };
 
-    await render(<WalletHome provider={createWalletHomeFixtureProvider(result)} />);
+    await render(
+      <WalletHome
+        provider={createWalletHomeFixtureProvider({ state: 'resolved', result })}
+      />,
+    );
 
     expect(
       await screen.findByLabelText('alex.rivera.sodera.eth avatar'),
@@ -69,23 +72,11 @@ describe('WalletHome', () => {
   });
 
   it('renders loading and indexing states supplied through the provider contract', async () => {
-    let resolveResult: (result: WalletHomeResult) => void = () => undefined;
-    const provider: WalletHomeProvider = {
-      source: 'fixture',
-      load: jest.fn(
-        () =>
-          new Promise<WalletHomeResult>((resolve) => {
-            resolveResult = resolve;
-          }),
-      ),
-      subscribeToChanges: jest.fn().mockReturnValue(() => undefined),
-    };
+    const provider = createWalletHomeFixtureProvider(pendingWalletHomeFixture);
     await render(<WalletHome provider={provider} />);
 
     expect(screen.getByLabelText('Loading wallet data')).toBeOnTheScreen();
-    await act(async () =>
-      resolveResult(indexingWalletHomeFixture),
-    );
+    await act(() => provider.update(resolvedWalletHomeFixtures.indexing));
 
     expect(await screen.findByText('Portfolio indexing')).toBeOnTheScreen();
     expect(screen.getByText(/Available balances may be partial/)).toBeOnTheScreen();
@@ -93,24 +84,16 @@ describe('WalletHome', () => {
   });
 
   it('offers retry after a provider failure', async () => {
-    const load = jest
-      .fn()
-      .mockRejectedValueOnce(walletHomeErrorFixture)
-      .mockResolvedValueOnce(populatedWalletHomeFixture);
-    const provider: WalletHomeProvider = {
-      source: 'fixture',
-      load,
-      subscribeToChanges: jest.fn().mockReturnValue(() => undefined),
-    };
+    const provider = createWalletHomeFixtureProvider(failedWalletHomeFixture);
     await render(<WalletHome provider={provider} />);
 
     expect(await screen.findByText('Portfolio provider unavailable')).toBeOnTheScreen();
+    provider.set(resolvedWalletHomeFixtures.populated);
     await act(async () =>
       fireEvent.press(screen.getByRole('button', { name: 'Retry wallet' })),
     );
 
     expect(await screen.findByText('$3,045.00')).toBeOnTheScreen();
-    expect(load).toHaveBeenCalledTimes(2);
   });
 
   it('reacts to provider updates and renders an empty portfolio', async () => {
@@ -118,7 +101,7 @@ describe('WalletHome', () => {
     await render(<WalletHome provider={provider} />);
     await screen.findByText('$3,045.00');
 
-    await act(() => provider.update(emptyWalletHomeFixture));
+    await act(() => provider.update(resolvedWalletHomeFixtures.empty));
 
     await waitFor(() => expect(screen.getByText('No portfolio activity yet')).toBeOnTheScreen());
     expect(screen.getByText(/Balances and positions will appear/)).toBeOnTheScreen();
