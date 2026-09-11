@@ -50,6 +50,20 @@ class SoderaLauncherModule : Module() {
       launchApp(serializedComponent)
     }
 
+    AsyncFunction("readLauncherPreferencesAsync") {
+      requireContext()
+        .getSharedPreferences(PREFERENCES_FILE, Context.MODE_PRIVATE)
+        .getString(PREFERENCES_KEY, null)
+    }
+
+    AsyncFunction("writeLauncherPreferencesAsync") { value: String ->
+      requireContext()
+        .getSharedPreferences(PREFERENCES_FILE, Context.MODE_PRIVATE)
+        .edit()
+        .putString(PREFERENCES_KEY, value)
+        .commit()
+    }
+
     OnStartObserving("onAppsChanged") {
       registerPackageReceiver()
     }
@@ -159,6 +173,8 @@ class SoderaLauncherModule : Module() {
   companion object {
     private const val ICON_SIZE = 96
     private const val ICON_CACHE_SIZE = 128
+    private const val PREFERENCES_FILE = "sodera_launcher"
+    private const val PREFERENCES_KEY = "preferences"
   }
 }
 
