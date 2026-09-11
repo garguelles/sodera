@@ -42,7 +42,40 @@ function renderLauncher(
   return render(<LauncherScreen client={client} preferencesStorage={preferencesStorage} />);
 }
 
+async function openAppDrawer() {
+  fireEvent.press(screen.getByRole('button', { name: 'Open app drawer' }));
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: 'Return to Home' })).toBeOnTheScreen(),
+  );
+}
+
 describe('LauncherScreen', () => {
+  it('shows only pinned apps on Home and keeps all apps in the drawer', async () => {
+    const camera = {
+      ...calculator,
+      componentName: 'com.android.camera/.Camera',
+      packageName: 'com.android.camera',
+      label: 'Camera',
+    };
+    const storage = createPreferencesStorage(
+      JSON.stringify({ schemaVersion: 1, favoritePackageNames: [calculator.packageName] }),
+    );
+    await renderLauncher(
+      createClient({ getLaunchableApps: jest.fn().mockResolvedValue([calculator, camera]) }),
+      storage,
+    );
+
+    expect(await screen.findByRole('button', { name: 'Open Calculator' })).toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: 'Open Camera' })).not.toBeOnTheScreen();
+    expect(screen.queryByLabelText('Search apps')).not.toBeOnTheScreen();
+
+    await openAppDrawer();
+
+    expect(screen.getByRole('button', { name: 'Open Calculator' })).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Open Camera' })).toBeOnTheScreen();
+    expect(screen.getByLabelText('Search apps')).toBeOnTheScreen();
+  });
+
   it('loads and launches an installed app', async () => {
     let resolveApps: (apps: LauncherApp[]) => void = () => undefined;
     const client = createClient({
@@ -56,6 +89,7 @@ describe('LauncherScreen', () => {
 
     expect(screen.getByText('Loading apps...')).toBeOnTheScreen();
     await act(() => resolveApps([calculator]));
+    await openAppDrawer();
     fireEvent.press(await screen.findByRole('button', { name: 'Open Calculator' }));
 
     expect(client.launchApp).toHaveBeenCalledWith(calculator.componentName);
@@ -63,7 +97,12 @@ describe('LauncherScreen', () => {
 
   it('refreshes the visible list when installed packages change', async () => {
     let notifyAppsChanged: () => void = () => undefined;
-    const camera = { ...calculator, componentName: 'com.android.camera/.Camera', label: 'Camera' };
+    const camera = {
+      ...calculator,
+      componentName: 'com.android.camera/.Camera',
+      packageName: 'com.android.camera',
+      label: 'Camera',
+    };
     const getLaunchableApps = jest
       .fn()
       .mockResolvedValueOnce([calculator])
@@ -76,6 +115,7 @@ describe('LauncherScreen', () => {
       }),
     });
     await renderLauncher(client);
+    await openAppDrawer();
     await screen.findByText('Calculator');
 
     await act(() => notifyAppsChanged());
@@ -89,10 +129,13 @@ describe('LauncherScreen', () => {
       launchApp: jest.fn().mockRejectedValue(new Error('App is no longer available')),
     });
     await renderLauncher(client);
+    await openAppDrawer();
 
-    await act(() =>
-      fireEvent.press(screen.getByRole('button', { name: 'Open Calculator' })),
-    );
+    const calculatorButton = await screen.findByRole('button', { name: 'Open Calculator' });
+    await act(async () => {
+      fireEvent.press(calculatorButton);
+      await Promise.resolve();
+    });
 
     await waitFor(() => expect(screen.getByText('App is no longer available')).toBeOnTheScreen());
     expect(screen.queryByRole('button', { name: 'Open Calculator' })).not.toBeOnTheScreen();
@@ -106,15 +149,23 @@ describe('LauncherScreen', () => {
     const client = createClient({ getLaunchableApps });
     await renderLauncher(client);
 
-    await act(() => fireEvent.press(screen.getByRole('button', { name: 'Retry' })));
+    const retryButton = await screen.findByRole('button', { name: 'Retry' });
+    fireEvent.press(retryButton);
+    await waitFor(() => expect(getLaunchableApps).toHaveBeenCalledTimes(2));
+    await openAppDrawer();
 
     expect(await screen.findByText('Calculator')).toBeOnTheScreen();
-    expect(getLaunchableApps).toHaveBeenCalledTimes(2);
   });
 
   it('filters apps by label and displays an empty search result', async () => {
-    const camera = { ...calculator, componentName: 'com.android.camera/.Camera', label: 'Camera' };
+    const camera = {
+      ...calculator,
+      componentName: 'com.android.camera/.Camera',
+      packageName: 'com.android.camera',
+      label: 'Camera',
+    };
     await renderLauncher(createClient({ getLaunchableApps: jest.fn().mockResolvedValue([calculator, camera]) }));
+    await openAppDrawer();
     await screen.findByText('Calculator');
 
     fireEvent.changeText(screen.getByLabelText('Search apps'), ' camera ');
@@ -134,6 +185,7 @@ describe('LauncherScreen', () => {
     const storage = createPreferencesStorage();
     const client = createClient();
     const firstRender = await renderLauncher(client, storage);
+    await openAppDrawer();
     await screen.findByText('Calculator');
 
     await waitFor(() =>
@@ -147,11 +199,39 @@ describe('LauncherScreen', () => {
 
     await firstRender.unmount();
     await renderLauncher(client, storage);
+    await openAppDrawer();
 
     const unpin = await screen.findByRole('button', { name: 'Unpin Calculator' });
     fireEvent.press(unpin);
     await waitFor(() => expect(storage.write).toHaveBeenCalledTimes(2));
     expect(JSON.parse((storage.write as jest.Mock).mock.calls[1][0]).favoritePackageNames).toEqual([]);
+  });
+
+  it('limits pinned apps to four and allows another after unpinning', async () => {
+    const apps = ['One', 'Two', 'Three', 'Four', 'Five'].map((label) => ({
+      ...calculator,
+      componentName: `com.example.${label.toLowerCase()}/.Main`,
+      packageName: `com.example.${label.toLowerCase()}`,
+      label,
+    }));
+    const storage = createPreferencesStorage(
+      JSON.stringify({
+        schemaVersion: 1,
+        favoritePackageNames: apps.slice(0, 4).map((app) => app.packageName),
+      }),
+    );
+    await renderLauncher(
+      createClient({ getLaunchableApps: jest.fn().mockResolvedValue(apps) }),
+      storage,
+    );
+    await openAppDrawer();
+
+    expect(await screen.findByText('4/4 pinned')).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Pin limit reached for Five' })).toBeDisabled();
+
+    fireEvent.press(screen.getByRole('button', { name: 'Unpin One' }));
+
+    expect(await screen.findByRole('button', { name: 'Pin Five' })).toBeEnabled();
   });
 
   it('uses current discovery metadata for a persisted favorite', async () => {
@@ -171,21 +251,47 @@ describe('LauncherScreen', () => {
     expect(client.launchApp).toHaveBeenCalledWith(updatedCalculator.componentName);
   });
 
-  it('hides unavailable favorites and clears them from settings', async () => {
-    const storage = createPreferencesStorage(
-      JSON.stringify({ schemaVersion: 1, favoritePackageNames: ['com.example.removed'] }),
+  it('opens settings through navigation without replacing launcher content', async () => {
+    const onOpenSettings = jest.fn();
+    const launcher = await render(
+      <LauncherScreen
+        client={createClient()}
+        onOpenSettings={onOpenSettings}
+        preferencesStorage={createPreferencesStorage()}
+      />,
     );
+
+    fireEvent.press(screen.getByRole('button', { name: 'Open launcher settings' }));
+
+    expect(onOpenSettings).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText('Passkey proof')).not.toBeOnTheScreen();
+    expect(await screen.findByText('No pinned apps')).toBeOnTheScreen();
+    await launcher.unmount();
+  });
+
+  it('refreshes pinned apps when settings update preferences', async () => {
+    let value = JSON.stringify({
+      schemaVersion: 1,
+      favoritePackageNames: [calculator.packageName],
+    });
+    let notifyPreferencesChanged: () => void = () => undefined;
+    const storage: LauncherPreferencesStorage = {
+      read: jest.fn(async () => value),
+      write: jest.fn(async (nextValue: string) => {
+        value = nextValue;
+        notifyPreferencesChanged();
+      }),
+      subscribe: jest.fn((listener: () => void) => {
+        notifyPreferencesChanged = listener;
+        return () => undefined;
+      }),
+    };
     await renderLauncher(createClient(), storage);
-    await screen.findByText('Calculator');
+    expect(await screen.findByRole('button', { name: 'Open Calculator' })).toBeOnTheScreen();
 
-    await act(() =>
-      fireEvent.press(screen.getByRole('button', { name: 'Open launcher settings' })),
-    );
+    await act(() => storage.write(JSON.stringify({ schemaVersion: 1, favoritePackageNames: [] })));
 
-    expect(screen.getByText('0 currently installed')).toBeOnTheScreen();
-    fireEvent.press(screen.getByRole('button', { name: 'Clear favorite apps' }));
-    await waitFor(() => expect(storage.write).toHaveBeenCalledTimes(1));
-    expect(JSON.parse((storage.write as jest.Mock).mock.calls[0][0]).favoritePackageNames).toEqual([]);
+    expect(await screen.findByText('No pinned apps')).toBeOnTheScreen();
   });
 
   it('reconciles a favorite when a package-change event removes its app', async () => {
@@ -205,13 +311,13 @@ describe('LauncherScreen', () => {
       JSON.stringify({ schemaVersion: 1, favoritePackageNames: [calculator.packageName] }),
     );
     await renderLauncher(client, storage);
-    expect(await screen.findByRole('button', { name: 'Unpin Calculator' })).toBeOnTheScreen();
+    expect(await screen.findByRole('button', { name: 'Open Calculator' })).toBeOnTheScreen();
 
     await act(() => notifyAppsChanged());
 
     await waitFor(() => {
       expect(screen.queryByRole('button', { name: 'Open Calculator' })).not.toBeOnTheScreen();
-      expect(screen.getByText('No launchable apps found')).toBeOnTheScreen();
+      expect(screen.getByText('No pinned apps')).toBeOnTheScreen();
     });
   });
 
@@ -224,6 +330,7 @@ describe('LauncherScreen', () => {
     await renderLauncher(client, storage);
 
     expect(await screen.findByText('Preferences unavailable')).toBeOnTheScreen();
+    await openAppDrawer();
     fireEvent.press(screen.getByRole('button', { name: 'Open Calculator' }));
 
     expect(client.launchApp).toHaveBeenCalledWith(calculator.componentName);
@@ -242,22 +349,20 @@ describe('LauncherScreen', () => {
     );
 
     expect(await screen.findByText('Launcher unavailable')).toBeOnTheScreen();
-    expect(screen.getByText('$3,045.00')).toBeOnTheScreen();
+    expect(screen.getByText('$4,045.00')).toBeOnTheScreen();
     fireEvent.press(screen.getByRole('button', { name: 'Hide financial amounts' }));
 
-    await waitFor(() => expect(screen.queryByText('$3,045.00')).toBeNull());
+    await waitFor(() => expect(screen.queryByText('$4,045.00')).toBeNull());
     expect(screen.getByRole('button', { name: 'Retry' })).toBeOnTheScreen();
-
-    await act(() =>
-      fireEvent.press(screen.getByRole('button', { name: 'Open launcher settings' })),
-    );
-    expect(screen.getByText('Launcher settings')).toBeOnTheScreen();
-    await act(() =>
-      fireEvent.press(screen.getByRole('button', { name: 'Close launcher settings' })),
+    await openAppDrawer();
+    expect(screen.getByLabelText('Search apps')).toBeOnTheScreen();
+    fireEvent.press(screen.getByRole('button', { name: 'Return to Home' }));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Open app drawer' })).toBeOnTheScreen(),
     );
 
-    expect(screen.getByRole('button', { name: 'Show financial amounts' })).toBeOnTheScreen();
-    expect(screen.queryByText('$3,045.00')).toBeNull();
+    expect(await screen.findByRole('button', { name: 'Show financial amounts' })).toBeOnTheScreen();
+    expect(screen.queryByText('$4,045.00')).toBeNull();
   });
 
   it('keeps launcher controls usable when wallet data fails', async () => {
@@ -275,19 +380,15 @@ describe('LauncherScreen', () => {
     );
 
     expect(await screen.findByText('Wallet unavailable')).toBeOnTheScreen();
+    await openAppDrawer();
     fireEvent.changeText(screen.getByLabelText('Search apps'), 'calculator');
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'Open Calculator' })).toBeOnTheScreen(),
     );
-    await act(() =>
-      fireEvent.press(screen.getByRole('button', { name: 'Open Calculator' })),
-    );
+    fireEvent.press(screen.getByRole('button', { name: 'Open Calculator' }));
 
     expect(client.launchApp).toHaveBeenCalledWith(calculator.componentName);
     expect(screen.getByRole('button', { name: 'Pin Calculator' })).toBeEnabled();
-    await act(() =>
-      fireEvent.press(screen.getByRole('button', { name: 'Open launcher settings' })),
-    );
-    expect(screen.getByText('Launcher settings')).toBeOnTheScreen();
   });
+
 });

@@ -12,7 +12,7 @@ export default function HomeScreen() {
       client={launcherClient}
       homeContent={__DEV__ ? <WalletHome provider={walletHomeFixtureProvider} /> : undefined}
       preferencesStorage={launcherPreferencesNativeStorage}
-      onOpenPasskeyProof={() => router.push('/passkey-proof')}
+      onOpenSettings={() => router.push('/settings')}
     />
   );
 }

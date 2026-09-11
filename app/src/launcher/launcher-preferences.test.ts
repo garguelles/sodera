@@ -34,6 +34,17 @@ describe('launcher preferences', () => {
     });
   });
 
+  it('limits persisted favorites to four apps', () => {
+    expect(
+      parseLauncherPreferences(
+        JSON.stringify({
+          schemaVersion: 1,
+          favoritePackageNames: ['one', 'two', 'three', 'four', 'five'],
+        }),
+      ).favoritePackageNames,
+    ).toEqual(['one', 'two', 'three', 'four']);
+  });
+
   it('serializes writes so rapid updates cannot persist stale preferences', async () => {
     let finishFirstWrite: () => void = () => undefined;
     const writes: string[] = [];

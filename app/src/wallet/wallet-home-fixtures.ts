@@ -26,6 +26,13 @@ export const populatedWalletHomeFixture = {
           amount: '245.00 USDC',
           valueUsdCents: 24_500,
         },
+        {
+          id: 'sepolia-wbtc',
+          name: 'Wrapped Bitcoin',
+          symbol: 'WBTC',
+          amount: '0.0100 WBTC',
+          valueUsdCents: 100_000,
+        },
       ],
       positions: [
         {

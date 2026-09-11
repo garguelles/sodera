@@ -6,12 +6,15 @@ export type LauncherPreferences = {
 export type LauncherPreferencesStorage = {
   read(): Promise<string | null>;
   write(value: string): Promise<void>;
+  subscribe?(listener: () => void): () => void;
 };
 
 export type LauncherPreferencesRepository = {
   load(): Promise<LauncherPreferences>;
   save(favoritePackageNames: string[]): Promise<void>;
 };
+
+export const MAX_FAVORITE_APPS = 4;
 
 const DEFAULT_PREFERENCES: LauncherPreferences = {
   schemaVersion: 1,
@@ -65,5 +68,7 @@ export function parseLauncherPreferences(value: string | null): LauncherPreferen
 }
 
 function normalizePackageNames(values: unknown[]) {
-  return [...new Set(values.filter((value): value is string => typeof value === 'string' && value.length > 0))];
+  return [
+    ...new Set(values.filter((value): value is string => typeof value === 'string' && value.length > 0)),
+  ].slice(0, MAX_FAVORITE_APPS);
 }
