@@ -107,4 +107,18 @@ describe('WalletHome', () => {
     expect(screen.getByText(/Balances and positions will appear/)).toBeOnTheScreen();
     expect(screen.queryByText('$3,045.00')).not.toBeOnTheScreen();
   });
+
+  it('clears stale balances when a provider update becomes pending', async () => {
+    const provider = createWalletHomeFixtureProvider();
+    await render(<WalletHome provider={provider} />);
+    await screen.findByText('$3,045.00');
+
+    await act(() => provider.update(pendingWalletHomeFixture));
+
+    expect(screen.getByLabelText('Loading wallet data')).toBeOnTheScreen();
+    expect(screen.queryByText('$3,045.00')).not.toBeOnTheScreen();
+
+    await act(() => provider.update(resolvedWalletHomeFixtures.populated));
+    expect(await screen.findByText('$3,045.00')).toBeOnTheScreen();
+  });
 });

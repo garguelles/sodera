@@ -38,6 +38,7 @@ export function WalletHome({ provider }: WalletHomeProps) {
 
     const load = async () => {
       const request = ++latestRequest;
+      if (active) setViewState({ status: 'loading' });
       try {
         const result = await provider.load();
         if (active && request === latestRequest) setViewState({ status: 'loaded', result });
