@@ -11,7 +11,7 @@ export type WalletHomeBalance = {
   name: string;
   symbol: string;
   amount: string;
-  valueUsd: string;
+  valueUsdCents: number;
 };
 
 export type WalletHomePosition = {
@@ -20,13 +20,12 @@ export type WalletHomePosition = {
   name: string;
   symbol: string;
   amount: string;
-  valueUsd: string;
+  valueUsdCents: number;
 };
 
 export type WalletHomeSnapshot = {
   identity: WalletHomeIdentity;
   portfolio: {
-    totalValueUsd: string;
     balances: readonly WalletHomeBalance[];
     positions: readonly WalletHomePosition[];
   };
@@ -42,3 +41,10 @@ export type WalletHomeProvider = {
   load(): Promise<WalletHomeResult>;
   subscribeToChanges(listener: () => void): () => void;
 };
+
+export function getPortfolioTotalUsdCents(snapshot: WalletHomeSnapshot) {
+  return [...snapshot.portfolio.balances, ...snapshot.portfolio.positions].reduce(
+    (total, holding) => total + holding.valueUsdCents,
+    0,
+  );
+}

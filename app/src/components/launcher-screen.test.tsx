@@ -5,6 +5,7 @@ import { WalletHome } from './wallet-home';
 import type { LauncherApp, LauncherClient } from '@/launcher/launcher-client';
 import type { LauncherPreferencesStorage } from '@/launcher/launcher-preferences';
 import { createWalletHomeFixtureProvider } from '@/wallet/wallet-home-fixtures';
+import type { WalletHomeProvider } from '@/wallet/wallet-home';
 
 const calculator: LauncherApp = {
   componentName: 'com.android.calculator2/.Calculator',
@@ -255,5 +256,37 @@ describe('LauncherScreen', () => {
 
     expect(screen.getByRole('button', { name: 'Show financial amounts' })).toBeOnTheScreen();
     expect(screen.queryByText('$3,045.00')).toBeNull();
+  });
+
+  it('keeps launcher controls usable when wallet data fails', async () => {
+    const client = createClient();
+    const walletProvider: WalletHomeProvider = {
+      source: 'fixture',
+      load: jest.fn().mockRejectedValue(new Error('Wallet unavailable')),
+      subscribeToChanges: jest.fn().mockReturnValue(() => undefined),
+    };
+    await render(
+      <LauncherScreen
+        client={client}
+        homeContent={<WalletHome provider={walletProvider} />}
+        preferencesStorage={createPreferencesStorage()}
+      />,
+    );
+
+    expect(await screen.findByText('Wallet unavailable')).toBeOnTheScreen();
+    fireEvent.changeText(screen.getByLabelText('Search apps'), 'calculator');
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Open Calculator' })).toBeOnTheScreen(),
+    );
+    await act(() =>
+      fireEvent.press(screen.getByRole('button', { name: 'Open Calculator' })),
+    );
+
+    expect(client.launchApp).toHaveBeenCalledWith(calculator.componentName);
+    expect(screen.getByRole('button', { name: 'Pin Calculator' })).toBeEnabled();
+    await act(() =>
+      fireEvent.press(screen.getByRole('button', { name: 'Open launcher settings' })),
+    );
+    expect(screen.getByText('Launcher settings')).toBeOnTheScreen();
   });
 });

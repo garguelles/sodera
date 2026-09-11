@@ -10,7 +10,7 @@ export default function HomeScreen() {
   return (
     <LauncherScreen
       client={launcherClient}
-      homeContent={<WalletHome provider={walletHomeFixtureProvider} />}
+      homeContent={__DEV__ ? <WalletHome provider={walletHomeFixtureProvider} /> : undefined}
       preferencesStorage={launcherPreferencesNativeStorage}
       onOpenPasskeyProof={() => router.push('/passkey-proof')}
     />

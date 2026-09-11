@@ -4,7 +4,10 @@ import type { Address } from 'viem';
 import { WalletHome } from './wallet-home';
 import {
   createWalletHomeFixtureProvider,
+  emptyWalletHomeFixture,
+  indexingWalletHomeFixture,
   populatedWalletHomeFixture,
+  walletHomeErrorFixture,
 } from '@/wallet/wallet-home-fixtures';
 import type { WalletHomeProvider, WalletHomeResult } from '@/wallet/wallet-home';
 
@@ -22,6 +25,7 @@ describe('WalletHome', () => {
     expect(screen.getByLabelText('alex.sodera.eth initials')).toBeOnTheScreen();
     expect(screen.getByText('A')).toBeOnTheScreen();
     expect(screen.getByText('0.8200 ETH')).toBeOnTheScreen();
+    expect(screen.getByText('Available USD Coin')).toBeOnTheScreen();
     expect(screen.getByText('245.00 USDC')).toBeOnTheScreen();
     expect(screen.getByText('Curated USDC vault')).toBeOnTheScreen();
     expect(screen.getByText('750.00 USDC')).toBeOnTheScreen();
@@ -80,13 +84,7 @@ describe('WalletHome', () => {
 
     expect(screen.getByLabelText('Loading wallet data')).toBeOnTheScreen();
     await act(async () =>
-      resolveResult({
-        status: 'indexing',
-        snapshot: populatedWalletHomeFixture.status === 'ready'
-          ? populatedWalletHomeFixture.snapshot
-          : neverSnapshot(),
-        message: 'Vault activity is still indexing. Available balances may be partial.',
-      }),
+      resolveResult(indexingWalletHomeFixture),
     );
 
     expect(await screen.findByText('Portfolio indexing')).toBeOnTheScreen();
@@ -97,7 +95,7 @@ describe('WalletHome', () => {
   it('offers retry after a provider failure', async () => {
     const load = jest
       .fn()
-      .mockRejectedValueOnce(new Error('Portfolio provider unavailable'))
+      .mockRejectedValueOnce(walletHomeErrorFixture)
       .mockResolvedValueOnce(populatedWalletHomeFixture);
     const provider: WalletHomeProvider = {
       source: 'fixture',
@@ -120,20 +118,10 @@ describe('WalletHome', () => {
     await render(<WalletHome provider={provider} />);
     await screen.findByText('$3,045.00');
 
-    await act(() =>
-      provider.update({
-        status: 'empty',
-        identity,
-        message: 'Balances and positions will appear after the first indexed activity.',
-      }),
-    );
+    await act(() => provider.update(emptyWalletHomeFixture));
 
     await waitFor(() => expect(screen.getByText('No portfolio activity yet')).toBeOnTheScreen());
     expect(screen.getByText(/Balances and positions will appear/)).toBeOnTheScreen();
     expect(screen.queryByText('$3,045.00')).not.toBeOnTheScreen();
   });
 });
-
-function neverSnapshot(): never {
-  throw new Error('Populated fixture must contain a snapshot');
-}

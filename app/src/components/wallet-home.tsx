@@ -14,6 +14,7 @@ import type {
   WalletHomeProvider,
   WalletHomeResult,
 } from '@/wallet/wallet-home';
+import { getPortfolioTotalUsdCents } from '@/wallet/wallet-home';
 
 type WalletHomeProps = {
   provider: WalletHomeProvider;
@@ -138,7 +139,7 @@ function WalletSnapshot({
         <Text style={styles.totalLabel}>Portfolio total</Text>
         <FinancialAmount
           style={styles.total}
-          value={portfolio.totalValueUsd}
+          value={formatUsd(getPortfolioTotalUsdCents(result.snapshot))}
           visible={amountsVisible}
         />
         <Text style={styles.network}>Ethereum Sepolia</Text>
@@ -172,7 +173,7 @@ function WalletSnapshot({
             </View>
             <FinancialAmount
               style={styles.assetValue}
-              value={balance.valueUsd}
+              value={formatUsd(balance.valueUsdCents)}
               visible={amountsVisible}
             />
           </View>
@@ -184,7 +185,7 @@ function WalletSnapshot({
           <Text accessibilityRole="header" style={styles.cardTitle}>
             Vault position
           </Text>
-          <Text style={styles.protocol}>Morpho</Text>
+          <Text style={styles.protocol}>{portfolio.positions[0]?.protocol}</Text>
         </View>
         {portfolio.positions.map((position) => (
           <View key={position.id} style={styles.positionRow}>
@@ -198,7 +199,7 @@ function WalletSnapshot({
             </View>
             <FinancialAmount
               style={styles.assetValue}
-              value={position.valueUsd}
+              value={formatUsd(position.valueUsdCents)}
               visible={amountsVisible}
             />
           </View>
@@ -227,7 +228,7 @@ function Identity({ identity }: { identity: WalletHomeIdentity }) {
           {identity.username}
         </Text>
         <Text accessibilityLabel={`Smart Account ${identity.address}`} selectable style={styles.address}>
-          {formatAddress(identity.address)}
+          Smart Account {formatAddress(identity.address)}
         </Text>
       </View>
     </View>
@@ -264,6 +265,13 @@ function getInitials(username: string) {
 
 function formatAddress(address: string) {
   return `${address.slice(0, 6)}...${address.slice(-4)}`;
+}
+
+function formatUsd(cents: number) {
+  return `$${(cents / 100).toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 }
 
 function getErrorMessage(error: unknown) {

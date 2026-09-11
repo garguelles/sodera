@@ -2,7 +2,7 @@ import type { Address } from 'viem';
 
 import type { WalletHomeProvider, WalletHomeResult } from './wallet-home';
 
-export const populatedWalletHomeFixture: WalletHomeResult = {
+export const populatedWalletHomeFixture = {
   status: 'ready',
   snapshot: {
     identity: {
@@ -11,21 +11,20 @@ export const populatedWalletHomeFixture: WalletHomeResult = {
       avatarUrl: null,
     },
     portfolio: {
-      totalValueUsd: '$3,045.00',
       balances: [
         {
           id: 'sepolia-eth',
           name: 'Ethereum',
           symbol: 'ETH',
           amount: '0.8200 ETH',
-          valueUsd: '$2,050.00',
+          valueUsdCents: 205_000,
         },
         {
           id: 'sepolia-usdc',
-          name: 'USD Coin',
+          name: 'Available USD Coin',
           symbol: 'USDC',
           amount: '245.00 USDC',
-          valueUsd: '$245.00',
+          valueUsdCents: 24_500,
         },
       ],
       positions: [
@@ -35,12 +34,28 @@ export const populatedWalletHomeFixture: WalletHomeResult = {
           name: 'Curated USDC vault',
           symbol: 'USDC',
           amount: '750.00 USDC',
-          valueUsd: '$750.00',
+          valueUsdCents: 75_000,
         },
       ],
     },
   },
-};
+} satisfies WalletHomeResult;
+
+const populatedSnapshot = populatedWalletHomeFixture.snapshot;
+
+export const indexingWalletHomeFixture = {
+  status: 'indexing',
+  snapshot: populatedSnapshot,
+  message: 'Vault activity is still indexing. Available balances may be partial.',
+} satisfies WalletHomeResult;
+
+export const emptyWalletHomeFixture = {
+  status: 'empty',
+  identity: populatedSnapshot.identity,
+  message: 'Balances and positions will appear after the first indexed activity.',
+} satisfies WalletHomeResult;
+
+export const walletHomeErrorFixture = new Error('Portfolio provider unavailable');
 
 export function createWalletHomeFixtureProvider(
   initialResult: WalletHomeResult = populatedWalletHomeFixture,
