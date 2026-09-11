@@ -1,8 +1,10 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 
 import { LauncherScreen } from './launcher-screen';
+import { WalletHome } from './wallet-home';
 import type { LauncherApp, LauncherClient } from '@/launcher/launcher-client';
 import type { LauncherPreferencesStorage } from '@/launcher/launcher-preferences';
+import { createWalletHomeFixtureProvider } from '@/wallet/wallet-home-fixtures';
 
 const calculator: LauncherApp = {
   componentName: 'com.android.calculator2/.Calculator',
@@ -222,5 +224,36 @@ describe('LauncherScreen', () => {
     fireEvent.press(screen.getByRole('button', { name: 'Open Calculator' }));
 
     expect(client.launchApp).toHaveBeenCalledWith(calculator.componentName);
+  });
+
+  it('keeps wallet controls usable when launcher discovery fails', async () => {
+    const client = createClient({
+      getLaunchableApps: jest.fn().mockRejectedValue(new Error('Launcher unavailable')),
+    });
+    await render(
+      <LauncherScreen
+        client={client}
+        homeContent={<WalletHome provider={createWalletHomeFixtureProvider()} />}
+        preferencesStorage={createPreferencesStorage()}
+      />,
+    );
+
+    expect(await screen.findByText('Launcher unavailable')).toBeOnTheScreen();
+    expect(screen.getByText('$3,045.00')).toBeOnTheScreen();
+    fireEvent.press(screen.getByRole('button', { name: 'Hide financial amounts' }));
+
+    await waitFor(() => expect(screen.queryByText('$3,045.00')).toBeNull());
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeOnTheScreen();
+
+    await act(() =>
+      fireEvent.press(screen.getByRole('button', { name: 'Open launcher settings' })),
+    );
+    expect(screen.getByText('Launcher settings')).toBeOnTheScreen();
+    await act(() =>
+      fireEvent.press(screen.getByRole('button', { name: 'Close launcher settings' })),
+    );
+
+    expect(screen.getByRole('button', { name: 'Show financial amounts' })).toBeOnTheScreen();
+    expect(screen.queryByText('$3,045.00')).toBeNull();
   });
 });

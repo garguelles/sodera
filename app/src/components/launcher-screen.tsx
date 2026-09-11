@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   AppState,
@@ -21,12 +21,14 @@ import {
 type LauncherScreenProps = {
   client: LauncherClient;
   preferencesStorage: LauncherPreferencesStorage;
+  homeContent?: ReactNode;
   onOpenPasskeyProof?: () => void;
 };
 
 export function LauncherScreen({
   client,
   preferencesStorage,
+  homeContent,
   onOpenPasskeyProof,
 }: LauncherScreenProps) {
   const [apps, setApps] = useState<LauncherApp[]>([]);
@@ -212,86 +214,95 @@ export function LauncherScreen({
             </Pressable>
           </View>
         </View>
-      ) : loading ? (
-        <View style={styles.center}>
-          <ActivityIndicator color="#f3f0e8" />
-          <Text style={styles.secondary}>Loading apps...</Text>
-        </View>
-      ) : (
-        <>
-          <View style={styles.searchContainer}>
-            <TextInput
-              accessibilityLabel="Search apps"
-              autoCapitalize="none"
-              autoCorrect={false}
-              onChangeText={setQuery}
-              placeholder="Search apps"
-              placeholderTextColor="#77766e"
-              returnKeyType="search"
-              style={styles.search}
-              value={query}
-            />
-          </View>
-          <View style={styles.drawerMeta}>
-            <Text style={styles.count}>
-              {normalizedQuery ? `${visibleApps.length} of ${apps.length} apps` : `${apps.length} apps`}
-            </Text>
-            {visibleFavoriteCount > 0 ? (
-              <Text style={styles.count}>
-                {visibleFavoriteCount} favorite{visibleFavoriteCount === 1 ? '' : 's'} first
-              </Text>
-            ) : null}
-          </View>
-          <FlatList
-            contentContainerStyle={visibleApps.length === 0 ? styles.emptyGrid : styles.grid}
-            data={visibleApps}
-            keyboardShouldPersistTaps="handled"
-            keyExtractor={(app) => app.componentName}
-            ListEmptyComponent={
+      ) : null}
+      <FlatList
+        accessibilityElementsHidden={showSettings}
+        importantForAccessibility={showSettings ? 'no-hide-descendants' : 'auto'}
+        style={showSettings ? styles.hidden : styles.launcherContent}
+        contentContainerStyle={styles.grid}
+        data={loading ? [] : visibleApps}
+        keyboardShouldPersistTaps="handled"
+        keyExtractor={(app) => app.componentName}
+        ListEmptyComponent={
+          loading ? (
+            <View style={styles.center}>
+              <ActivityIndicator color="#f3f0e8" />
+              <Text style={styles.secondary}>Loading apps...</Text>
+            </View>
+          ) : (
+            <View style={styles.emptyState}>
               <Text style={styles.emptyText}>
                 {normalizedQuery ? `No apps match "${query.trim()}"` : 'No launchable apps found'}
               </Text>
-            }
-            numColumns={4}
-            renderItem={({ item }) => {
-              const favorite = favoritePackages.has(item.packageName);
-              return (
-                <View style={styles.app}>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={`Open ${item.label}`}
-                    onPress={() => void openApp(item)}
-                    style={({ pressed }) => [styles.appButton, pressed && styles.pressed]}>
-                    {item.icon ? (
-                      <Image source={{ uri: item.icon }} style={styles.icon} />
-                    ) : (
-                      <View style={[styles.icon, styles.fallbackIcon]}>
-                        <Text style={styles.fallbackText}>
-                          {item.label.slice(0, 1).toUpperCase()}
-                        </Text>
-                      </View>
-                    )}
-                    <Text numberOfLines={2} style={styles.label}>
-                      {item.label}
-                    </Text>
-                  </Pressable>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={`${favorite ? 'Unpin' : 'Pin'} ${item.label}`}
-                    accessibilityState={{ disabled: !preferencesLoaded, selected: favorite }}
-                    disabled={!preferencesLoaded}
-                    onPress={() => toggleFavorite(item.packageName)}
-                    style={({ pressed }) => [styles.favoriteButton, pressed && styles.pressed]}>
-                    <Text style={[styles.favorite, favorite && styles.favoriteSelected]}>
-                      {favorite ? 'Pinned' : 'Pin'}
-                    </Text>
-                  </Pressable>
-                </View>
-              );
-            }}
-          />
-        </>
-      )}
+            </View>
+          )
+        }
+        ListHeaderComponent={
+          <View>
+            {homeContent}
+            <View style={styles.searchContainer}>
+              <TextInput
+                accessibilityLabel="Search apps"
+                autoCapitalize="none"
+                autoCorrect={false}
+                onChangeText={setQuery}
+                placeholder="Search apps"
+                placeholderTextColor="#77766e"
+                returnKeyType="search"
+                style={styles.search}
+                value={query}
+              />
+            </View>
+            <View style={styles.drawerMeta}>
+              <Text style={styles.count}>
+                {normalizedQuery
+                  ? `${visibleApps.length} of ${apps.length} apps`
+                  : `${apps.length} apps`}
+              </Text>
+              {visibleFavoriteCount > 0 ? (
+                <Text style={styles.count}>
+                  {visibleFavoriteCount} favorite{visibleFavoriteCount === 1 ? '' : 's'} first
+                </Text>
+              ) : null}
+            </View>
+          </View>
+        }
+        numColumns={4}
+        renderItem={({ item }) => {
+          const favorite = favoritePackages.has(item.packageName);
+          return (
+            <View style={styles.app}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Open ${item.label}`}
+                onPress={() => void openApp(item)}
+                style={({ pressed }) => [styles.appButton, pressed && styles.pressed]}>
+                {item.icon ? (
+                  <Image source={{ uri: item.icon }} style={styles.icon} />
+                ) : (
+                  <View style={[styles.icon, styles.fallbackIcon]}>
+                    <Text style={styles.fallbackText}>{item.label.slice(0, 1).toUpperCase()}</Text>
+                  </View>
+                )}
+                <Text numberOfLines={2} style={styles.label}>
+                  {item.label}
+                </Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`${favorite ? 'Unpin' : 'Pin'} ${item.label}`}
+                accessibilityState={{ disabled: !preferencesLoaded, selected: favorite }}
+                disabled={!preferencesLoaded}
+                onPress={() => toggleFavorite(item.packageName)}
+                style={({ pressed }) => [styles.favoriteButton, pressed && styles.pressed]}>
+                <Text style={[styles.favorite, favorite && styles.favoriteSelected]}>
+                  {favorite ? 'Pinned' : 'Pin'}
+                </Text>
+              </Pressable>
+            </View>
+          );
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -302,6 +313,8 @@ function getErrorMessage(error: unknown) {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#171713' },
+  launcherContent: { flex: 1 },
+  hidden: { display: 'none' },
   header: {
     paddingHorizontal: 24,
     paddingTop: 20,
@@ -333,7 +346,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   grid: { paddingHorizontal: 12, paddingBottom: 32 },
-  emptyGrid: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: 32 },
+  emptyState: { minHeight: 180, alignItems: 'center', justifyContent: 'center', padding: 32 },
   emptyText: { color: '#929188', fontSize: 15, textAlign: 'center' },
   app: { width: '25%', alignItems: 'center', paddingHorizontal: 6, paddingVertical: 12 },
   appButton: { alignItems: 'center' },
@@ -345,7 +358,7 @@ const styles = StyleSheet.create({
   favoriteButton: { minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
   favorite: { color: '#929188', fontSize: 11, lineHeight: 24, textAlign: 'center' },
   favoriteSelected: { color: '#f5c451' },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
+  center: { minHeight: 180, alignItems: 'center', justifyContent: 'center', gap: 12 },
   secondary: { color: '#929188', fontSize: 14 },
   error: { marginHorizontal: 18, marginBottom: 6, padding: 12, backgroundColor: '#4b2724' },
   errorText: { color: '#ffd9d4', fontSize: 13 },
