@@ -1,0 +1,397 @@
+import { Image } from 'expo-image';
+import { useEffect, useState } from 'react';
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from 'react-native';
+
+import type {
+  WalletHomeIdentity,
+  WalletHomeProvider,
+  WalletHomeResult,
+} from '@/wallet/wallet-home';
+import { getPortfolioTotalUsdCents } from '@/wallet/wallet-home';
+
+type WalletHomeProps = {
+  provider: WalletHomeProvider;
+  onAction?: (action: WalletHomeAction) => void;
+};
+
+export type WalletHomeAction = 'send' | 'receive' | 'swap';
+
+type WalletHomeViewState =
+  | { status: 'loading' }
+  | { status: 'error'; message: string }
+  | { status: 'loaded'; result: WalletHomeResult };
+
+export function WalletHome({ provider, onAction }: WalletHomeProps) {
+  const { width } = useWindowDimensions();
+  const compact = width < 380;
+  const [amountsVisible, setAmountsVisible] = useState(true);
+  const [retryCount, setRetryCount] = useState(0);
+  const [viewState, setViewState] = useState<WalletHomeViewState>({ status: 'loading' });
+
+  useEffect(() => {
+    let active = true;
+    let latestRequest = 0;
+
+    const load = async () => {
+      const request = ++latestRequest;
+      if (active) setViewState({ status: 'loading' });
+      try {
+        const result = await provider.load();
+        if (active && request === latestRequest) setViewState({ status: 'loaded', result });
+      } catch (error) {
+        if (active && request === latestRequest) {
+          setViewState({ status: 'error', message: getErrorMessage(error) });
+        }
+      }
+    };
+
+    void load();
+    const unsubscribe = provider.subscribeToChanges(() => void load());
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, [provider, retryCount]);
+
+  return (
+    <View style={[styles.container, compact && styles.compactContainer]}>
+      {viewState.status === 'loading' ? (
+        <View accessibilityLabel="Loading wallet data" style={styles.stateCard}>
+          <ActivityIndicator color="#f3f0e8" />
+          <Text style={styles.secondary}>Loading wallet...</Text>
+        </View>
+      ) : viewState.status === 'error' ? (
+        <View accessibilityRole="alert" style={[styles.stateCard, styles.errorCard]}>
+          <Text style={styles.stateTitle}>Wallet data unavailable</Text>
+          <Text selectable style={styles.errorText}>
+            {viewState.message}
+          </Text>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => {
+              setViewState({ status: 'loading' });
+              setRetryCount((count) => count + 1);
+            }}
+            style={({ pressed }) => [styles.retryButton, pressed && styles.pressed]}>
+            <Text style={styles.retryText}>Retry wallet</Text>
+          </Pressable>
+        </View>
+      ) : viewState.result.status === 'empty' ? (
+        <View style={styles.section}>
+          <Identity identity={viewState.result.identity} />
+          <View style={styles.emptyPortfolio}>
+            <Text style={styles.stateTitle}>No portfolio activity yet</Text>
+            <Text style={styles.secondary}>{viewState.result.message}</Text>
+          </View>
+        </View>
+      ) : (
+        <WalletSnapshot
+          amountsVisible={amountsVisible}
+          compact={compact}
+          onAction={onAction}
+          onToggleAmounts={() => setAmountsVisible((visible) => !visible)}
+          result={viewState.result}
+        />
+      )}
+    </View>
+  );
+}
+
+function WalletSnapshot({
+  amountsVisible,
+  compact,
+  onAction,
+  onToggleAmounts,
+  result,
+}: {
+  amountsVisible: boolean;
+  compact: boolean;
+  onAction?: (action: WalletHomeAction) => void;
+  onToggleAmounts: () => void;
+  result: Extract<WalletHomeResult, { status: 'ready' | 'indexing' }>;
+}) {
+  const { identity, portfolio } = result.snapshot;
+
+  return (
+    <View style={styles.content}>
+      <View style={styles.section}>
+        <View style={[styles.portfolioHeader, compact && styles.compactPortfolioHeader]}>
+          <Identity identity={identity} />
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={amountsVisible ? 'Hide financial amounts' : 'Show financial amounts'}
+            accessibilityState={{ selected: !amountsVisible }}
+            onPress={onToggleAmounts}
+            style={({ pressed }) => [styles.visibilityButton, pressed && styles.pressed]}>
+            <Text style={styles.visibilityButtonText}>{amountsVisible ? 'Hide' : 'Show'}</Text>
+          </Pressable>
+        </View>
+        <Text style={styles.totalLabel}>Portfolio</Text>
+        <FinancialAmount
+          style={styles.total}
+          value={formatUsd(getPortfolioTotalUsdCents(result.snapshot))}
+          visible={amountsVisible}
+        />
+        <Text style={styles.network}>Ethereum Sepolia</Text>
+        <View style={styles.actions}>
+          {(['send', 'receive', 'swap'] as const).map((action) => (
+            <Pressable
+              accessibilityRole="button"
+              key={action}
+              onPress={() => onAction?.(action)}
+              style={({ pressed }) => [styles.actionButton, pressed && styles.pressed]}>
+              <Text style={styles.actionButtonText}>
+                {action.slice(0, 1).toUpperCase() + action.slice(1)}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      </View>
+
+      {result.status === 'indexing' ? (
+        <View accessibilityRole="alert" style={styles.indexingCard}>
+          <Text style={styles.indexingTitle}>Portfolio indexing</Text>
+          <Text style={styles.indexingText}>{result.message}</Text>
+        </View>
+      ) : null}
+
+      <View style={styles.section}>
+        <Text accessibilityRole="header" style={styles.cardTitle}>
+          Assets
+        </Text>
+        <View style={styles.assets}>
+          {portfolio.balances.map((balance) => (
+            <View key={balance.id} style={styles.asset}>
+              <Text style={styles.assetSymbol}>{balance.symbol}</Text>
+              <FinancialAmount
+                style={styles.assetAmount}
+                value={balance.amount}
+                visible={amountsVisible}
+              />
+              <FinancialAmount
+                style={styles.assetValue}
+                value={formatUsd(balance.valueUsdCents)}
+                visible={amountsVisible}
+              />
+            </View>
+          ))}
+        </View>
+      </View>
+
+      <View style={styles.section}>
+        <View style={styles.positionHeading}>
+          <Text accessibilityRole="header" style={styles.cardTitle}>
+            Vault position
+          </Text>
+          <Text style={styles.protocol}>{portfolio.positions[0]?.protocol}</Text>
+        </View>
+        {portfolio.positions.map((position) => (
+          <View key={position.id} style={styles.positionRow}>
+            <View style={styles.positionCopy}>
+              <Text style={styles.assetName}>{position.name}</Text>
+              <FinancialAmount
+                style={styles.assetAmount}
+                value={position.amount}
+                visible={amountsVisible}
+              />
+            </View>
+            <FinancialAmount
+              style={styles.assetValue}
+              value={formatUsd(position.valueUsdCents)}
+              visible={amountsVisible}
+            />
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+function Identity({ identity }: { identity: WalletHomeIdentity }) {
+  return (
+    <View style={styles.identity}>
+      {identity.avatarUrl ? (
+        <Image
+          accessibilityLabel={`${identity.username} avatar`}
+          source={identity.avatarUrl}
+          style={styles.avatar}
+        />
+      ) : (
+        <View accessibilityLabel={`${identity.username} initials`} style={[styles.avatar, styles.initials]}>
+          <Text style={styles.initialsText}>{getInitials(identity.username)}</Text>
+        </View>
+      )}
+      <View style={styles.identityCopy}>
+        <Text numberOfLines={1} style={styles.username}>
+          {identity.username}
+        </Text>
+        <Text accessibilityLabel={`Wallet address ${identity.address}`} selectable style={styles.address}>
+          {formatAddress(identity.address)}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+function FinancialAmount({
+  style,
+  value,
+  visible,
+}: {
+  style: object;
+  value: string;
+  visible: boolean;
+}) {
+  return (
+    <Text accessibilityLabel={visible ? value : 'Hidden amount'} selectable={visible} style={style}>
+      {visible ? value : value.startsWith('$') ? '$••••••' : '••••••'}
+    </Text>
+  );
+}
+
+function getInitials(username: string) {
+  const label = username.replace(/\.sodera\.eth$/i, '');
+  return (
+    label
+      .split(/[._\s-]+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase())
+      .join('') || '?'
+  );
+}
+
+function formatAddress(address: string) {
+  return `${address.slice(0, 6)}...${address.slice(-4)}`;
+}
+
+function formatUsd(cents: number) {
+  return `$${(cents / 100).toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : 'Unable to load wallet data';
+}
+
+const styles = StyleSheet.create({
+  container: { paddingHorizontal: 22, paddingTop: 4, paddingBottom: 22, gap: 10 },
+  compactContainer: { paddingHorizontal: 12 },
+  content: { gap: 26 },
+  section: { gap: 8 },
+  portfolioHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    paddingBottom: 16,
+  },
+  compactPortfolioHeader: { alignItems: 'flex-start' },
+  identity: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 11 },
+  avatar: { width: 40, height: 40, borderRadius: 20 },
+  initials: { alignItems: 'center', justifyContent: 'center', backgroundColor: '#d4f06a' },
+  initialsText: { color: '#202515', fontSize: 15, fontWeight: '800' },
+  identityCopy: { flex: 1, minWidth: 0, gap: 3 },
+  username: { color: '#f3f0e8', fontSize: 15, fontWeight: '600' },
+  address: { color: '#929188', fontSize: 12, fontVariant: ['tabular-nums'] },
+  visibilityButton: {
+    minWidth: 48,
+    minHeight: 48,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+  },
+  visibilityButtonText: { color: '#f3f0e8', fontSize: 12, fontWeight: '700' },
+  totalLabel: { color: '#929188', fontSize: 13 },
+  total: {
+    color: '#f3f0e8',
+    fontSize: 30,
+    lineHeight: 36,
+    fontWeight: '700',
+    letterSpacing: -1.2,
+    fontVariant: ['tabular-nums'],
+  },
+  network: { color: '#d4f06a', fontSize: 11, fontWeight: '700', letterSpacing: 0.4 },
+  actions: { flexDirection: 'row', gap: 8, paddingTop: 8 },
+  actionButton: {
+    flex: 1,
+    minHeight: 40,
+    borderRadius: 12,
+    backgroundColor: '#292923',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionButtonText: { color: '#f3f0e8', fontSize: 12, fontWeight: '600' },
+  cardTitle: { color: '#929188', fontSize: 12, fontWeight: '700', letterSpacing: 1.2 },
+  assets: { flexDirection: 'row', gap: 32 },
+  asset: { minWidth: 104, gap: 4 },
+  assetSymbol: { color: '#f3f0e8', fontSize: 15, fontWeight: '600' },
+  assetName: { color: '#f3f0e8', fontSize: 14, fontWeight: '600' },
+  assetAmount: { color: '#929188', fontSize: 12, fontVariant: ['tabular-nums'] },
+  assetValue: {
+    color: '#f3f0e8',
+    fontSize: 13,
+    fontWeight: '600',
+    fontVariant: ['tabular-nums'],
+  },
+  positionHeading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  protocol: { color: '#d4f06a', fontSize: 12, fontWeight: '700' },
+  positionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  positionCopy: { flex: 1, gap: 3 },
+  stateCard: {
+    minHeight: 150,
+    padding: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  stateTitle: { color: '#f3f0e8', fontSize: 16, fontWeight: '700', textAlign: 'center' },
+  secondary: { color: '#929188', fontSize: 13, lineHeight: 19, textAlign: 'center' },
+  errorCard: { borderLeftWidth: 2, borderLeftColor: '#ffd9d4' },
+  errorText: { color: '#ffd9d4', fontSize: 13, lineHeight: 19, textAlign: 'center' },
+  retryButton: {
+    minHeight: 48,
+    borderRadius: 999,
+    justifyContent: 'center',
+    paddingHorizontal: 18,
+    backgroundColor: '#f3f0e8',
+  },
+  retryText: { color: '#171713', fontSize: 13, fontWeight: '800' },
+  emptyPortfolio: {
+    minHeight: 100,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingTop: 12,
+  },
+  indexingCard: {
+    borderRadius: 14,
+    borderCurve: 'continuous',
+    padding: 13,
+    backgroundColor: '#443a24',
+    gap: 3,
+  },
+  indexingTitle: { color: '#f7e2ad', fontSize: 13, fontWeight: '700' },
+  indexingText: { color: '#d9c99e', fontSize: 12, lineHeight: 17 },
+  pressed: { opacity: 0.55, transform: [{ scale: 0.97 }] },
+});
