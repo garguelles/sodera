@@ -50,13 +50,31 @@ class SoderaPasskeyModule : Module() {
         promise.resolve(errorResult("canceled", "foreground-activity-unavailable"))
         return@AsyncFunction
       }
-      val operation = beginOperation(promise)
       val request = try {
         CreatePublicKeyCredentialRequest(requestJson)
       } catch (_: IllegalArgumentException) {
-        finish(operation.id, errorResult("domError", "invalid-create-request"))
+        promise.resolve(errorResult("domError", "invalid-create-request"))
         return@AsyncFunction
       }
+      val preferences = preferences()
+      val journalRequest = preferences.getString(REGISTRATION_REQUEST_KEY, null)
+      val journalResponse = preferences.getString(REGISTRATION_RESPONSE_KEY, null)
+      if (journalRequest != null && journalRequest != requestJson) {
+        promise.resolve(errorResult("interrupted", "registration-result-pending"))
+        return@AsyncFunction
+      }
+      if (journalResponse != null) {
+        promise.resolve(successResult(journalResponse))
+        return@AsyncFunction
+      }
+      if (
+        journalRequest == null &&
+        !preferences.edit().putString(REGISTRATION_REQUEST_KEY, requestJson).commit()
+      ) {
+        promise.resolve(errorResult("unknown", "registration-journal-write-failed"))
+        return@AsyncFunction
+      }
+      val operation = beginOperation(promise)
 
       CredentialManager.create(activity).createCredentialAsync(
         activity,
@@ -66,6 +84,12 @@ class SoderaPasskeyModule : Module() {
         object : CredentialManagerCallback<CreateCredentialResponse, CreateCredentialException> {
           override fun onResult(result: CreateCredentialResponse) {
             val response = result as? CreatePublicKeyCredentialResponse
+            if (response != null && !preferences.edit()
+                .putString(REGISTRATION_RESPONSE_KEY, response.registrationResponseJson)
+                .commit()) {
+              finish(operation.id, errorResult("unknown", "registration-journal-write-failed"))
+              return
+            }
             finish(
               operation.id,
               response?.let { successResult(it.registrationResponseJson) }
@@ -74,10 +98,40 @@ class SoderaPasskeyModule : Module() {
           }
 
           override fun onError(error: CreateCredentialException) {
+            if (isDefinitiveCreateFailure(error) && !clearRegistrationJournal(preferences)) {
+              finish(operation.id, errorResult("unknown", "registration-journal-clear-failed"))
+              return
+            }
             finish(operation.id, createErrorResult(error))
           }
         }
       )
+    }
+
+    AsyncFunction("readRegistrationJournalAsync") {
+      val preferences = preferences()
+      val requestJson = preferences.getString(REGISTRATION_REQUEST_KEY, null)
+        ?: return@AsyncFunction null
+      buildMap {
+        put("requestJson", requestJson)
+        preferences.getString(REGISTRATION_RESPONSE_KEY, null)?.let { put("responseJson", it) }
+      }
+    }
+
+    AsyncFunction("clearRegistrationJournalAsync") {
+      clearRegistrationJournal(preferences())
+    }
+
+    AsyncFunction("readWalletIdentityAsync") {
+      preferences().getString(WALLET_IDENTITY_KEY, null)
+    }
+
+    AsyncFunction("writeWalletIdentityAsync") { value: String ->
+      preferences().edit().putString(WALLET_IDENTITY_KEY, value).commit()
+    }
+
+    AsyncFunction("clearWalletIdentityAsync") {
+      preferences().edit().remove(WALLET_IDENTITY_KEY).commit()
     }
 
     AsyncFunction("getCredentialAsync") { requestJson: String, promise: Promise ->
@@ -129,6 +183,25 @@ class SoderaPasskeyModule : Module() {
     val activity = appContext.currentActivity ?: return null
     val lifecycle = (activity as? LifecycleOwner)?.lifecycle ?: return null
     return activity.takeIf { lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) }
+  }
+
+  private fun preferences() = requireNotNull(appContext.reactContext) {
+    "React context is unavailable"
+  }.getSharedPreferences(PREFERENCES_NAME, Activity.MODE_PRIVATE)
+
+  private fun clearRegistrationJournal(preferences: android.content.SharedPreferences) =
+    preferences.edit()
+      .remove(REGISTRATION_REQUEST_KEY)
+      .remove(REGISTRATION_RESPONSE_KEY)
+      .commit()
+
+  private fun isDefinitiveCreateFailure(error: CreateCredentialException) = when (error) {
+    is CreateCredentialCancellationException,
+    is CreateCredentialNoCreateOptionException,
+    is CreateCredentialProviderConfigurationException,
+    is CreateCredentialUnsupportedException,
+    is CreatePublicKeyCredentialDomException -> true
+    else -> false
   }
 
   private fun beginOperation(promise: Promise): PendingOperation {
@@ -185,6 +258,11 @@ class SoderaPasskeyModule : Module() {
     else -> errorResult("unknown", error.type)
   }
 }
+
+private const val PREFERENCES_NAME = "sodera_wallet_identity"
+private const val REGISTRATION_REQUEST_KEY = "registration_request"
+private const val REGISTRATION_RESPONSE_KEY = "registration_response"
+private const val WALLET_IDENTITY_KEY = "wallet_identity"
 
 private data class PendingOperation(
   val id: Long,

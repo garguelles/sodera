@@ -18,3 +18,8 @@ export type NativePasskeyResult =
         domError?: string;
       };
     };
+
+export type RegistrationJournal = {
+  requestJson: string;
+  responseJson?: string;
+};

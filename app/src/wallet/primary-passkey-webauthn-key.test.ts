@@ -75,6 +75,9 @@ describe('Primary Passkey WebAuthn key', () => {
 function createCeremonyClient(): PasskeyCeremonyClient {
   return {
     registerPrimaryPasskey: jest.fn(),
+    resumePrimaryPasskeyRegistration: jest.fn().mockResolvedValue(null),
+    hasPendingPrimaryPasskeyRegistration: jest.fn().mockResolvedValue(true),
+    acknowledgePrimaryPasskeyRegistration: jest.fn().mockResolvedValue(undefined),
     authenticatePrimaryPasskey: jest.fn().mockResolvedValue({
       ok: true,
       assertion: {
@@ -89,6 +92,7 @@ function createCeremonyClient(): PasskeyCeremonyClient {
         signCount: 1,
       },
     }),
+    verifyPrimaryPasskey: jest.fn(),
     cancelPending: jest.fn(),
   };
 }

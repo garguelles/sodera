@@ -7,14 +7,23 @@ import type {
   KernelPasskeyExecutionClient,
 } from '@/wallet/kernel-passkey-execution';
 import type { PasskeyCeremonyClient, RegisteredPrimaryPasskey } from '@/wallet/passkey-ceremony';
+import {
+  CURRENT_WALLET_IDENTITY_PINS,
+  type WalletIdentityStorage,
+} from '@/wallet/wallet-identity';
 
 jest.mock('expo-router', () => ({ router: { back: jest.fn() } }));
 jest.mock('@/wallet/passkey-native-adapter', () => ({
   passkeyNativeAdapter: {
     createCredential: jest.fn(),
     getCredential: jest.fn(),
+    readRegistrationJournal: jest.fn(),
+    clearRegistrationJournal: jest.fn(),
     cancel: jest.fn(),
   },
+}));
+jest.mock('@/wallet/wallet-identity-native-storage', () => ({
+  walletIdentityNativeStorage: { read: jest.fn(), write: jest.fn(), clear: jest.fn() },
 }));
 
 const credential: RegisteredPrimaryPasskey = {
@@ -22,7 +31,7 @@ const credential: RegisteredPrimaryPasskey = {
   publicKeyX: `0x${'11'.repeat(32)}`,
   publicKeyY: `0x${'22'.repeat(32)}`,
   aaguid: `0x${'00'.repeat(16)}`,
-  origin: 'android:apk-key-hash:test',
+  origin: 'android:apk-key-hash:-sYXRdwJA3hvue3mKpYrOZ9zSPC7b4mbgzJmdZEDO5w',
   authenticatorAttachment: 'platform',
 };
 const operationHash = `0x${'33'.repeat(32)}` as const;
@@ -47,10 +56,16 @@ describe('PasskeyProofScreen', () => {
     const client = createCeremonyClient();
     const executionClient = createExecutionClient();
     const createExecution = jest.fn().mockResolvedValue(executionClient);
-    await render(<PasskeyProofScreen client={client} createExecutionClient={createExecution} />);
+    await render(
+      <PasskeyProofScreen
+        client={client}
+        createExecutionClient={createExecution}
+        storage={createStorage()}
+      />,
+    );
 
     expect(screen.getByRole('button', { name: 'Authorize and submit' })).toBeDisabled();
-    await press('Register Primary Passkey');
+    await press('Create Wallet');
     await screen.findByText('Kernel account derived. Prepare the bounded Sepolia operation for review.');
     expect(createExecution).toHaveBeenCalledWith({ ceremonyClient: client, credential });
 
@@ -80,10 +95,11 @@ describe('PasskeyProofScreen', () => {
       <PasskeyProofScreen
         client={client}
         createExecutionClient={jest.fn().mockResolvedValue(executionClient)}
+        storage={createStorage()}
       />,
     );
 
-    await press('Register Primary Passkey');
+    await press('Create Wallet');
     await screen.findByText('Kernel account derived. Prepare the bounded Sepolia operation for review.');
     await press('Prepare Sepolia operation');
     await screen.findByText(operationHash);
@@ -92,6 +108,68 @@ describe('PasskeyProofScreen', () => {
     await press('Authorize and submit');
 
     expect(await screen.findByText('UserOperation submission rejected')).toBeOnTheScreen();
+  });
+
+  it('does not report a confirmed operation as failed when only local deployment persistence fails', async () => {
+    const storage = createStorage();
+    const write = storage.write;
+    storage.write = async (value) => {
+      if (JSON.parse(value).phase === 'accountDeployed') {
+        throw new Error('storage unavailable');
+      }
+      await write(value);
+    };
+    await render(
+      <PasskeyProofScreen
+        client={createCeremonyClient()}
+        createExecutionClient={jest.fn().mockResolvedValue(createExecutionClient())}
+        storage={storage}
+      />,
+    );
+
+    await press('Create Wallet');
+    await screen.findByText('Kernel account derived. Prepare the bounded Sepolia operation for review.');
+    await press('Prepare Sepolia operation');
+    await screen.findByText(operationHash);
+    await press('Confirm exact operation');
+    await screen.findByRole('button', { name: 'Exact operation confirmed' });
+    await press('Authorize and submit');
+
+    expect(
+      await screen.findByText(
+        'Confirmed on Sepolia, but the local deployment marker could not be persisted. Reopen the existing wallet before another operation.',
+      ),
+    ).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Authorize and submit' })).toBeDisabled();
+  });
+
+  it('offers Recover Wallet instead of registering a replacement when reopening has no credential', async () => {
+    const client = createCeremonyClient();
+    client.verifyPrimaryPasskey = jest.fn().mockResolvedValue({
+      ok: false,
+      error: { kind: 'noCredential' },
+    });
+    await render(
+      <PasskeyProofScreen
+        client={client}
+        createExecutionClient={jest.fn()}
+        storage={createStorage(
+          JSON.stringify({
+            schemaVersion: 1,
+            phase: 'accountDerived',
+            pins: CURRENT_WALLET_IDENTITY_PINS,
+            credential,
+            account,
+          }),
+        )}
+      />,
+    );
+
+    await press('Reopen existing wallet');
+
+    expect(await screen.findByText('The Primary Passkey is unavailable')).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Recover Wallet' })).toBeOnTheScreen();
+    expect(client.registerPrimaryPasskey).not.toHaveBeenCalled();
   });
 });
 
@@ -104,8 +182,27 @@ async function press(name: string) {
 function createCeremonyClient(): PasskeyCeremonyClient {
   return {
     registerPrimaryPasskey: jest.fn().mockResolvedValue({ ok: true, credential }),
+    resumePrimaryPasskeyRegistration: jest.fn().mockResolvedValue(null),
+    hasPendingPrimaryPasskeyRegistration: jest.fn().mockResolvedValue(true),
+    acknowledgePrimaryPasskeyRegistration: jest.fn().mockResolvedValue(undefined),
     authenticatePrimaryPasskey: jest.fn(),
+    verifyPrimaryPasskey: jest.fn(),
     cancelPending: jest.fn(),
+  };
+}
+
+function createStorage(initialValue: string | null = null): WalletIdentityStorage {
+  let value = initialValue;
+  return {
+    async read() {
+      return value;
+    },
+    async write(nextValue) {
+      value = nextValue;
+    },
+    async clear() {
+      value = null;
+    },
   };
 }
 
@@ -113,6 +210,8 @@ function createExecutionClient(
   overrides: Partial<KernelPasskeyExecutionClient> = {},
 ): KernelPasskeyExecutionClient {
   return {
+    account,
+    deployed: false,
     prepare: jest.fn().mockResolvedValue(review),
     execute: jest.fn().mockResolvedValue(executionEvidence()),
     ...overrides,
