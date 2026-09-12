@@ -38,6 +38,7 @@ This record captures clarifications to `sodera.md`. Epic specifications and impl
 ## Payments
 
 - Support sending and receiving ETH and one pinned USDC test token on Ethereum Sepolia.
+- Exclude WBTC from the current hackathon wallet and demo. Do not display the available Aave test WBTC mock as canonical or BTC-backed.
 - Accept recipient addresses and ENS names. Provide address copy and a receive QR code.
 - Defer arbitrary ERC-20 discovery and token imports.
 
@@ -66,7 +67,8 @@ This record captures clarifications to `sodera.md`. Epic specifications and impl
 
 - Onboarding is open to everyone; no invitation is required.
 - Wallet creation is mandatory.
-- Claiming `<username>.sodera.eth` is mandatory for hackathon onboarding.
+- Display the hardcoded identity `anon.sodera.eth` in the hackathon wallet UI. It is a fixture label, not a claim that the name has been issued, resolved, or bound to the user's smart account.
+- Defer ENSv2 child-registry deployment, per-user resolver provisioning, and `<username>.sodera.eth` claiming to the next hackathon. Preserve the verified architecture and evidence for that future work.
 - Independent passkey recovery is a required implemented feature, but users may skip recovery enrollment.
 - Warn users that losing the device before configuring recovery can permanently lose wallet access. Keep recovery enrollment available afterward.
 - Proton Pass is the required independent recovery-provider target, with similar third-party providers supported where verified compatible. It is distinct from the primary platform passkey.

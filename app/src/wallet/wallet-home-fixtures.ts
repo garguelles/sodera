@@ -6,7 +6,7 @@ export const populatedWalletHomeFixture = {
   status: 'ready',
   snapshot: {
     identity: {
-      username: 'alex.sodera.eth',
+      username: 'anon.sodera.eth',
       address: '0x7A36a07E7B97e8A4d1C5f6629A7E9f8d7e70C304' as Address,
       avatarUrl: null,
     },
@@ -25,13 +25,6 @@ export const populatedWalletHomeFixture = {
           symbol: 'USDC',
           amount: '245.00 USDC',
           valueUsdCents: 24_500,
-        },
-        {
-          id: 'sepolia-wbtc',
-          name: 'Wrapped Bitcoin',
-          symbol: 'WBTC',
-          amount: '0.0100 WBTC',
-          valueUsdCents: 100_000,
         },
       ],
       positions: [

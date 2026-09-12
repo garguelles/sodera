@@ -349,10 +349,10 @@ describe('LauncherScreen', () => {
     );
 
     expect(await screen.findByText('Launcher unavailable')).toBeOnTheScreen();
-    expect(screen.getByText('$4,045.00')).toBeOnTheScreen();
+    expect(screen.getByText('$3,045.00')).toBeOnTheScreen();
     fireEvent.press(screen.getByRole('button', { name: 'Hide financial amounts' }));
 
-    await waitFor(() => expect(screen.queryByText('$4,045.00')).toBeNull());
+    await waitFor(() => expect(screen.queryByText('$3,045.00')).toBeNull());
     expect(screen.getByRole('button', { name: 'Retry' })).toBeOnTheScreen();
     await openAppDrawer();
     expect(screen.getByLabelText('Search apps')).toBeOnTheScreen();
@@ -362,7 +362,7 @@ describe('LauncherScreen', () => {
     );
 
     expect(await screen.findByRole('button', { name: 'Show financial amounts' })).toBeOnTheScreen();
-    expect(screen.queryByText('$4,045.00')).toBeNull();
+    expect(screen.queryByText('$3,045.00')).toBeNull();
   });
 
   it('keeps launcher controls usable when wallet data fails', async () => {
