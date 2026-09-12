@@ -290,8 +290,14 @@ function SendReview({ review }: { review: KernelOperationReview }) {
       <ReviewRow label="Recipient" value={review.calls[0].to} />
       <ReviewRow label="From" value={review.account} />
       <ReviewRow label="Network" value={`${review.chain} (${review.chainId})`} />
+      <ReviewRow label="Deploy account" value={review.deploymentRequired ? 'Yes' : 'No'} />
+      <ReviewRow label="EntryPoint" value={review.entryPoint} />
+      <ReviewRow label="Nonce" value={review.userOperation.nonce ?? 'Unavailable'} />
+      <ReviewRow label="Call data" value={review.calls[0].data} />
       <ReviewRow label="Sponsored" value={review.sponsored ? 'Yes' : 'No'} />
+      <ReviewRow label="Paymaster" value={review.paymaster ?? 'None'} />
       <ReviewRow label="Maximum network fee" value={`${review.maximumNetworkFeeWei} wei`} />
+      <ReviewRow label="Encoded account call" value={review.userOperation.callData ?? 'Unavailable'} />
       <ReviewRow label="UserOperation hash" value={review.userOperationHash} />
     </View>
   );

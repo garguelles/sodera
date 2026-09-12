@@ -262,7 +262,11 @@ export async function createKernelPasskeyExecutionClient({
     async prepare(calls = [PROOF_CALL]) {
       if (calls.length === 0) throw new Error('At least one call is required');
       const requestedCalls = calls.map((call) => ({ ...call }));
+      const expectedCallData = await account.encodeCalls(requestedCalls);
       const draft = await bundlerClient.prepareUserOperation({ calls: requestedCalls });
+      if (draft.callData.toLowerCase() !== expectedCallData.toLowerCase()) {
+        throw new Error('Prepared account calldata does not match the requested calls');
+      }
       const operation: UserOperation<'0.7'> = Object.freeze({ ...draft, signature: '0x' });
       prepared = operation;
       const challenge = createPasskeyChallenge(operation);

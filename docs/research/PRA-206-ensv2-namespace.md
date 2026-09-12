@@ -109,7 +109,7 @@ The factory at `0x894b...7780` is live and reports proxy logic `0x2fDCaC2F94B2E6
 
 ### Contracts Sodera must deploy
 
-1. **Required now:** one `UserRegistry` proxy through the official Verifiable Factory, initialized with reviewed grants, then assigned as the `sodera` subregistry and given canonical parent `(ETHRegistry, "sodera")`.
+1. **Required before future issuance:** one `UserRegistry` proxy through the official Verifiable Factory, initialized with reviewed grants, then assigned as the `sodera` subregistry and given canonical parent `(ETHRegistry, "sodera")`.
 2. **Required per Kernel account at issuance:** one `PermissionedResolver` proxy through the same factory. Names owned by one Kernel account may share that account's resolver.
 3. **Conditional:** a registrar/policy contract only if registration will be permissionlessly callable on-chain. A controlled issuance operator can instead hold the minimal `ROLE_REGISTRAR` role, but must enforce the same normalization, reservation, eligibility, rate-limit, and sponsorship policy off-chain.
 
