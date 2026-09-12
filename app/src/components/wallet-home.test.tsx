@@ -20,8 +20,8 @@ describe('WalletHome', () => {
   it('renders fixture identity, balances, a vault position, and a non-duplicated total', async () => {
     await render(<WalletHome provider={createWalletHomeFixtureProvider()} />);
 
-    expect(await screen.findByText('alex.sodera.eth')).toBeOnTheScreen();
-    expect(screen.getByLabelText('alex.sodera.eth initials')).toBeOnTheScreen();
+    expect(await screen.findByText('anon.sodera.eth')).toBeOnTheScreen();
+    expect(screen.getByLabelText('anon.sodera.eth initials')).toBeOnTheScreen();
     expect(screen.getByText('A')).toBeOnTheScreen();
     expect(screen.getByText('0.8200 ETH')).toBeOnTheScreen();
     expect(screen.getByText('USDC')).toBeOnTheScreen();

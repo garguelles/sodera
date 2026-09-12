@@ -2200,7 +2200,9 @@ Uniswap      → asset exchange
 Launcher     → persistent operating surface
 ```
 
-## 52.1 ENSv2 — `sodera.eth` Identity Namespace
+## 52.1 ENSv2 — `sodera.eth` Identity Namespace (Deferred)
+
+> **Current hackathon scope:** The wallet displays the fixed fixture identity `anon.sodera.eth`. It does not deploy a child registry, provision per-account resolvers, claim user subnames, or present the fixture as an on-chain ownership or resolution result. The architecture below is retained for the next hackathon.
 
 ### Goal
 
@@ -2230,7 +2232,7 @@ The hackathon implementation MUST use the ENS-provided ETHOnline / ENSv2 beta to
 
 - **Hackathon-specific ENS app / Deployment Manager:** https://hackathon-deployment-manager-app-v4.ens-cf.workers.dev/
 - **Hackathon-specific ENS explorer / Deployment Portal:** https://hackathon-deployment-portal-app.ens-cf.workers.dev/
-- **Hackathon ENSv2 deployment docs — Sepolia ENSv2 beta:** https://6af75b0f.docs-bao.pages.dev/learn/deployments/#sepolia-ensv2-beta
+- **Hackathon ENSv2 deployment docs — Sepolia ENSv2 beta:** https://feature-permres-inode-refact.docs-bao.pages.dev/learn/deployments/#sepolia-ensv2-beta
 
 The application SHOULD pin the Sepolia contract addresses, ABIs, and interfaces actually used during the hackathon and record them in an implementation-specific deployment configuration or ADR. Do not infer production ENSv2 addresses from the hackathon deployment.
 
@@ -2997,8 +2999,8 @@ The ETHOnline build SHOULD demonstrate one cohesive product:
 ```text
                     WEB3 LAUNCHER
                          │
-             gerard.sodera.eth
-                      ENSv2
+              anon.sodera.eth
+               static fixture
                          │
              ┌───────────┴───────────┐
              │                       │
@@ -3021,8 +3023,8 @@ Minimum integrated demonstration:
 1. User sets the app as the Android launcher.
 2. User creates a seedless ZeroDev Kernel smart account.
 3. Android generates a non-exportable P-256 device signer.
-4. The wallet receives `username.sodera.eth` from the Sodera-owned `sodera.eth` ENSv2 namespace.
-5. The home screen displays the ENS identity and portfolio information sourced through The Graph.
+4. The home screen displays the fixed `anon.sodera.eth` fixture identity without claiming on-chain ownership or resolution.
+5. The home screen displays portfolio information sourced through The Graph.
 6. User receives USDC.
 7. User sends USDC on Base or Arc to an ENS name.
 8. User authorizes the transaction with biometrics.
