@@ -38,6 +38,7 @@ This record captures clarifications to `sodera.md`. Epic specifications and impl
 ## Payments
 
 - Support sending and receiving ETH and one pinned USDC test token on Ethereum Sepolia.
+- Exclude WBTC from the current hackathon wallet and demo. Do not display the available Aave test WBTC mock as canonical or BTC-backed.
 - Accept recipient addresses and ENS names. Provide address copy and a receive QR code.
 - Defer arbitrary ERC-20 discovery and token imports.
 
