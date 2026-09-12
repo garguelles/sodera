@@ -72,6 +72,12 @@ export type WalletIdentityResult =
       recoverWallet: boolean;
     };
 
+export type PersistedWalletIdentity = {
+  credential: RegisteredPrimaryPasskey;
+  account: Address;
+  deployed: boolean;
+};
+
 type AccountDerivation = (credential: RegisteredPrimaryPasskey) => Promise<{
   address: Address;
   deployed: boolean;
@@ -234,16 +240,44 @@ export function createWalletIdentityClient({
       return derive(manifest);
     },
     async markDeployed(account: Address): Promise<void> {
-      const loaded = parseManifest(await storage.read());
-      if (!loaded.ok || loaded.manifest.phase === 'registering' || !loaded.manifest.account) {
-        throw new Error('Cannot record deployment without a derived Wallet Identity');
-      }
-      if (loaded.manifest.account.toLowerCase() !== account.toLowerCase()) {
-        throw new Error('Cannot record deployment for a different Smart Account');
-      }
-      await persist({ ...loaded.manifest, phase: 'accountDeployed' });
+      await markPersistedWalletIdentityDeployed(storage, account);
     },
   };
+}
+
+export async function readPersistedWalletIdentity(
+  storage: WalletIdentityStorage,
+): Promise<PersistedWalletIdentity> {
+  const loaded = parseManifest(await storage.read());
+  if (!loaded.ok) {
+    throw new Error(
+      loaded.result.status === 'blocked'
+        ? loaded.result.message
+        : 'Wallet Identity metadata is unavailable',
+    );
+  }
+  if (loaded.manifest.phase === 'registering' || !loaded.manifest.account) {
+    throw new Error('Wallet Identity has not derived a Smart Account yet');
+  }
+  return {
+    credential: loaded.manifest.credential,
+    account: loaded.manifest.account,
+    deployed: loaded.manifest.phase === 'accountDeployed',
+  };
+}
+
+export async function markPersistedWalletIdentityDeployed(
+  storage: WalletIdentityStorage,
+  account: Address,
+): Promise<void> {
+  const loaded = parseManifest(await storage.read());
+  if (!loaded.ok || loaded.manifest.phase === 'registering' || !loaded.manifest.account) {
+    throw new Error('Cannot record deployment without a derived Wallet Identity');
+  }
+  if (loaded.manifest.account.toLowerCase() !== account.toLowerCase()) {
+    throw new Error('Cannot record deployment for a different Smart Account');
+  }
+  await storage.write(JSON.stringify({ ...loaded.manifest, phase: 'accountDeployed' }));
 }
 
 function parseManifest(

@@ -378,7 +378,7 @@ function OperationReview({ review }: { review: KernelOperationReview }) {
       <ReviewRow label="Validator" value={review.validator} />
       <ReviewRow label="Deploy account" value={review.deploymentRequired ? 'Yes' : 'No'} />
       <ReviewRow label="Recipient" value={review.calls[0].to} />
-      <ReviewRow label="Value" value="0 wei" />
+      <ReviewRow label="Value" value={`${review.calls[0].valueWei} wei`} />
       <ReviewRow label="Call data" value={review.calls[0].data} />
       <ReviewRow label="Sponsored" value={review.sponsored ? 'Yes' : 'No'} />
       <ReviewRow label="Paymaster" value={review.paymaster ?? 'None'} />

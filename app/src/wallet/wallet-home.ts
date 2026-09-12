@@ -11,7 +11,7 @@ export type WalletHomeBalance = {
   name: string;
   symbol: string;
   amount: string;
-  valueUsdCents: number;
+  valueUsdCents: number | null;
 };
 
 export type WalletHomePosition = {
@@ -20,7 +20,7 @@ export type WalletHomePosition = {
   name: string;
   symbol: string;
   amount: string;
-  valueUsdCents: number;
+  valueUsdCents: number | null;
 };
 
 export type WalletHomeSnapshot = {
@@ -43,8 +43,7 @@ export type WalletHomeProvider = {
 };
 
 export function getPortfolioTotalUsdCents(snapshot: WalletHomeSnapshot) {
-  return [...snapshot.portfolio.balances, ...snapshot.portfolio.positions].reduce(
-    (total, holding) => total + holding.valueUsdCents,
-    0,
-  );
+  const holdings = [...snapshot.portfolio.balances, ...snapshot.portfolio.positions];
+  if (holdings.some((holding) => holding.valueUsdCents === null)) return null;
+  return holdings.reduce((total, holding) => total + (holding.valueUsdCents ?? 0), 0);
 }

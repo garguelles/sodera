@@ -185,31 +185,33 @@ function WalletSnapshot({
         </View>
       </View>
 
-      <View style={styles.section}>
-        <View style={styles.positionHeading}>
-          <Text accessibilityRole="header" style={styles.cardTitle}>
-            Vault position
-          </Text>
-          <Text style={styles.protocol}>{portfolio.positions[0]?.protocol}</Text>
-        </View>
-        {portfolio.positions.map((position) => (
-          <View key={position.id} style={styles.positionRow}>
-            <View style={styles.positionCopy}>
-              <Text style={styles.assetName}>{position.name}</Text>
+      {portfolio.positions.length > 0 ? (
+        <View style={styles.section}>
+          <View style={styles.positionHeading}>
+            <Text accessibilityRole="header" style={styles.cardTitle}>
+              Vault position
+            </Text>
+            <Text style={styles.protocol}>{portfolio.positions[0]?.protocol}</Text>
+          </View>
+          {portfolio.positions.map((position) => (
+            <View key={position.id} style={styles.positionRow}>
+              <View style={styles.positionCopy}>
+                <Text style={styles.assetName}>{position.name}</Text>
+                <FinancialAmount
+                  style={styles.assetAmount}
+                  value={position.amount}
+                  visible={amountsVisible}
+                />
+              </View>
               <FinancialAmount
-                style={styles.assetAmount}
-                value={position.amount}
+                style={styles.assetValue}
+                value={formatUsd(position.valueUsdCents)}
                 visible={amountsVisible}
               />
             </View>
-            <FinancialAmount
-              style={styles.assetValue}
-              value={formatUsd(position.valueUsdCents)}
-              visible={amountsVisible}
-            />
-          </View>
-        ))}
-      </View>
+          ))}
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -272,7 +274,8 @@ function formatAddress(address: string) {
   return `${address.slice(0, 6)}...${address.slice(-4)}`;
 }
 
-function formatUsd(cents: number) {
+function formatUsd(cents: number | null) {
+  if (cents === null) return 'USD unavailable';
   return `$${(cents / 100).toLocaleString('en-US', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,

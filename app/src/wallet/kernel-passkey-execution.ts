@@ -90,11 +90,17 @@ export type KernelOperationReview = {
   entryPoint: Address;
   validator: Address;
   deploymentRequired: boolean;
-  calls: readonly [{ to: Address; valueWei: '0'; data: Hex }];
+  calls: readonly { to: Address; valueWei: string; data: Hex }[];
   sponsored: boolean;
   paymaster: Address | null;
   maximumNetworkFeeWei: string;
   userOperation: Record<string, string | null>;
+};
+
+export type KernelExecutionCall = {
+  to: Address;
+  value: bigint;
+  data: Hex;
 };
 
 export type KernelOperationEvidence = {
@@ -139,7 +145,7 @@ export type KernelOperationEvidence = {
 export type KernelPasskeyExecutionClient = {
   account: Address;
   deployed: boolean;
-  prepare(): Promise<KernelOperationReview>;
+  prepare(calls?: readonly KernelExecutionCall[]): Promise<KernelOperationReview>;
   execute(confirmedUserOperationHash: Hash): Promise<KernelOperationEvidence>;
 };
 
@@ -253,8 +259,10 @@ export async function createKernelPasskeyExecutionClient({
   return {
     account: account.address,
     deployed,
-    async prepare() {
-      const draft = await bundlerClient.prepareUserOperation({ calls: [PROOF_CALL] });
+    async prepare(calls = [PROOF_CALL]) {
+      if (calls.length === 0) throw new Error('At least one call is required');
+      const requestedCalls = calls.map((call) => ({ ...call }));
+      const draft = await bundlerClient.prepareUserOperation({ calls: requestedCalls });
       const operation: UserOperation<'0.7'> = Object.freeze({ ...draft, signature: '0x' });
       prepared = operation;
       const challenge = createPasskeyChallenge(operation);
@@ -273,7 +281,11 @@ export async function createKernelPasskeyExecutionClient({
         entryPoint: entryPoint.address,
         validator: validator.address,
         deploymentRequired,
-        calls: [{ to: PROOF_CALL.to, valueWei: '0' as const, data: PROOF_CALL.data }] as const,
+        calls: requestedCalls.map((call) => ({
+          to: call.to,
+          valueWei: call.value.toString(),
+          data: call.data,
+        })),
         sponsored: Boolean(operation.paymaster),
         paymaster: operation.paymaster ?? null,
         maximumNetworkFeeWei: (maximumGas * operation.maxFeePerGas).toString(),

@@ -102,6 +102,35 @@ describe('WalletHome', () => {
     expect(screen.getByText('$4,045.00')).toBeOnTheScreen();
   });
 
+  it('does not present missing USD pricing as a zero valuation', async () => {
+    const result: WalletHomeResult = {
+      status: 'ready',
+      snapshot: {
+        identity,
+        portfolio: {
+          balances: [
+            {
+              id: 'sepolia-eth',
+              name: 'Ethereum',
+              symbol: 'ETH',
+              amount: '0.82 ETH',
+              valueUsdCents: null,
+            },
+          ],
+          positions: [],
+        },
+      },
+    };
+
+    await render(
+      <WalletHome provider={createWalletHomeFixtureProvider({ state: 'resolved', result })} />,
+    );
+
+    expect(await screen.findAllByText('USD unavailable')).toHaveLength(2);
+    expect(screen.queryByText('$0.00')).not.toBeOnTheScreen();
+    expect(screen.queryByText('Vault position')).not.toBeOnTheScreen();
+  });
+
   it('offers retry after a provider failure', async () => {
     const provider = createWalletHomeFixtureProvider(failedWalletHomeFixture);
     await render(<WalletHome provider={provider} />);
