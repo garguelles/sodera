@@ -21,6 +21,7 @@ describe('wallet Home live provider', () => {
     const client = {
       getChainId: jest.fn().mockResolvedValue(11155111),
       getBalance: jest.fn().mockResolvedValue(820_000_000_000_000_000n),
+      readContract: jest.fn().mockResolvedValue(12_345_678n),
     };
     const provider = createWalletHomeLiveProvider({ storage: createStorage(), client });
 
@@ -29,12 +30,22 @@ describe('wallet Home live provider', () => {
       snapshot: {
         identity: { username: 'anon.sodera.eth', address: account },
         portfolio: {
-          balances: [{ symbol: 'ETH', amount: '0.82 ETH', valueUsdCents: null }],
+          balances: [
+            { symbol: 'ETH', amount: '0.82 ETH', valueUsdCents: null },
+            { symbol: 'USDC', amount: '12.345678 USDC', valueUsdCents: 1235 },
+          ],
           positions: [],
         },
       },
     });
     expect(client.getBalance).toHaveBeenCalledWith({ address: account });
+    expect(client.readContract).toHaveBeenCalledWith(
+      expect.objectContaining({
+        address: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238',
+        functionName: 'balanceOf',
+        args: [account],
+      }),
+    );
   });
 
   it('rejects a balance endpoint on another chain', async () => {
@@ -43,16 +54,40 @@ describe('wallet Home live provider', () => {
       client: {
         getChainId: jest.fn().mockResolvedValue(1),
         getBalance: jest.fn().mockResolvedValue(0n),
+        readContract: jest.fn().mockResolvedValue(0n),
       },
     });
 
     await expect(provider.load()).rejects.toThrow('Wallet balance RPC is not Ethereum Sepolia');
   });
 
+  it('values a zero ETH balance at zero without requiring a price feed', async () => {
+    const provider = createWalletHomeLiveProvider({
+      storage: createStorage(),
+      client: {
+        getChainId: jest.fn().mockResolvedValue(11155111),
+        getBalance: jest.fn().mockResolvedValue(0n),
+        readContract: jest.fn().mockResolvedValue(0n),
+      },
+    });
+
+    await expect(provider.load()).resolves.toMatchObject({
+      snapshot: {
+        portfolio: {
+          balances: [
+            { amount: '0 ETH', valueUsdCents: 0 },
+            { amount: '0 USDC', valueUsdCents: 0 },
+          ],
+        },
+      },
+    });
+  });
+
   it('does not query balances without a derived persisted account', async () => {
     const client = {
       getChainId: jest.fn(),
       getBalance: jest.fn(),
+      readContract: jest.fn(),
     };
     const provider = createWalletHomeLiveProvider({
       storage: { ...createStorage(), read: jest.fn().mockResolvedValue(null) },
@@ -61,6 +96,7 @@ describe('wallet Home live provider', () => {
 
     await expect(provider.load()).rejects.toThrow('No Wallet Identity metadata exists');
     expect(client.getBalance).not.toHaveBeenCalled();
+    expect(client.readContract).not.toHaveBeenCalled();
   });
 });
 

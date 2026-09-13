@@ -10,6 +10,8 @@ declare class SoderaPasskeyModule extends NativeModule {
   readWalletIdentityAsync(): Promise<string | null>;
   writeWalletIdentityAsync(value: string): Promise<boolean>;
   clearWalletIdentityAsync(): Promise<boolean>;
+  readOnboardingProfileAsync(): Promise<string | null>;
+  writeOnboardingProfileAsync(value: string): Promise<boolean>;
   cancelPendingOperation(): void;
 }
 

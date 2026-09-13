@@ -134,6 +134,14 @@ class SoderaPasskeyModule : Module() {
       preferences().edit().remove(WALLET_IDENTITY_KEY).commit()
     }
 
+    AsyncFunction("readOnboardingProfileAsync") {
+      preferences().getString(ONBOARDING_PROFILE_KEY, null)
+    }
+
+    AsyncFunction("writeOnboardingProfileAsync") { value: String ->
+      preferences().edit().putString(ONBOARDING_PROFILE_KEY, value).commit()
+    }
+
     AsyncFunction("getCredentialAsync") { requestJson: String, promise: Promise ->
       if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
         promise.resolve(errorResult("unsupported", "android-api-below-28"))
@@ -263,6 +271,7 @@ private const val PREFERENCES_NAME = "sodera_wallet_identity"
 private const val REGISTRATION_REQUEST_KEY = "registration_request"
 private const val REGISTRATION_RESPONSE_KEY = "registration_response"
 private const val WALLET_IDENTITY_KEY = "wallet_identity"
+private const val ONBOARDING_PROFILE_KEY = "onboarding_profile"
 
 private data class PendingOperation(
   val id: Long,

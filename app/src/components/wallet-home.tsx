@@ -15,6 +15,7 @@ import type {
   WalletHomeResult,
 } from '@/wallet/wallet-home';
 import { getPortfolioTotalUsdCents } from '@/wallet/wallet-home';
+import { shortenAddress } from '@/wallet/sepolia';
 
 type WalletHomeProps = {
   provider: WalletHomeProvider;
@@ -130,7 +131,7 @@ function WalletSnapshot({
             accessibilityState={{ selected: !amountsVisible }}
             onPress={onToggleAmounts}
             style={({ pressed }) => [styles.visibilityButton, pressed && styles.pressed]}>
-            <Text style={styles.visibilityButtonText}>{amountsVisible ? 'Hide' : 'Show'}</Text>
+            <Text style={styles.visibilityButtonText}>{amountsVisible ? '👀' : '🙈'}</Text>
           </Pressable>
         </View>
         <Text style={styles.totalLabel}>Portfolio</Text>
@@ -235,7 +236,7 @@ function Identity({ identity }: { identity: WalletHomeIdentity }) {
           {identity.username}
         </Text>
         <Text accessibilityLabel={`Wallet address ${identity.address}`} selectable style={styles.address}>
-          {formatAddress(identity.address)}
+          {shortenAddress(identity.address)}
         </Text>
       </View>
     </View>
@@ -270,12 +271,8 @@ function getInitials(username: string) {
   );
 }
 
-function formatAddress(address: string) {
-  return `${address.slice(0, 6)}...${address.slice(-4)}`;
-}
-
 function formatUsd(cents: number | null) {
-  if (cents === null) return 'USD unavailable';
+  if (cents === null) return '$0.00';
   return `$${(cents / 100).toLocaleString('en-US', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
@@ -314,7 +311,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 8,
   },
-  visibilityButtonText: { color: '#f3f0e8', fontSize: 12, fontWeight: '700' },
+  visibilityButtonText: { fontSize: 22 },
   totalLabel: { color: '#929188', fontSize: 13 },
   total: {
     color: '#f3f0e8',
