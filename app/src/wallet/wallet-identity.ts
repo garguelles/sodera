@@ -78,6 +78,12 @@ export type PersistedWalletIdentity = {
   deployed: boolean;
 };
 
+export type PersistedWalletIdentityState =
+  | { status: 'missing' }
+  | { status: 'incomplete'; phase: 'registering' | 'credentialRegistered' }
+  | { status: 'ready'; identity: PersistedWalletIdentity }
+  | { status: 'blocked'; message: string };
+
 type AccountDerivation = (credential: RegisteredPrimaryPasskey) => Promise<{
   address: Address;
   deployed: boolean;
@@ -263,6 +269,38 @@ export async function readPersistedWalletIdentity(
     credential: loaded.manifest.credential,
     account: loaded.manifest.account,
     deployed: loaded.manifest.phase === 'accountDeployed',
+  };
+}
+
+export async function inspectPersistedWalletIdentity(
+  storage: WalletIdentityStorage,
+): Promise<PersistedWalletIdentityState> {
+  const value = await storage.read();
+  if (!value) return { status: 'missing' };
+
+  const loaded = parseManifest(value);
+  if (!loaded.ok) {
+    return {
+      status: 'blocked',
+      message:
+        loaded.result.status === 'blocked'
+          ? loaded.result.message
+          : 'Wallet Identity metadata is unavailable',
+    };
+  }
+  if (loaded.manifest.phase === 'registering') {
+    return { status: 'incomplete', phase: 'registering' };
+  }
+  if (loaded.manifest.phase === 'credentialRegistered' || !loaded.manifest.account) {
+    return { status: 'incomplete', phase: 'credentialRegistered' };
+  }
+  return {
+    status: 'ready',
+    identity: {
+      credential: loaded.manifest.credential,
+      account: loaded.manifest.account,
+      deployed: loaded.manifest.phase === 'accountDeployed',
+    },
   };
 }
 

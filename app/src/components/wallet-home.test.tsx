@@ -68,6 +68,7 @@ describe('WalletHome', () => {
   it('hides and reveals every financial amount', async () => {
     await render(<WalletHome provider={createWalletHomeFixtureProvider()} />);
     await screen.findByText('$3,045.00');
+    expect(screen.getByText('👀')).toBeOnTheScreen();
 
     fireEvent.press(screen.getByRole('button', { name: 'Hide financial amounts' }));
 
@@ -81,6 +82,7 @@ describe('WalletHome', () => {
     expect(screen.getAllByLabelText('Hidden amount')).toHaveLength(7);
     expect(screen.queryByText('Hidden')).not.toBeOnTheScreen();
     expect(screen.getAllByText('$••••••')).toHaveLength(4);
+    expect(screen.getByText('🙈')).toBeOnTheScreen();
 
     fireEvent.press(screen.getByRole('button', { name: 'Show financial amounts' }));
     await waitFor(() => expect(screen.getByText('$3,045.00')).toBeOnTheScreen());
@@ -98,7 +100,7 @@ describe('WalletHome', () => {
     expect(screen.getByText('$3,045.00')).toBeOnTheScreen();
   });
 
-  it('does not present missing USD pricing as a zero valuation', async () => {
+  it('displays zero when USD pricing is unavailable', async () => {
     const result: WalletHomeResult = {
       status: 'ready',
       snapshot: {
@@ -122,8 +124,8 @@ describe('WalletHome', () => {
       <WalletHome provider={createWalletHomeFixtureProvider({ state: 'resolved', result })} />,
     );
 
-    expect(await screen.findAllByText('USD unavailable')).toHaveLength(2);
-    expect(screen.queryByText('$0.00')).not.toBeOnTheScreen();
+    expect(await screen.findAllByText('$0.00')).toHaveLength(2);
+    expect(screen.queryByText('USD unavailable')).not.toBeOnTheScreen();
     expect(screen.queryByText('Vault position')).not.toBeOnTheScreen();
   });
 

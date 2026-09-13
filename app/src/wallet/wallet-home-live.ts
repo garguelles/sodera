@@ -1,15 +1,34 @@
 import { AppState } from 'react-native';
-import { createPublicClient, formatEther, http, type Address } from 'viem';
+import { createPublicClient, formatEther, formatUnits, http, type Address } from 'viem';
 import { sepolia } from 'viem/chains';
 
 import type { WalletHomeProvider } from './wallet-home';
 import { readPersistedWalletIdentity, type WalletIdentityStorage } from './wallet-identity';
 import { walletIdentityNativeStorage } from './wallet-identity-native-storage';
+import { SODERA_FIXTURE_USERNAME } from '@/onboarding/onboarding';
 
 type SepoliaBalanceClient = {
   getChainId(): Promise<number>;
   getBalance(parameters: { address: Address }): Promise<bigint>;
+  readContract(parameters: {
+    address: Address;
+    abi: typeof ERC20_BALANCE_ABI;
+    functionName: 'balanceOf';
+    args: readonly [Address];
+  }): Promise<bigint>;
 };
+
+export const SEPOLIA_USDC_ADDRESS = '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238';
+const USDC_DECIMALS = 6;
+const ERC20_BALANCE_ABI = [
+  {
+    type: 'function',
+    name: 'balanceOf',
+    stateMutability: 'view',
+    inputs: [{ name: 'account', type: 'address' }],
+    outputs: [{ name: 'balance', type: 'uint256' }],
+  },
+] as const;
 
 export function createWalletHomeLiveProvider({
   storage = walletIdentityNativeStorage,
@@ -34,9 +53,15 @@ export function createWalletHomeLiveProvider({
     async load() {
       const identity = await readPersistedWalletIdentity(storage);
       const balanceClient = getClient();
-      const [chainId, balance] = await Promise.all([
+      const [chainId, ethBalance, usdcBalance] = await Promise.all([
         balanceClient.getChainId(),
         balanceClient.getBalance({ address: identity.account }),
+        balanceClient.readContract({
+          address: SEPOLIA_USDC_ADDRESS,
+          abi: ERC20_BALANCE_ABI,
+          functionName: 'balanceOf',
+          args: [identity.account],
+        }),
       ]);
       if (chainId !== sepolia.id) throw new Error('Wallet balance RPC is not Ethereum Sepolia');
 
@@ -44,7 +69,7 @@ export function createWalletHomeLiveProvider({
         status: 'ready',
         snapshot: {
           identity: {
-            username: 'anon.sodera.eth',
+            username: SODERA_FIXTURE_USERNAME,
             address: identity.account,
             avatarUrl: null,
           },
@@ -54,8 +79,15 @@ export function createWalletHomeLiveProvider({
                 id: 'sepolia-eth',
                 name: 'Ethereum',
                 symbol: 'ETH',
-                amount: formatEthBalance(balance),
-                valueUsdCents: null,
+                amount: formatEthBalance(ethBalance),
+                valueUsdCents: ethBalance === 0n ? 0 : null,
+              },
+              {
+                id: 'sepolia-usdc',
+                name: 'USD Coin',
+                symbol: 'USDC',
+                amount: `${formatUnits(usdcBalance, USDC_DECIMALS)} USDC`,
+                valueUsdCents: getUsdcValueUsdCents(usdcBalance),
               },
             ],
             positions: [],
@@ -83,6 +115,14 @@ export function createWalletHomeLiveProvider({
 
 function formatEthBalance(balance: bigint) {
   return `${formatEther(balance)} ETH`;
+}
+
+function getUsdcValueUsdCents(balance: bigint) {
+  const cents = (balance + 5_000n) / 10_000n;
+  if (cents > BigInt(Number.MAX_SAFE_INTEGER)) {
+    throw new Error('USDC balance exceeds the supported USD display range');
+  }
+  return Number(cents);
 }
 
 export const walletHomeLiveProvider = createWalletHomeLiveProvider();

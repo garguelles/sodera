@@ -23,31 +23,11 @@ import {
   type WalletIdentityStorage,
 } from '@/wallet/wallet-identity';
 import { walletIdentityNativeStorage } from '@/wallet/wallet-identity-native-storage';
+import { waitForAppForeground } from '@/wallet/wait-for-app-foreground';
 
 const defaultCeremonyClient = createPasskeyCeremonyClient(passkeyNativeAdapter, {
   isForeground: waitForAppForeground,
 });
-
-function waitForAppForeground(): Promise<boolean> {
-  if (AppState.currentState === 'active') return Promise.resolve(true);
-
-  return new Promise((resolve) => {
-    let timeout: ReturnType<typeof setTimeout>;
-    let subscription: ReturnType<typeof AppState.addEventListener>;
-    const finish = (isForeground: boolean) => {
-      clearTimeout(timeout);
-      subscription.remove();
-      resolve(isForeground);
-    };
-
-    subscription = AppState.addEventListener('change', (state) => {
-      if (state === 'active') finish(true);
-    });
-    timeout = setTimeout(() => finish(false), 1000);
-
-    if (AppState.currentState === 'active') finish(true);
-  });
-}
 
 export function PasskeyProofScreen({
   client = defaultCeremonyClient,

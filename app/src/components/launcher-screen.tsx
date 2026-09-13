@@ -1,3 +1,4 @@
+import { SymbolView } from 'expo-symbols';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -25,6 +26,7 @@ type LauncherScreenProps = {
   client: LauncherClient;
   preferencesStorage: LauncherPreferencesStorage;
   homeContent?: ReactNode;
+  onOpenTransactions?: () => void;
   onOpenSettings?: () => void;
 };
 
@@ -32,6 +34,7 @@ export function LauncherScreen({
   client,
   preferencesStorage,
   homeContent,
+  onOpenTransactions,
   onOpenSettings,
 }: LauncherScreenProps) {
   const [apps, setApps] = useState<LauncherApp[]>([]);
@@ -195,8 +198,27 @@ export function LauncherScreen({
   return (
     <SafeAreaView onTouchEnd={handleTouchEnd} onTouchStart={handleTouchStart} style={styles.screen}>
       <View style={styles.header}>
-        <Text style={styles.wordmark}>Sodera</Text>
+        <View style={styles.brand}>
+          <View style={styles.mark}>
+            <View style={styles.markCore} />
+          </View>
+          <Text style={styles.wordmark}>SODERA</Text>
+        </View>
         <View style={styles.headerActions}>
+          <Pressable
+            accessibilityLabel="Transactions"
+            accessibilityRole="button"
+            accessibilityState={{ disabled: !onOpenTransactions }}
+            disabled={!onOpenTransactions}
+            onPress={onOpenTransactions}
+            style={({ pressed }) => [styles.transactionButton, pressed && styles.pressed]}>
+            <SymbolView
+              importantForAccessibility="no"
+              name={{ ios: 'clock.arrow.circlepath', android: 'history', web: 'history' }}
+              size={22}
+              tintColor="#f3f0e8"
+            />
+          </Pressable>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={showAppDrawer ? 'Return to Home' : 'Open app drawer'}
@@ -365,12 +387,25 @@ const styles = StyleSheet.create({
     paddingTop: 20,
     paddingBottom: 16,
     flexDirection: 'row',
-    alignItems: 'baseline',
+    alignItems: 'center',
     justifyContent: 'space-between',
   },
-  wordmark: { color: '#f3f0e8', fontSize: 28, fontWeight: '700', letterSpacing: -1 },
+  brand: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  mark: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderCurve: 'continuous',
+    borderWidth: 1,
+    borderColor: '#d4f06a',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  markCore: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#d4f06a' },
+  wordmark: { color: '#f3f0e8', fontSize: 13, fontWeight: '800', letterSpacing: 2 },
   count: { color: '#929188', fontSize: 13 },
-  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  transactionButton: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
   headerButton: { minHeight: 48, justifyContent: 'center' },
   headerLink: { color: '#f3f0e8', fontSize: 13, fontWeight: '600' },
   searchContainer: { paddingHorizontal: 18, paddingBottom: 8 },

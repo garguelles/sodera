@@ -130,7 +130,7 @@ function WalletSnapshot({
             accessibilityState={{ selected: !amountsVisible }}
             onPress={onToggleAmounts}
             style={({ pressed }) => [styles.visibilityButton, pressed && styles.pressed]}>
-            <Text style={styles.visibilityButtonText}>{amountsVisible ? 'Hide' : 'Show'}</Text>
+            <Text style={styles.visibilityButtonText}>{amountsVisible ? '👀' : '🙈'}</Text>
           </Pressable>
         </View>
         <Text style={styles.totalLabel}>Portfolio</Text>
@@ -275,7 +275,7 @@ function formatAddress(address: string) {
 }
 
 function formatUsd(cents: number | null) {
-  if (cents === null) return 'USD unavailable';
+  if (cents === null) return '$0.00';
   return `$${(cents / 100).toLocaleString('en-US', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
@@ -314,7 +314,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 8,
   },
-  visibilityButtonText: { color: '#f3f0e8', fontSize: 12, fontWeight: '700' },
+  visibilityButtonText: { fontSize: 22 },
   totalLabel: { color: '#929188', fontSize: 13 },
   total: {
     color: '#f3f0e8',

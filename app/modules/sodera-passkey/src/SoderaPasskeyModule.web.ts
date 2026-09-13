@@ -4,6 +4,7 @@ import type { NativePasskeyResult, RegistrationJournal } from './SoderaPasskey.t
 
 let registrationJournal: RegistrationJournal | null = null;
 let walletIdentity: string | null = null;
+let onboardingProfile: string | null = null;
 
 class SoderaPasskeyModule extends NativeModule {
   async createCredentialAsync(): Promise<NativePasskeyResult> {
@@ -34,6 +35,15 @@ class SoderaPasskeyModule extends NativeModule {
 
   async clearWalletIdentityAsync() {
     walletIdentity = null;
+    return true;
+  }
+
+  async readOnboardingProfileAsync() {
+    return onboardingProfile;
+  }
+
+  async writeOnboardingProfileAsync(value: string) {
+    onboardingProfile = value;
     return true;
   }
 

@@ -1,6 +1,11 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 
-import { SendScreen, parseEthTransfer } from './send-screen';
+import {
+  SendScreen,
+  parseEthTransfer,
+  sepoliaTransactionUrl,
+  shortenHash,
+} from './send-screen';
 import type {
   KernelOperationEvidence,
   KernelOperationReview,
@@ -70,11 +75,15 @@ describe('SendScreen', () => {
   it('prepares the entered transfer and submits only after review', async () => {
     const executionClient = createExecutionClient();
     const onDone = jest.fn();
+    const copyTransactionHash = jest.fn().mockResolvedValue(undefined);
+    const openTransaction = jest.fn().mockResolvedValue(undefined);
     await render(
       <SendScreen
         ceremonyClient={createCeremonyClient()}
+        copyTransactionHash={copyTransactionHash}
         createExecutionClient={jest.fn().mockResolvedValue(executionClient)}
         onDone={onDone}
+        openTransaction={openTransaction}
         readBalance={jest.fn().mockResolvedValue(10n ** 18n)}
         storage={createStorage()}
       />,
@@ -82,23 +91,41 @@ describe('SendScreen', () => {
     await screen.findByText('1 ETH');
 
     await enterTransfer(recipient, '0.1');
-    await press('Review send');
+    await press('Continue');
 
-    expect(await screen.findByText('Review exact transfer')).toBeOnTheScreen();
+    expect(await screen.findByText('Does this look right?')).toBeOnTheScreen();
+    expect(screen.getByText('0.1 ETH')).toBeOnTheScreen();
+    expect(screen.getByText(recipient)).toBeOnTheScreen();
+    expect(screen.getByText('Sponsored')).toBeOnTheScreen();
+    expect(screen.queryByText(operationHash)).not.toBeOnTheScreen();
     expect(executionClient.prepare).toHaveBeenCalledWith([
       { to: recipient, value: 100_000_000_000_000_000n, data: '0x' },
     ]);
     expect(executionClient.execute).not.toHaveBeenCalled();
 
-    await press('Authorize and send');
+    await press('More details');
+    expect(screen.getByText(operationHash)).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Hide details' })).toBeOnTheScreen();
+
+    await press('Confirm with passkey');
 
     await waitFor(() => expect(executionClient.execute).toHaveBeenCalledWith(operationHash));
-    expect(await screen.findByText('Send confirmed')).toBeOnTheScreen();
-    expect(screen.getByText(transactionHash)).toBeOnTheScreen();
+    expect(await screen.findByText('ETH sent successfully')).toBeOnTheScreen();
+    expect(screen.getByText(shortenHash(transactionHash))).toBeOnTheScreen();
+    expect(screen.queryByText(transactionHash)).not.toBeOnTheScreen();
+
+    await press('Copy transaction hash');
+    expect(copyTransactionHash).toHaveBeenCalledWith(transactionHash);
+    expect(await screen.findByText('Copied')).toBeOnTheScreen();
+
+    await act(async () => {
+      fireEvent.press(screen.getByRole('link', { name: 'View on explorer' }));
+    });
+    expect(openTransaction).toHaveBeenCalledWith(sepoliaTransactionUrl(transactionHash));
     expect(onDone).not.toHaveBeenCalled();
   });
 
-  it('invalidates a prepared review when the amount changes', async () => {
+  it('requires a fresh preparation after returning to edit the transfer', async () => {
     await render(
       <SendScreen
         ceremonyClient={createCeremonyClient()}
@@ -109,15 +136,17 @@ describe('SendScreen', () => {
     );
     await screen.findByText('1 ETH');
     await enterTransfer(recipient, '0.1');
-    await press('Review send');
-    await screen.findByText('Review exact transfer');
+    await press('Continue');
+    await screen.findByText('Does this look right?');
+
+    await press('Back');
 
     await act(async () => {
       fireEvent.changeText(screen.getByLabelText('ETH amount'), '0.2');
     });
 
-    expect(screen.queryByText('Review exact transfer')).not.toBeOnTheScreen();
-    expect(screen.getByRole('button', { name: 'Review send' })).toBeOnTheScreen();
+    expect(screen.queryByText('Does this look right?')).not.toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeOnTheScreen();
   });
 });
 

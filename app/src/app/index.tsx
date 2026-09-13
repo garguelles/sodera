@@ -15,10 +15,12 @@ export default function HomeScreen() {
           provider={walletHomeLiveProvider}
           onAction={(action) => {
             if (action === 'send') router.push('/send');
+            if (action === 'receive') router.push('/receive');
           }}
         />
       }
       preferencesStorage={launcherPreferencesNativeStorage}
+      onOpenTransactions={() => router.push('/transactions')}
       onOpenSettings={() => router.push('/settings')}
     />
   );
