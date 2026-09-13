@@ -3,6 +3,7 @@ import { createPublicClient, formatEther, formatUnits, http, type Address } from
 import { sepolia } from 'viem/chains';
 
 import type { WalletHomeProvider } from './wallet-home';
+import { SEPOLIA_USDC_ADDRESS } from './sepolia';
 import { readPersistedWalletIdentity, type WalletIdentityStorage } from './wallet-identity';
 import { walletIdentityNativeStorage } from './wallet-identity-native-storage';
 import { SODERA_FIXTURE_USERNAME } from '@/onboarding/onboarding';
@@ -18,7 +19,6 @@ type SepoliaBalanceClient = {
   }): Promise<bigint>;
 };
 
-export const SEPOLIA_USDC_ADDRESS = '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238';
 const USDC_DECIMALS = 6;
 const ERC20_BALANCE_ABI = [
   {

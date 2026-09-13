@@ -1,13 +1,21 @@
 import { AppState } from 'react-native';
-import { formatEther, formatUnits, getAddress, type Address, type Hash } from 'viem';
+import {
+  formatEther,
+  formatUnits,
+  getAddress,
+  isAddress,
+  isHash,
+  type Address,
+  type Hash,
+} from 'viem';
 
 import type {
   TransactionActivityItem,
   TransactionActivityProvider,
 } from './transaction-activity';
+import { SEPOLIA_USDC_ADDRESS } from './sepolia';
 import { readPersistedWalletIdentity, type WalletIdentityStorage } from './wallet-identity';
 import { walletIdentityNativeStorage } from './wallet-identity-native-storage';
-import { SEPOLIA_USDC_ADDRESS } from './wallet-home-live';
 
 const BLOCKSCOUT_API_URL = 'https://eth-sepolia.blockscout.com/api/v2';
 
@@ -75,12 +83,20 @@ export function createBlockscoutTransactionActivityProvider({
           `${BLOCKSCOUT_API_URL}/addresses/${encodedAccount}/token-transfers?type=ERC-20`,
         ),
       ]);
-      const items = normalizeActivity({
+      const { items, skippedCount } = normalizeActivity({
         account,
         transactions: transactions.items,
         internalTransactions: internalTransactions.items,
         tokenTransfers: tokenTransfers.items,
       });
+      if (skippedCount > 0) {
+        return {
+          status: 'partial',
+          account,
+          items,
+          message: `${skippedCount} malformed explorer ${skippedCount === 1 ? 'record was' : 'records were'} omitted.`,
+        };
+      }
       return items.length > 0
         ? { status: 'ready', account, items }
         : { status: 'empty', account };
@@ -128,14 +144,34 @@ export function normalizeActivity({
 }) {
   const normalizedAccount = account.toLowerCase();
   const items: TransactionActivityItem[] = [];
+  let skippedCount = 0;
 
   for (const transaction of transactions) {
     try {
+      if (typeof transaction.status !== 'string' || typeof transaction.result !== 'string') {
+        skippedCount += 1;
+        continue;
+      }
+      if (transaction.status !== 'ok' && transaction.status !== 'error') {
+        skippedCount += 1;
+        continue;
+      }
+      if (transaction.status === 'error') continue;
+      if (transaction.result !== 'success') {
+        skippedCount += 1;
+        continue;
+      }
       if (
-        transaction.status !== 'ok' ||
-        transaction.result !== 'success' ||
-        !isValidTimestamp(transaction.timestamp)
-      ) continue;
+        !isHash(transaction.hash) ||
+        !isValidBlockIndex(transaction.block_number) ||
+        !isValidTimestamp(transaction.timestamp) ||
+        typeof transaction.value !== 'string' ||
+        !isExplorerAddress(transaction.from) ||
+        (transaction.to !== null && !isExplorerAddress(transaction.to))
+      ) {
+        skippedCount += 1;
+        continue;
+      }
       addNativeTransfer(items, {
         id: `transaction:${transaction.hash}`,
         account: normalizedAccount,
@@ -147,13 +183,30 @@ export function normalizeActivity({
         to: transaction.to?.hash ?? null,
       });
     } catch {
+      skippedCount += 1;
       continue;
     }
   }
 
   for (const transaction of internalTransactions) {
     try {
-      if (!transaction.success || !isValidTimestamp(transaction.timestamp)) continue;
+      if (typeof transaction.success !== 'boolean') {
+        skippedCount += 1;
+        continue;
+      }
+      if (!transaction.success) continue;
+      if (
+        !isHash(transaction.transaction_hash) ||
+        !isValidBlockIndex(transaction.block_number) ||
+        !isValidBlockIndex(transaction.index) ||
+        !isValidTimestamp(transaction.timestamp) ||
+        typeof transaction.value !== 'string' ||
+        !isExplorerAddress(transaction.from) ||
+        (transaction.to !== null && !isExplorerAddress(transaction.to))
+      ) {
+        skippedCount += 1;
+        continue;
+      }
       addNativeTransfer(items, {
         id: `internal:${transaction.transaction_hash}:${transaction.index}`,
         account: normalizedAccount,
@@ -165,20 +218,37 @@ export function normalizeActivity({
         to: transaction.to?.hash ?? null,
       });
     } catch {
+      skippedCount += 1;
       continue;
     }
   }
 
   for (const transfer of tokenTransfers) {
     try {
+      if (!isExplorerTokenAddress(transfer.token?.address_hash)) {
+        skippedCount += 1;
+        continue;
+      }
+      if (transfer.token.address_hash.toLowerCase() !== SEPOLIA_USDC_ADDRESS.toLowerCase()) continue;
       if (
-        transfer.token.address_hash.toLowerCase() !== SEPOLIA_USDC_ADDRESS.toLowerCase() ||
-        !isValidTimestamp(transfer.timestamp)
-      ) continue;
+        !isHash(transfer.transaction_hash) ||
+        !isValidBlockIndex(transfer.block_number) ||
+        !isValidBlockIndex(transfer.log_index) ||
+        !isValidTimestamp(transfer.timestamp) ||
+        !isExplorerAddress(transfer.from) ||
+        !isExplorerAddress(transfer.to) ||
+        typeof transfer.total?.value !== 'string'
+      ) {
+        skippedCount += 1;
+        continue;
+      }
       const direction = getDirection(normalizedAccount, transfer.from.hash, transfer.to.hash);
       if (!direction || BigInt(transfer.total.value) === 0n) continue;
       const decimals = Number(transfer.total.decimals ?? transfer.token.decimals);
-      if (!Number.isSafeInteger(decimals) || decimals !== 6) continue;
+      if (!Number.isSafeInteger(decimals) || decimals !== 6) {
+        skippedCount += 1;
+        continue;
+      }
       items.push({
         id: `erc20:${transfer.transaction_hash}:${transfer.log_index}`,
         transactionHash: transfer.transaction_hash,
@@ -192,16 +262,20 @@ export function normalizeActivity({
         blockNumber: transfer.block_number,
       });
     } catch {
+      skippedCount += 1;
       continue;
     }
   }
 
-  return items.sort(
-    (left, right) =>
-      Date.parse(right.timestamp) - Date.parse(left.timestamp) ||
-      right.blockNumber - left.blockNumber ||
-      right.id.localeCompare(left.id),
-  );
+  return {
+    items: items.sort(
+      (left, right) =>
+        Date.parse(right.timestamp) - Date.parse(left.timestamp) ||
+        right.blockNumber - left.blockNumber ||
+        right.id.localeCompare(left.id),
+    ),
+    skippedCount,
+  };
 }
 
 function addNativeTransfer(
@@ -240,6 +314,19 @@ function getDirection(account: string, from: Address, to: Address) {
 
 function isValidTimestamp(timestamp: unknown): timestamp is string {
   return typeof timestamp === 'string' && Number.isFinite(Date.parse(timestamp));
+}
+
+function isValidBlockIndex(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+}
+
+function isExplorerAddress(value: unknown): value is ExplorerAddress {
+  if (!value || typeof value !== 'object' || !('hash' in value)) return false;
+  return typeof value.hash === 'string' && isAddress(value.hash);
+}
+
+function isExplorerTokenAddress(value: unknown): value is Address {
+  return typeof value === 'string' && isAddress(value);
 }
 
 export const blockscoutTransactionActivityProvider =

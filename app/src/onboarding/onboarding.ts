@@ -28,7 +28,7 @@ export type UsernameClaimClient = {
 };
 
 export type OnboardingAccess =
-  | { status: 'incomplete' }
+  | { status: 'incomplete'; wallet: 'missing' | 'resumable' }
   | { status: 'complete'; profile: OnboardingProfile }
   | { status: 'blocked'; message: string };
 
@@ -47,14 +47,19 @@ export async function resolveOnboardingAccess({
     if (profile) {
       return {
         status: 'blocked',
-        message: 'An onboarding profile exists without its complete Wallet Identity',
+        message: identityState.status === 'missing'
+          ? 'An onboarding profile exists without its Wallet Identity'
+          : 'An onboarding profile exists without its complete Wallet Identity',
       };
     }
-    return { status: 'incomplete' };
+    return {
+      status: 'incomplete',
+      wallet: identityState.status === 'missing' ? 'missing' : 'resumable',
+    };
   }
   if (identityState.status === 'blocked') return identityState;
 
-  if (!profile) return { status: 'incomplete' };
+  if (!profile) return { status: 'incomplete', wallet: 'resumable' };
   if (profile.account.toLowerCase() !== identityState.identity.account.toLowerCase()) {
     return {
       status: 'blocked',

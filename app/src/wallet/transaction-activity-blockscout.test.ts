@@ -1,7 +1,7 @@
 import type { Address, Hash } from 'viem';
 
 import { normalizeActivity } from './transaction-activity-blockscout';
-import { SEPOLIA_USDC_ADDRESS } from './wallet-home-live';
+import { SEPOLIA_USDC_ADDRESS } from './sepolia';
 
 jest.mock('./wallet-identity-native-storage', () => ({
   walletIdentityNativeStorage: { read: jest.fn(), write: jest.fn(), clear: jest.fn() },
@@ -13,7 +13,7 @@ const transactionHash = `0x${'33'.repeat(32)}` as Hash;
 
 describe('normalizeActivity', () => {
   it('combines real direct, internal, and pinned-USDC transfers newest first', () => {
-    const items = normalizeActivity({
+    const result = normalizeActivity({
       account,
       transactions: [
         {
@@ -63,15 +63,16 @@ describe('normalizeActivity', () => {
       ],
     });
 
-    expect(items).toMatchObject([
+    expect(result.items).toMatchObject([
       { direction: 'received', asset: 'USDC', amount: '2.5', counterparty: other },
       { direction: 'sent', asset: 'ETH', amount: '0.000001', counterparty: other },
       { direction: 'received', asset: 'ETH', amount: '0.001', counterparty: other },
     ]);
+    expect(result.skippedCount).toBe(0);
   });
 
   it('excludes failed, zero-value, unrelated, and unpinned token activity', () => {
-    const items = normalizeActivity({
+    const result = normalizeActivity({
       account,
       transactions: [
         {
@@ -104,6 +105,58 @@ describe('normalizeActivity', () => {
       ],
     });
 
-    expect(items).toEqual([]);
+    expect(result).toEqual({ items: [], skippedCount: 0 });
+  });
+
+  it('reports malformed records separately from verified empty activity', () => {
+    const result = normalizeActivity({
+      account,
+      transactions: [
+        {
+          hash: transactionHash,
+          block_number: 10,
+          timestamp: 'not-a-date',
+          value: '1',
+          status: 'ok',
+          result: 'success',
+          from: { hash: other },
+          to: { hash: account },
+        },
+        {
+          hash: transactionHash,
+          block_number: 11,
+          timestamp: '2026-09-12T20:54:24.000Z',
+          value: '1',
+          status: undefined as unknown as string,
+          result: 'success',
+          from: { hash: other },
+          to: { hash: account },
+        },
+        {
+          hash: 'not-a-hash' as Hash,
+          block_number: 12,
+          timestamp: '2026-09-12T20:54:24.000Z',
+          value: '1',
+          status: 'ok',
+          result: 'success',
+          from: { hash: other },
+          to: { hash: account },
+        },
+        {
+          hash: transactionHash,
+          block_number: 13,
+          timestamp: '2026-09-12T20:54:24.000Z',
+          value: '1',
+          status: 'garbage',
+          result: 'garbage',
+          from: { hash: other },
+          to: { hash: account },
+        },
+      ],
+      internalTransactions: [],
+      tokenTransfers: [],
+    });
+
+    expect(result).toEqual({ items: [], skippedCount: 4 });
   });
 });

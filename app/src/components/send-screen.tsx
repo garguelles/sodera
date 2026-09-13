@@ -40,6 +40,7 @@ import {
 import { walletHomeLiveProvider } from '@/wallet/wallet-home-live';
 import { walletIdentityNativeStorage } from '@/wallet/wallet-identity-native-storage';
 import { waitForAppForeground } from '@/wallet/wait-for-app-foreground';
+import { sepoliaTransactionUrl, shortenAddress } from '@/wallet/sepolia';
 
 const defaultCeremonyClient = createPasskeyCeremonyClient(passkeyNativeAdapter, {
   isForeground: waitForAppForeground,
@@ -83,6 +84,7 @@ export function SendScreen({
   const [showTechnicalDetails, setShowTechnicalDetails] = useState(false);
   const [hashCopied, setHashCopied] = useState(false);
   const invocation = useRef(0);
+  const executionInFlight = useRef(false);
   const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -168,7 +170,8 @@ export function SendScreen({
   };
 
   const execute = async () => {
-    if (!wallet || !review || !executionClient) return;
+    if (!wallet || !review || !executionClient || executionInFlight.current) return;
+    executionInFlight.current = true;
     const currentInvocation = ++invocation.current;
     const approvedHash = review.userOperationHash;
     setBusy(true);
@@ -195,6 +198,7 @@ export function SendScreen({
         setStatus(describeError(error));
       }
     } finally {
+      executionInFlight.current = false;
       if (currentInvocation === invocation.current) setBusy(false);
     }
   };
@@ -322,9 +326,11 @@ export function SendScreen({
           />
 
           <Pressable
+            accessibilityState={{ busy, disabled: busy }}
             accessibilityRole="button"
+            disabled={busy}
             onPress={() => void execute()}
-            style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}
+            style={({ pressed }) => [styles.primaryButton, (pressed || busy) && styles.pressed]}
           >
             <Text style={styles.primaryButtonText}>Confirm with passkey</Text>
           </Pressable>
@@ -411,14 +417,6 @@ export function parseEthTransfer({
 
 export function shortenHash(hash: Hash) {
   return `${hash.slice(0, 10)}...${hash.slice(-8)}`;
-}
-
-export function sepoliaTransactionUrl(hash: Hash) {
-  return `https://sepolia.etherscan.io/tx/${hash}`;
-}
-
-function shortenAddress(address: Address) {
-  return `${address.slice(0, 6)}...${address.slice(-4)}`;
 }
 
 function SendReview({

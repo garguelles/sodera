@@ -29,7 +29,7 @@ describe('onboarding state', () => {
         identityStorage: createStorage(null),
         profileStorage: createStorage(null),
       }),
-    ).resolves.toEqual({ status: 'incomplete' });
+    ).resolves.toEqual({ status: 'incomplete', wallet: 'missing' });
   });
 
   it('blocks profile data whose wallet identity is missing', async () => {
@@ -43,7 +43,7 @@ describe('onboarding state', () => {
       }),
     ).resolves.toEqual({
       status: 'blocked',
-      message: 'An onboarding profile exists without its complete Wallet Identity',
+      message: 'An onboarding profile exists without its Wallet Identity',
     });
   });
 

@@ -13,6 +13,12 @@ export type TransactionActivityItem = {
 
 export type TransactionActivityResult =
   | { status: 'ready'; account: Address; items: readonly TransactionActivityItem[] }
+  | {
+      status: 'partial';
+      account: Address;
+      items: readonly TransactionActivityItem[];
+      message: string;
+    }
   | { status: 'empty'; account: Address };
 
 export type TransactionActivityProvider = {

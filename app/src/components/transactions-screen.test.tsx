@@ -2,7 +2,8 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-
 import { StyleSheet } from 'react-native';
 import type { Address, Hash } from 'viem';
 
-import { TransactionsScreen, transactionExplorerUrl } from './transactions-screen';
+import { TransactionsScreen } from './transactions-screen';
+import { sepoliaTransactionUrl } from '@/wallet/sepolia';
 import type { TransactionActivityProvider } from '@/wallet/transaction-activity';
 
 const account = '0x1111111111111111111111111111111111111111' as Address;
@@ -67,7 +68,7 @@ describe('TransactionsScreen', () => {
     });
 
     expect(screen.getByText('+0.001')).toBeOnTheScreen();
-    expect(openTransaction).toHaveBeenCalledWith(transactionExplorerUrl(transactionHash));
+    expect(openTransaction).toHaveBeenCalledWith(sepoliaTransactionUrl(transactionHash));
   });
 
   it('distinguishes an indexed empty account from an unavailable explorer', async () => {
@@ -86,6 +87,24 @@ describe('TransactionsScreen', () => {
 
     await waitFor(() => expect(screen.getByText('No transactions yet')).toBeOnTheScreen());
     expect(load).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not present malformed explorer data as verified empty activity', async () => {
+    await act(async () => {
+      render(
+        <TransactionsScreen
+          provider={createProvider({
+            status: 'partial',
+            account,
+            items: [],
+            message: '1 malformed explorer record was omitted.',
+          })}
+        />,
+      );
+    });
+
+    expect(await screen.findByText('Activity may be incomplete')).toBeOnTheScreen();
+    expect(screen.queryByText('No transactions yet')).not.toBeOnTheScreen();
   });
 });
 

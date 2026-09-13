@@ -3,9 +3,9 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-
 import {
   SendScreen,
   parseEthTransfer,
-  sepoliaTransactionUrl,
   shortenHash,
 } from './send-screen';
+import { sepoliaTransactionUrl } from '@/wallet/sepolia';
 import type {
   KernelOperationEvidence,
   KernelOperationReview,
@@ -147,6 +147,40 @@ describe('SendScreen', () => {
 
     expect(screen.queryByText('Does this look right?')).not.toBeOnTheScreen();
     expect(screen.getByRole('button', { name: 'Continue' })).toBeOnTheScreen();
+  });
+
+  it('ignores duplicate confirmation taps while execution is in flight', async () => {
+    let resolveExecution!: (evidence: KernelOperationEvidence) => void;
+    const executionClient = createExecutionClient();
+    executionClient.execute = jest.fn().mockReturnValue(new Promise((resolve) => {
+      resolveExecution = resolve;
+    }));
+    await render(
+      <SendScreen
+        ceremonyClient={createCeremonyClient()}
+        createExecutionClient={jest.fn().mockResolvedValue(executionClient)}
+        readBalance={jest.fn().mockResolvedValue(10n ** 18n)}
+        storage={createStorage()}
+      />,
+    );
+    await screen.findByText('1 ETH');
+    await enterTransfer(recipient, '0.1');
+    await press('Continue');
+    const confirm = await screen.findByRole('button', { name: 'Confirm with passkey' });
+    const onClick = confirm.props.onClick as (() => void) | undefined;
+    expect(onClick).toEqual(expect.any(Function));
+
+    await act(async () => {
+      onClick?.();
+      onClick?.();
+    });
+
+    expect(executionClient.execute).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      resolveExecution(executionEvidence());
+    });
+
+    expect(await screen.findByText('ETH sent successfully')).toBeOnTheScreen();
   });
 });
 

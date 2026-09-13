@@ -16,6 +16,7 @@ import type {
   TransactionActivityProvider,
   TransactionActivityResult,
 } from '@/wallet/transaction-activity';
+import { sepoliaTransactionUrl, shortenAddress } from '@/wallet/sepolia';
 
 type TransactionsScreenProps = {
   provider: TransactionActivityProvider;
@@ -75,7 +76,7 @@ export function TransactionsScreen({
   const viewTransaction = async (transactionHash: string) => {
     setLinkError('');
     try {
-      await openTransaction(transactionExplorerUrl(transactionHash));
+      await openTransaction(sepoliaTransactionUrl(transactionHash));
     } catch (error) {
       setLinkError(getErrorMessage(error));
     }
@@ -94,9 +95,13 @@ export function TransactionsScreen({
     </View>
   );
 
-  const items = viewState.status === 'loaded' && viewState.result.status === 'ready'
+  const items = viewState.status === 'loaded' &&
+    (viewState.result.status === 'ready' || viewState.result.status === 'partial')
     ? viewState.result.items
     : [];
+  const partialResult = viewState.status === 'loaded' && viewState.result.status === 'partial'
+    ? viewState.result
+    : null;
   return (
     <SafeAreaView style={styles.screen}>
       <FlatList
@@ -118,6 +123,11 @@ export function TransactionsScreen({
                 <Text style={styles.retryText}>Try again</Text>
               </Pressable>
             </View>
+          ) : partialResult ? (
+            <View accessibilityRole="alert" style={styles.emptyState}>
+              <Text style={styles.stateTitle}>Activity may be incomplete</Text>
+              <Text selectable style={styles.stateCopy}>{partialResult.message}</Text>
+            </View>
           ) : (
             <View style={styles.emptyState}>
               <Text style={styles.stateTitle}>No transactions yet</Text>
@@ -128,7 +138,16 @@ export function TransactionsScreen({
         ListFooterComponent={
           linkError ? <Text accessibilityRole="alert" style={styles.linkError}>{linkError}</Text> : null
         }
-        ListHeaderComponent={header}
+        ListHeaderComponent={
+          <>
+            {header}
+            {partialResult && items.length > 0 ? (
+              <View accessibilityRole="alert" style={styles.partialState}>
+                <Text selectable style={styles.stateCopy}>{partialResult.message}</Text>
+              </View>
+            ) : null}
+          </>
+        }
         onRefresh={retry}
         refreshing={false}
         renderItem={({ item }) => (
@@ -179,14 +198,6 @@ function formatTimestamp(timestamp: string) {
   }).format(new Date(timestamp));
 }
 
-function shortenAddress(address: string) {
-  return `${address.slice(0, 6)}...${address.slice(-4)}`;
-}
-
-export function transactionExplorerUrl(hash: string) {
-  return `https://sepolia.etherscan.io/tx/${hash}`;
-}
-
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'Unable to load transaction activity';
 }
@@ -225,6 +236,13 @@ const styles = StyleSheet.create({
   separator: { height: 1, marginLeft: 54, backgroundColor: '#303029' },
   centeredState: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 32 },
   emptyState: { flex: 1, minHeight: 300, alignItems: 'center', justifyContent: 'center', gap: 8 },
+  partialState: {
+    borderRadius: 14,
+    borderCurve: 'continuous',
+    backgroundColor: '#443a24',
+    padding: 14,
+    marginBottom: 12,
+  },
   stateTitle: { color: '#f3f0e8', fontSize: 18, fontWeight: '700', textAlign: 'center' },
   stateCopy: { color: '#929188', fontSize: 13, lineHeight: 19, textAlign: 'center' },
   retryButton: {

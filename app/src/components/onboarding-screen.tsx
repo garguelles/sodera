@@ -14,7 +14,7 @@ import type { Address } from 'viem';
 import {
   mockUsernameClaimClient,
   persistCompletedOnboarding,
-  readOnboardingProfile,
+  resolveOnboardingAccess,
   SODERA_FIXTURE_USERNAME,
   type OnboardingProfile,
   type OnboardingProfileStorage,
@@ -87,49 +87,22 @@ export function OnboardingScreen({
     let active = true;
     const bootstrap = async () => {
       try {
-        const [identityState, existingProfile] = await Promise.all([
-          inspectPersistedWalletIdentity(identityStorage),
-          readOnboardingProfile(profileStorage),
-        ]);
+        const access = await resolveOnboardingAccess({ identityStorage, profileStorage });
         if (!active) return;
-        if (identityState.status === 'missing') {
-          if (existingProfile) {
-            setMessage('An onboarding profile exists without its Wallet Identity');
-            setStage('blocked');
-            return;
-          }
-          setStage('welcome');
-          return;
-        }
-        if (identityState.status === 'blocked') {
-          setMessage(identityState.message);
+        if (access.status === 'blocked') {
+          setMessage(access.message);
           setStage('blocked');
           return;
         }
-        if (identityState.status === 'incomplete') {
-          if (existingProfile) {
-            setMessage('An onboarding profile exists without its complete Wallet Identity');
-            setStage('blocked');
-            return;
-          }
-          setResumeWallet(true);
-          setStage('wallet');
+        if (access.status === 'incomplete') {
+          const resumable = access.wallet === 'resumable';
+          setResumeWallet(resumable);
+          setStage(resumable ? 'wallet' : 'welcome');
           return;
         }
-
-        if (existingProfile) {
-          if (existingProfile.account.toLowerCase() !== identityState.identity.account.toLowerCase()) {
-            setMessage('The onboarding profile belongs to a different Smart Account');
-            setStage('blocked');
-            return;
-          }
-          setProfile(existingProfile);
-          setAccount(identityState.identity.account);
-          setStage('ready');
-          return;
-        }
-        setResumeWallet(true);
-        setStage('wallet');
+        setProfile(access.profile);
+        setAccount(access.profile.account);
+        setStage('ready');
       } catch (error) {
         if (!active) return;
         setMessage(getErrorMessage(error));

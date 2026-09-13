@@ -15,6 +15,7 @@ import type {
   WalletHomeResult,
 } from '@/wallet/wallet-home';
 import { getPortfolioTotalUsdCents } from '@/wallet/wallet-home';
+import { shortenAddress } from '@/wallet/sepolia';
 
 type WalletHomeProps = {
   provider: WalletHomeProvider;
@@ -235,7 +236,7 @@ function Identity({ identity }: { identity: WalletHomeIdentity }) {
           {identity.username}
         </Text>
         <Text accessibilityLabel={`Wallet address ${identity.address}`} selectable style={styles.address}>
-          {formatAddress(identity.address)}
+          {shortenAddress(identity.address)}
         </Text>
       </View>
     </View>
@@ -268,10 +269,6 @@ function getInitials(username: string) {
       .map((part) => part[0]?.toUpperCase())
       .join('') || '?'
   );
-}
-
-function formatAddress(address: string) {
-  return `${address.slice(0, 6)}...${address.slice(-4)}`;
 }
 
 function formatUsd(cents: number | null) {
