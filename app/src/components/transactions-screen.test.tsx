@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
 import type { Address, Hash } from 'viem';
 
 import { TransactionsScreen, transactionExplorerUrl } from './transactions-screen';
@@ -9,6 +10,29 @@ const counterparty = '0x2222222222222222222222222222222222222222' as Address;
 const transactionHash = `0x${'33'.repeat(32)}` as Hash;
 
 describe('TransactionsScreen', () => {
+  it('keeps the same horizontal padding while activity loads', async () => {
+    let resolveLoad!: (result: Awaited<ReturnType<TransactionActivityProvider['load']>>) => void;
+    const load = jest.fn().mockReturnValue(new Promise((resolve) => {
+      resolveLoad = resolve;
+    }));
+    await act(async () => {
+      render(<TransactionsScreen provider={createProvider(undefined, load)} />);
+    });
+
+    const loadingList = screen.getByTestId('transactions-list');
+    expect(StyleSheet.flatten(loadingList.props.contentContainerStyle)).toMatchObject({
+      paddingHorizontal: 22,
+    });
+
+    await act(async () => {
+      resolveLoad({ status: 'empty', account });
+    });
+
+    expect(await screen.findByText('No transactions yet')).toBeOnTheScreen();
+    expect(StyleSheet.flatten(screen.getByTestId('transactions-list').props.contentContainerStyle))
+      .toMatchObject({ paddingHorizontal: 22 });
+  });
+
   it('renders real normalized activity and opens its explorer transaction', async () => {
     const openTransaction = jest.fn().mockResolvedValue(undefined);
     await act(async () => {

@@ -94,34 +94,9 @@ export function TransactionsScreen({
     </View>
   );
 
-  if (viewState.status === 'loading') {
-    return (
-      <SafeAreaView style={styles.screen}>
-        {header}
-        <View accessibilityLabel="Loading transactions" style={styles.centeredState}>
-          <ActivityIndicator color="#d4f06a" />
-          <Text style={styles.stateCopy}>Loading activity...</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  if (viewState.status === 'error') {
-    return (
-      <SafeAreaView style={styles.screen}>
-        {header}
-        <View accessibilityRole="alert" style={styles.centeredState}>
-          <Text style={styles.stateTitle}>Activity unavailable</Text>
-          <Text selectable style={styles.stateCopy}>{viewState.message}</Text>
-          <Pressable accessibilityRole="button" onPress={retry} style={styles.retryButton}>
-            <Text style={styles.retryText}>Try again</Text>
-          </Pressable>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  const items = viewState.result.status === 'ready' ? viewState.result.items : [];
+  const items = viewState.status === 'loaded' && viewState.result.status === 'ready'
+    ? viewState.result.items
+    : [];
   return (
     <SafeAreaView style={styles.screen}>
       <FlatList
@@ -130,10 +105,25 @@ export function TransactionsScreen({
         ItemSeparatorComponent={() => <View style={styles.separator} />}
         keyExtractor={(item) => item.id}
         ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <Text style={styles.stateTitle}>No transactions yet</Text>
-            <Text style={styles.stateCopy}>ETH and USDC transfers will appear here after the explorer indexes them.</Text>
-          </View>
+          viewState.status === 'loading' ? (
+            <View accessibilityLabel="Loading transactions" style={styles.centeredState}>
+              <ActivityIndicator color="#d4f06a" />
+              <Text style={styles.stateCopy}>Loading activity...</Text>
+            </View>
+          ) : viewState.status === 'error' ? (
+            <View accessibilityRole="alert" style={styles.centeredState}>
+              <Text style={styles.stateTitle}>Activity unavailable</Text>
+              <Text selectable style={styles.stateCopy}>{viewState.message}</Text>
+              <Pressable accessibilityRole="button" onPress={retry} style={styles.retryButton}>
+                <Text style={styles.retryText}>Try again</Text>
+              </Pressable>
+            </View>
+          ) : (
+            <View style={styles.emptyState}>
+              <Text style={styles.stateTitle}>No transactions yet</Text>
+              <Text style={styles.stateCopy}>ETH and USDC transfers will appear here after the explorer indexes them.</Text>
+            </View>
+          )
         }
         ListFooterComponent={
           linkError ? <Text accessibilityRole="alert" style={styles.linkError}>{linkError}</Text> : null
@@ -147,6 +137,7 @@ export function TransactionsScreen({
             onPress={() => void viewTransaction(item.transactionHash)}
           />
         )}
+        testID="transactions-list"
       />
     </SafeAreaView>
   );
