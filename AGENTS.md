@@ -8,6 +8,7 @@ Sodera is a seedless smart-account wallet and Android home launcher. The reposit
 - Branches use `{feat,chore,fix,docs,refactor}/{LINEAR_TICKET_NUMBER}-{short-description}`.
 - Commits use `{type}: {LINEAR_TICKET_NUMBER}: {description}`.
 - Pull request titles use `{type}: {LINEAR_TICKET_NUMBER}: {description}`, with a lowercase type and description, for example `feat: PRA-128: publish three card local curator`.
+- Prefix pull request titles with `[ETHGlobal Tokyo] `, for example `[ETHGlobal Tokyo] feat: PRA-128: publish three card local curator`.
 - Ad hoc work that is not tracked in Linear does not require a ticket solely for naming. Use `{feat,chore,fix,docs,refactor}/{short-description}` for the branch and `{type}: {description}` for commits.
 - After a pull request is squash-merged, delete its remote feature branch from GitHub.
 - Never merge into the `production` branch. Production merges are performed only by the user.
