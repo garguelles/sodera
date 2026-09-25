@@ -31,6 +31,10 @@ function RootNavigator() {
       </Stack.Protected>
       <Stack.Protected guard={onboardingComplete}>
         <Stack.Screen name="index" />
+        <Stack.Screen name="wallet" />
+        <Stack.Screen name="phone" />
+        <Stack.Screen name="earn" />
+        <Stack.Screen name="swap" />
         <Stack.Screen name="send" />
         <Stack.Screen name="receive" />
         <Stack.Screen name="transactions" />
