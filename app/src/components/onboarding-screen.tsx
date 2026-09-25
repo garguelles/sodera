@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  AppState,
   BackHandler,
   Pressable,
   ScrollView,
@@ -21,6 +22,7 @@ import {
   type UsernameClaimClient,
 } from '@/onboarding/onboarding';
 import { onboardingNativeStorage } from '@/onboarding/onboarding-native-storage';
+import { defaultHomeClient, type DefaultHomeClient } from '@/launcher/default-home';
 import { createKernelPasskeyExecutionClient } from '@/wallet/kernel-passkey-execution';
 import { createPasskeyCeremonyClient } from '@/wallet/passkey-ceremony';
 import { passkeyNativeAdapter } from '@/wallet/passkey-native-adapter';
@@ -36,7 +38,7 @@ const defaultCeremonyClient = createPasskeyCeremonyClient(passkeyNativeAdapter, 
   isForeground: waitForAppForeground,
 });
 
-type Stage = 'loading' | 'welcome' | 'wallet' | 'username' | 'ready' | 'recovery' | 'blocked';
+type Stage = 'loading' | 'welcome' | 'wallet' | 'username' | 'home' | 'recovery' | 'blocked';
 
 export function OnboardingScreen({
   client = defaultCeremonyClient,
@@ -44,6 +46,7 @@ export function OnboardingScreen({
   identityStorage = walletIdentityNativeStorage,
   profileStorage = onboardingNativeStorage,
   usernameClaimClient = mockUsernameClaimClient,
+  homeClient = defaultHomeClient,
   onComplete,
   onRetry,
   initialError,
@@ -53,6 +56,7 @@ export function OnboardingScreen({
   identityStorage?: WalletIdentityStorage;
   profileStorage?: OnboardingProfileStorage;
   usernameClaimClient?: UsernameClaimClient;
+  homeClient?: DefaultHomeClient;
   onComplete(profile: OnboardingProfile): void;
   onRetry?: () => void;
   initialError?: string;
@@ -87,7 +91,7 @@ export function OnboardingScreen({
     let active = true;
     const bootstrap = async () => {
       try {
-        const access = await resolveOnboardingAccess({ identityStorage, profileStorage });
+        const access = await resolveOnboardingAccess({ identityStorage, profileStorage, homeClient });
         if (!active) return;
         if (access.status === 'blocked') {
           setMessage(access.message);
@@ -102,7 +106,7 @@ export function OnboardingScreen({
         }
         setProfile(access.profile);
         setAccount(access.profile.account);
-        setStage('ready');
+        setStage('home');
       } catch (error) {
         if (!active) return;
         setMessage(getErrorMessage(error));
@@ -115,7 +119,63 @@ export function OnboardingScreen({
       invocation.current += 1;
       client.cancelPending();
     };
-  }, [client, identityStorage, initialError, profileStorage]);
+  }, [client, homeClient, identityStorage, initialError, profileStorage]);
+
+  useEffect(() => {
+    if (stage !== 'home' || !profile) return;
+    let active = true;
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state !== 'active') return;
+      void homeClient.isDefaultHome().then((isHome) => {
+        if (active && isHome) onComplete(profile);
+      }).catch((error) => {
+        if (active) setMessage(getErrorMessage(error));
+      });
+    });
+    return () => {
+      active = false;
+      subscription.remove();
+    };
+  }, [homeClient, onComplete, profile, stage]);
+
+  const selectDefaultHome = async () => {
+    if (!profile || operationInFlight.current) return;
+    operationInFlight.current = true;
+    setBusy(true);
+    setMessage('');
+    try {
+      if (await homeClient.isDefaultHome()) {
+        onComplete(profile);
+        return;
+      }
+      await homeClient.requestDefaultHome();
+      if (await homeClient.isDefaultHome()) onComplete(profile);
+    } catch (error) {
+      setMessage(getErrorMessage(error));
+    } finally {
+      operationInFlight.current = false;
+      setBusy(false);
+    }
+  };
+
+  const confirmDefaultHome = async () => {
+    if (!profile || operationInFlight.current) return;
+    operationInFlight.current = true;
+    setBusy(true);
+    setMessage('');
+    try {
+      if (await homeClient.isDefaultHome()) {
+        onComplete(profile);
+      } else {
+        setMessage('Select Sodera in the Android Home app prompt to finish setup.');
+      }
+    } catch (error) {
+      setMessage(getErrorMessage(error));
+    } finally {
+      operationInFlight.current = false;
+      setBusy(false);
+    }
+  };
 
   useEffect(() => {
     if (stage !== 'recovery' && (stage !== 'wallet' || resumeWallet)) return;
@@ -170,7 +230,7 @@ export function OnboardingScreen({
       });
       if (currentInvocation !== invocation.current) return;
       setProfile(completedProfile);
-      setStage('ready');
+      setStage('home');
     } catch (error) {
       if (currentInvocation === invocation.current) setMessage(getErrorMessage(error));
     } finally {
@@ -281,13 +341,13 @@ export function OnboardingScreen({
             </>
           ) : null}
 
-          {stage === 'ready' && account && profile ? (
+          {stage === 'home' && account && profile ? (
             <>
               <View style={styles.hero}>
-                <Text style={styles.eyebrow}>SETUP COMPLETE</Text>
-                <Text style={styles.title}>{"You're ready."}</Text>
+                <Text style={styles.eyebrow}>ONE LAST STEP</Text>
+                <Text style={styles.title}>Make Sodera your Home.</Text>
                 <Text style={styles.description}>
-                  Your wallet and demo identity are ready in the Sodera launcher.
+                  Choose Sodera as your default Home app in the Android prompt. Your Home button will then open Sodera.
                 </Text>
               </View>
               <View style={styles.summaryCard}>
@@ -301,8 +361,10 @@ export function OnboardingScreen({
                   {account}
                 </Text>
               </View>
+              <InlineError message={message} />
               <View style={styles.actions}>
-                <ActionButton label="Open Sodera" onPress={() => onComplete(profile)} />
+                <ActionButton label="Set Sodera as Home" busy={busy} disabled={busy} onPress={selectDefaultHome} />
+                <ActionButton label="I've selected Sodera" disabled={busy} onPress={confirmDefaultHome} secondary />
               </View>
             </>
           ) : null}
@@ -387,10 +449,10 @@ function InlineError({ message }: { message: string }) {
 }
 
 function progressLabel(stage: Stage) {
-  if (stage === 'welcome') return '1 / 3';
-  if (stage === 'wallet') return '2 / 3';
-  if (stage === 'username') return '3 / 3';
-  return 'READY';
+  if (stage === 'welcome') return '1 / 4';
+  if (stage === 'wallet') return '2 / 4';
+  if (stage === 'username') return '3 / 4';
+  return '4 / 4';
 }
 
 function getErrorMessage(error: unknown) {

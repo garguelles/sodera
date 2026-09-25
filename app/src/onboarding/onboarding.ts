@@ -4,6 +4,7 @@ import {
   inspectPersistedWalletIdentity,
   type WalletIdentityStorage,
 } from '@/wallet/wallet-identity';
+import { defaultHomeClient, type DefaultHomeClient } from '@/launcher/default-home';
 
 export const SODERA_FIXTURE_USERNAME = 'anon.sodera.eth';
 
@@ -30,14 +31,17 @@ export type UsernameClaimClient = {
 export type OnboardingAccess =
   | { status: 'incomplete'; wallet: 'missing' | 'resumable' }
   | { status: 'complete'; profile: OnboardingProfile }
+  | { status: 'home'; profile: OnboardingProfile }
   | { status: 'blocked'; message: string };
 
 export async function resolveOnboardingAccess({
   identityStorage,
   profileStorage,
+  homeClient = defaultHomeClient,
 }: {
   identityStorage: WalletIdentityStorage;
   profileStorage: OnboardingProfileStorage;
+  homeClient?: DefaultHomeClient;
 }): Promise<OnboardingAccess> {
   const [identityState, profile] = await Promise.all([
     inspectPersistedWalletIdentity(identityStorage),
@@ -66,7 +70,9 @@ export async function resolveOnboardingAccess({
       message: 'The onboarding profile belongs to a different Smart Account',
     };
   }
-  return { status: 'complete', profile };
+  return (await homeClient.isDefaultHome())
+    ? { status: 'complete', profile }
+    : { status: 'home', profile };
 }
 
 export async function persistCompletedOnboarding({

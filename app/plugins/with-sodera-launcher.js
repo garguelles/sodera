@@ -17,6 +17,13 @@ const LAUNCHER_QUERY = {
   ],
 };
 
+const HOME_QUERY = {
+  intent: [{
+    action: [{ $: { 'android:name': 'android.intent.action.MAIN' } }],
+    category: [{ $: { 'android:name': 'android.intent.category.HOME' } }],
+  }],
+};
+
 function applyAndroidManifest(androidManifest) {
   const mainActivity = AndroidConfig.Manifest.getMainActivityOrThrow(androidManifest);
   const filters = mainActivity['intent-filter'] ?? [];
@@ -44,6 +51,13 @@ function applyAndroidManifest(androidManifest) {
     queries.push(LAUNCHER_QUERY);
     androidManifest.manifest.queries = queries;
   }
+
+  const hasHomeQuery = queries.some((query) =>
+    query.intent?.some((intent) =>
+      intent.category?.some((category) => category.$['android:name'] === 'android.intent.category.HOME'),
+    ),
+  );
+  if (!hasHomeQuery) queries.push(HOME_QUERY);
 
   return androidManifest;
 }

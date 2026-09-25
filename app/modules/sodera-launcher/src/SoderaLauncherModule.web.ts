@@ -12,6 +12,12 @@ class SoderaLauncherModule extends NativeModule<SoderaLauncherModuleEvents> {
     throw new Error('Launching installed apps is only supported on Android');
   }
 
+  async isDefaultHomeAsync() {
+    return true;
+  }
+
+  async requestDefaultHomeAsync() {}
+
   async readLauncherPreferencesAsync() {
     return globalThis.localStorage?.getItem('sodera_launcher_preferences') ?? null;
   }
