@@ -126,6 +126,12 @@
       "sourceType": "github",
       "skillPath": "plugins/expo/skills/expo-upgrade/SKILL.md",
       "computedHash": "2e7f5ffbeeb8e4d1e6d8441c30abe9d3817b6ab59bd19106bede903581680144"
+    },
+    "jaw-sdk-best-practices": {
+      "source": "JustaLab-co/jaw-skills",
+      "sourceType": "github",
+      "skillPath": "jaw-sdk-best-practices/SKILL.md",
+      "computedHash": "dd54067522bded82eacc6b96cabbd3a5d19a2a7896302c2baf587629a4c35d4f"
     }
   }
 }
