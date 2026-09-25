@@ -1,26 +1,20 @@
 import { router } from 'expo-router';
 
 import { LauncherScreen } from '@/components/launcher-screen';
-import { WalletHome } from '@/components/wallet-home';
-import { launcherClient } from '@/launcher/launcher-client';
-import { launcherPreferencesNativeStorage } from '@/launcher/launcher-preferences-native-storage';
-import { walletHomeLiveProvider } from '@/wallet/wallet-home-live';
+import { LauncherHome } from '@/components/launcher-home';
 
 export default function HomeScreen() {
   return (
     <LauncherScreen
-      client={launcherClient}
       homeContent={
-        <WalletHome
-          provider={walletHomeLiveProvider}
-          onAction={(action) => {
-            if (action === 'send') router.push('/send');
-            if (action === 'receive') router.push('/receive');
-          }}
+        <LauncherHome
+          onOpenEarn={() => router.push('/earn')}
+          onOpenSwap={() => router.push('/swap')}
+          onOpenActivity={() => router.push('/transactions')}
         />
       }
-      preferencesStorage={launcherPreferencesNativeStorage}
-      onOpenTransactions={() => router.push('/transactions')}
+      onOpenWallet={() => router.push('/wallet')}
+      onOpenPhone={() => router.push('/phone')}
       onOpenSettings={() => router.push('/settings')}
     />
   );
