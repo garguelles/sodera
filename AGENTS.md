@@ -19,3 +19,7 @@ Sodera is a seedless smart-account wallet and Android home launcher. The reposit
 - Move a ticket to In Progress when work starts.
 - Comment with implementation summary, challenges, plan changes, and useful manual testing notes. Ask before moving a ticket to Done.
 - Issue and triage guidance lives under `docs/agents/`.
+
+## Plans
+
+- Put all plan Markdown files under `docs/plans/`.
