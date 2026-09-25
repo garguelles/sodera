@@ -10,6 +10,14 @@ import {
   type WalletIdentityStorage,
 } from '@/wallet/wallet-identity';
 import type { RegisteredPrimaryPasskey } from '@/wallet/passkey-ceremony';
+import type { DefaultHomeClient } from '@/launcher/default-home';
+
+jest.mock('@/launcher/default-home', () => ({ defaultHomeClient: {} }));
+
+const homeClient: DefaultHomeClient = {
+  isDefaultHome: jest.fn().mockResolvedValue(true),
+  requestDefaultHome: jest.fn(),
+};
 
 const account = '0x1111111111111111111111111111111111111111' as const;
 const otherAccount = '0x2222222222222222222222222222222222222222' as const;
@@ -28,6 +36,7 @@ describe('onboarding state', () => {
       resolveOnboardingAccess({
         identityStorage: createStorage(null),
         profileStorage: createStorage(null),
+        homeClient,
       }),
     ).resolves.toEqual({ status: 'incomplete', wallet: 'missing' });
   });
@@ -40,6 +49,7 @@ describe('onboarding state', () => {
       resolveOnboardingAccess({
         identityStorage: createStorage(null),
         profileStorage,
+        homeClient,
       }),
     ).resolves.toEqual({
       status: 'blocked',
@@ -59,6 +69,7 @@ describe('onboarding state', () => {
       resolveOnboardingAccess({
         identityStorage: createStorage(readyIdentity(account)),
         profileStorage,
+        homeClient,
       }),
     ).resolves.toEqual({ status: 'complete', profile });
   });
@@ -71,6 +82,7 @@ describe('onboarding state', () => {
       resolveOnboardingAccess({
         identityStorage: createStorage(readyIdentity(account)),
         profileStorage,
+        homeClient,
       }),
     ).resolves.toEqual({
       status: 'blocked',
@@ -92,6 +104,16 @@ describe('onboarding state', () => {
     await expect(readOnboardingProfile(profileStorage)).rejects.toThrow(
       'Onboarding profile is invalid',
     );
+  });
+
+  it('returns existing profiles to Home setup until Sodera is selected', async () => {
+    const profileStorage = createStorage(null);
+    const profile = await persistCompletedOnboarding({ storage: profileStorage, account });
+    await expect(resolveOnboardingAccess({
+      identityStorage: createStorage(readyIdentity(account)),
+      profileStorage,
+      homeClient: { ...homeClient, isDefaultHome: async () => false },
+    })).resolves.toEqual({ status: 'home', profile });
   });
 
   it('persists an explicitly mocked fixed-name claim', async () => {

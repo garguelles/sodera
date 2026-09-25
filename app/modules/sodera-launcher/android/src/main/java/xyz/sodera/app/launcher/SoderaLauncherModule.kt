@@ -1,5 +1,6 @@
 package xyz.sodera.app.launcher
 
+import android.app.role.RoleManager
 import android.content.ActivityNotFoundException
 import android.content.BroadcastReceiver
 import android.content.ComponentName
@@ -10,6 +11,7 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.drawable.Drawable
 import android.os.Build
+import android.provider.Settings
 import android.util.Base64
 import android.util.LruCache
 import androidx.core.graphics.drawable.toBitmap
@@ -48,6 +50,24 @@ class SoderaLauncherModule : Module() {
 
     AsyncFunction("launchAppAsync") { serializedComponent: String ->
       launchApp(serializedComponent)
+    }
+
+    AsyncFunction("isDefaultHomeAsync") {
+      isDefaultHome()
+    }
+
+    AsyncFunction("requestDefaultHomeAsync") {
+      val context = requireContext()
+      if (!isDefaultHome()) {
+        val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+          val roleManager = context.getSystemService(RoleManager::class.java)
+          roleManager.createRequestRoleIntent(RoleManager.ROLE_HOME)
+        } else {
+          Intent(Settings.ACTION_HOME_SETTINGS)
+        }
+        appContext.currentActivity?.startActivityForResult(intent, HOME_ROLE_REQUEST_CODE)
+          ?: throw LauncherUnavailableException()
+      }
     }
 
     AsyncFunction("readLauncherPreferencesAsync") {
@@ -116,6 +136,18 @@ class SoderaLauncherModule : Module() {
       .toList()
   }
 
+  private fun isDefaultHome(): Boolean {
+    val context = requireContext()
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+      return context.getSystemService(RoleManager::class.java)
+        .isRoleHeld(RoleManager.ROLE_HOME)
+    }
+    val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+    @Suppress("DEPRECATION")
+    val resolved = context.packageManager.resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY)
+    return resolved?.activityInfo?.packageName == context.packageName
+  }
+
   private fun launchApp(serializedComponent: String) {
     val component = ComponentName.unflattenFromString(serializedComponent)
       ?: throw InvalidComponentException()
@@ -171,6 +203,7 @@ class SoderaLauncherModule : Module() {
   }
 
   companion object {
+    private const val HOME_ROLE_REQUEST_CODE = 4081
     private const val ICON_SIZE = 96
     private const val ICON_CACHE_SIZE = 128
     private const val PREFERENCES_FILE = "sodera_launcher"

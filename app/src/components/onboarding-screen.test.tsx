@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react-native';
 
 import { OnboardingScreen } from './onboarding-screen';
 import type { OnboardingProfileStorage, UsernameClaimClient } from '@/onboarding/onboarding';
+import type { DefaultHomeClient } from '@/launcher/default-home';
 import type { KernelPasskeyExecutionClient } from '@/wallet/kernel-passkey-execution';
 import type { PasskeyCeremonyClient, RegisteredPrimaryPasskey } from '@/wallet/passkey-ceremony';
 import {
@@ -24,6 +25,7 @@ jest.mock('@/wallet/wallet-identity-native-storage', () => ({
 jest.mock('@/onboarding/onboarding-native-storage', () => ({
   onboardingNativeStorage: { read: jest.fn(), write: jest.fn() },
 }));
+jest.mock('@/launcher/default-home', () => ({ defaultHomeClient: {} }));
 
 const account = '0x1111111111111111111111111111111111111111' as const;
 const credential: RegisteredPrimaryPasskey = {
@@ -42,6 +44,7 @@ describe('OnboardingScreen', () => {
     const profileStorage = createProfileStorage();
     const usernameClaimClient = createUsernameClaimClient();
     const onComplete = jest.fn();
+    const homeClient = createHomeClient();
     const createExecution = jest.fn().mockResolvedValue(kernelExecutionClient());
     await render(
       <OnboardingScreen
@@ -50,6 +53,7 @@ describe('OnboardingScreen', () => {
         identityStorage={identityStorage}
         profileStorage={profileStorage}
         usernameClaimClient={usernameClaimClient}
+        homeClient={homeClient}
         onComplete={onComplete}
       />,
     );
@@ -65,13 +69,17 @@ describe('OnboardingScreen', () => {
     });
 
     await press('Claim anon.sodera.eth');
-    expect(await screen.findByText("You're ready.")).toBeOnTheScreen();
+    expect(await screen.findByText('Make Sodera your Home.')).toBeOnTheScreen();
     expect(usernameClaimClient.claim).toHaveBeenCalledWith({
       account,
       username: 'anon.sodera.eth',
     });
 
-    await press('Open Sodera');
+    await press('Set Sodera as Home');
+    expect(homeClient.requestDefaultHome).toHaveBeenCalledTimes(1);
+    expect(onComplete).not.toHaveBeenCalled();
+    jest.mocked(homeClient.isDefaultHome).mockResolvedValue(true);
+    await press("I've selected Sodera");
     expect(onComplete).toHaveBeenCalledWith(
       expect.objectContaining({ account, username: 'anon.sodera.eth', claimMode: 'mock' }),
     );
@@ -86,6 +94,7 @@ describe('OnboardingScreen', () => {
         identityStorage={createIdentityStorage(readyIdentity())}
         profileStorage={createProfileStorage()}
         usernameClaimClient={createUsernameClaimClient()}
+        homeClient={createHomeClient()}
         onComplete={jest.fn()}
       />,
     );
@@ -96,6 +105,38 @@ describe('OnboardingScreen', () => {
     expect(await screen.findByText('Claim your place.')).toBeOnTheScreen();
     expect(ceremonyClient.registerPrimaryPasskey).not.toHaveBeenCalled();
     expect(ceremonyClient.verifyPrimaryPasskey).toHaveBeenCalledWith(credential);
+  });
+
+  it('resumes existing completed profiles at Home selection and keeps dismissal retryable', async () => {
+    const profileStorage = createProfileStorage();
+    await profileStorage.write(JSON.stringify({
+      schemaVersion: 1,
+      account,
+      username: 'anon.sodera.eth',
+      claimMode: 'mock',
+      completedAt: '2026-09-13T00:00:00.000Z',
+    }));
+    const homeClient = createHomeClient();
+    const onComplete = jest.fn();
+    await render(
+      <OnboardingScreen
+        client={createCeremonyClient()}
+        identityStorage={createIdentityStorage(readyIdentity())}
+        profileStorage={profileStorage}
+        homeClient={homeClient}
+        onComplete={onComplete}
+      />,
+    );
+
+    expect(await screen.findByText('Make Sodera your Home.')).toBeOnTheScreen();
+    await press('Set Sodera as Home');
+    expect(onComplete).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Set Sodera as Home' })).toBeEnabled();
+    await press("I've selected Sodera");
+    expect(await screen.findByText('Select Sodera in the Android Home app prompt to finish setup.')).toBeOnTheScreen();
+    expect(homeClient.requestDefaultHome).toHaveBeenCalledTimes(1);
+    await press('Set Sodera as Home');
+    expect(homeClient.requestDefaultHome).toHaveBeenCalledTimes(2);
   });
 
   it('continues partial wallet registration without creating another credential', async () => {
@@ -117,6 +158,7 @@ describe('OnboardingScreen', () => {
         identityStorage={identityStorage}
         profileStorage={createProfileStorage()}
         usernameClaimClient={createUsernameClaimClient()}
+        homeClient={createHomeClient()}
         onComplete={jest.fn()}
       />,
     );
@@ -137,6 +179,7 @@ describe('OnboardingScreen', () => {
         identityStorage={createIdentityStorage()}
         profileStorage={createProfileStorage()}
         usernameClaimClient={createUsernameClaimClient()}
+        homeClient={createHomeClient()}
         onComplete={jest.fn()}
       />,
     );
@@ -162,6 +205,7 @@ describe('OnboardingScreen', () => {
         identityStorage={createIdentityStorage(readyIdentity())}
         profileStorage={createProfileStorage()}
         usernameClaimClient={{ claim }}
+        homeClient={createHomeClient()}
         onComplete={jest.fn()}
       />,
     );
@@ -179,6 +223,13 @@ describe('OnboardingScreen', () => {
     expect(screen.getByRole('button', { name: 'Claim anon.sodera.eth' })).toBeEnabled();
   });
 });
+
+function createHomeClient(): DefaultHomeClient {
+  return {
+    isDefaultHome: jest.fn().mockResolvedValue(false),
+    requestDefaultHome: jest.fn().mockResolvedValue(undefined),
+  };
+}
 
 async function press(name: string) {
   await screen.findByRole('button', { name });
