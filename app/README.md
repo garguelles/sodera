@@ -13,6 +13,8 @@ pnpm start
 
 Use `pnpm android` for a local Android development build. Expo Router routes live in `src/app/`.
 
+For a standalone Android APK to share with testers, run `pnpm build:android`. This uses the EAS `preview` profile and prints an EAS-hosted install link. Confirm the EAS build environment contains the public Sepolia RPC and ZeroDev bundler URLs before building. Validate the APK on a device before putting its link on the landing page.
+
 ## Android passkey proof
 
 Passkeys require the native development build; Expo Go does not include the local Credential Manager module. Start Metro, then build for and install on the selected device:
