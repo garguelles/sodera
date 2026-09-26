@@ -12,6 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { Address } from 'viem';
 
+import { platinum } from '@/constants/theme';
 import {
   mockUsernameClaimClient,
   persistCompletedOnboarding,
@@ -255,7 +256,7 @@ export function OnboardingScreen({
         <View style={styles.body}>
           {stage === 'loading' ? (
             <View style={styles.centered}>
-              <ActivityIndicator color="#d4f06a" />
+              <ActivityIndicator color={platinum.colors.emerald} />
               <Text style={styles.muted}>Checking this installation...</Text>
             </View>
           ) : null}
@@ -432,7 +433,7 @@ function ActionButton({
         (pressed || disabled) && styles.buttonPressed,
       ]}
     >
-      {busy ? <ActivityIndicator color="#171713" /> : <Text style={[styles.buttonText, secondary && styles.secondaryButtonText]}>{label}</Text>}
+      {busy ? <ActivityIndicator color={secondary ? platinum.colors.platinum : platinum.colors.onPlatinum} /> : <Text style={[styles.buttonText, secondary && styles.secondaryButtonText]}>{label}</Text>}
     </Pressable>
   );
 }
@@ -459,81 +460,84 @@ function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'Setup could not continue';
 }
 
+const { colors, spacing, radius, typography } = platinum;
+
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#171713' },
-  content: { flexGrow: 1, paddingHorizontal: 24, paddingVertical: 20 },
+  screen: { flex: 1, backgroundColor: colors.canvas },
+  content: { flexGrow: 1, paddingHorizontal: spacing.xl, paddingVertical: spacing.xl },
   header: { flexDirection: 'row', alignItems: 'center', minHeight: 44 },
   mark: {
     width: 28,
     height: 28,
-    borderRadius: 14,
+    borderRadius: radius.full,
     borderCurve: 'continuous',
     borderWidth: 1,
-    borderColor: '#d4f06a',
+    borderColor: colors.borderLit,
+    backgroundColor: colors.glassRaised,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  markCore: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#d4f06a' },
-  wordmark: { color: '#f3f0e8', fontSize: 13, fontWeight: '800', letterSpacing: 2, paddingLeft: 10 },
-  progress: { marginLeft: 'auto', color: '#929188', fontSize: 12, fontWeight: '700', letterSpacing: 1 },
-  body: { flex: 1, justifyContent: 'space-between', paddingTop: 48, paddingBottom: 16, gap: 32 },
-  centered: { flex: 1, minHeight: 400, alignItems: 'center', justifyContent: 'center', gap: 16 },
-  hero: { gap: 14 },
-  eyebrow: { color: '#d4f06a', fontSize: 12, fontWeight: '800', letterSpacing: 1.5 },
-  title: { color: '#f3f0e8', fontSize: 48, lineHeight: 50, fontWeight: '800', letterSpacing: -1.8, maxWidth: 520 },
-  description: { color: '#aaa89f', fontSize: 18, lineHeight: 27, maxWidth: 560 },
-  muted: { color: '#929188', fontSize: 15 },
-  actions: { gap: 12, paddingTop: 24 },
+  markCore: { width: 10, height: 10, borderRadius: radius.full, backgroundColor: colors.platinum },
+  wordmark: { ...typography.label, color: colors.platinum, letterSpacing: 2, paddingLeft: spacing.md },
+  progress: { ...typography.labelSmall, marginLeft: 'auto', color: colors.mutedText },
+  body: { flex: 1, justifyContent: 'space-between', paddingTop: spacing.xxl, paddingBottom: spacing.lg, gap: spacing.xxl },
+  centered: { flex: 1, minHeight: 400, alignItems: 'center', justifyContent: 'center', gap: spacing.lg },
+  hero: { gap: spacing.md },
+  eyebrow: { ...typography.labelSmall, color: colors.emerald },
+  title: { ...typography.display, color: colors.platinum, maxWidth: 520 },
+  description: { ...typography.body, color: colors.mutedText, maxWidth: 560 },
+  muted: { ...typography.bodySmall, color: colors.mutedText },
+  actions: { gap: spacing.md, paddingTop: spacing.xl },
   button: {
     minHeight: 56,
-    borderRadius: 18,
+    borderRadius: radius.lg,
     borderCurve: 'continuous',
-    backgroundColor: '#d4f06a',
+    backgroundColor: colors.platinum,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 20,
+    paddingHorizontal: spacing.xl,
   },
-  secondaryButton: { backgroundColor: '#292923', borderWidth: 1, borderColor: '#3c3c34' },
+  secondaryButton: { backgroundColor: colors.surfaceHigh, borderWidth: 1, borderColor: colors.border },
   buttonPressed: { opacity: 0.65 },
-  buttonText: { color: '#171713', fontSize: 16, fontWeight: '800' },
-  secondaryButtonText: { color: '#f3f0e8' },
+  buttonText: { ...typography.body, fontFamily: typography.subheading.fontFamily, color: colors.onPlatinum },
+  secondaryButtonText: { color: colors.platinum },
   detailCard: {
-    backgroundColor: '#24241f',
-    borderRadius: 22,
+    backgroundColor: colors.surface,
+    borderRadius: radius.xl,
     borderCurve: 'continuous',
-    padding: 20,
-    gap: 8,
+    padding: spacing.xl,
+    gap: spacing.sm,
     borderWidth: 1,
-    borderColor: '#34342d',
+    borderColor: colors.border,
   },
-  detailTitle: { color: '#f3f0e8', fontSize: 17, fontWeight: '700' },
-  detailBody: { color: '#929188', fontSize: 15, lineHeight: 22 },
+  detailTitle: { ...typography.subheading, color: colors.platinum },
+  detailBody: { ...typography.bodySmall, color: colors.mutedText },
   nameCard: {
     minHeight: 170,
-    backgroundColor: '#d4f06a',
-    borderRadius: 28,
+    backgroundColor: colors.platinum,
+    borderRadius: radius.xl,
     borderCurve: 'continuous',
-    padding: 24,
+    padding: spacing.xl,
     justifyContent: 'space-between',
   },
-  name: { color: '#171713', fontSize: 29, fontWeight: '900', letterSpacing: -0.8 },
-  availablePill: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#171713', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 8 },
-  availableDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#d4f06a' },
-  availableText: { color: '#f3f0e8', fontSize: 12, fontWeight: '700' },
-  disclaimer: { color: '#77766f', fontSize: 13, lineHeight: 19 },
+  name: { ...typography.title, color: colors.onPlatinum },
+  availablePill: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: colors.onPlatinum, borderRadius: radius.full, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  availableDot: { width: 7, height: 7, borderRadius: radius.full, backgroundColor: colors.emerald },
+  availableText: { ...typography.caption, color: colors.platinum },
+  disclaimer: { ...typography.bodySmall, color: colors.mutedText },
   summaryCard: {
-    backgroundColor: '#24241f',
-    borderRadius: 24,
+    backgroundColor: colors.surface,
+    borderRadius: radius.xl,
     borderCurve: 'continuous',
-    padding: 22,
-    gap: 10,
+    padding: spacing.xl,
+    gap: spacing.md,
     borderWidth: 1,
-    borderColor: '#34342d',
+    borderColor: colors.border,
   },
-  summaryLabel: { color: '#77766f', fontSize: 11, fontWeight: '800', letterSpacing: 1.3 },
-  summaryValue: { color: '#d4f06a', fontSize: 22, fontWeight: '800' },
-  address: { color: '#f3f0e8', fontSize: 13, lineHeight: 20 },
-  divider: { height: 1, backgroundColor: '#3a3a33', marginVertical: 8 },
-  errorCard: { backgroundColor: '#4b2724', borderRadius: 16, borderCurve: 'continuous', padding: 16 },
-  errorText: { color: '#ffd9d4', fontSize: 14, lineHeight: 20 },
+  summaryLabel: { ...typography.labelSmall, color: colors.mutedText },
+  summaryValue: { ...typography.heading, color: colors.platinum },
+  address: { ...typography.label, color: colors.secondaryText },
+  divider: { height: 1, backgroundColor: colors.border, marginVertical: spacing.sm },
+  errorCard: { backgroundColor: colors.negativeWash, borderRadius: radius.lg, borderCurve: 'continuous', padding: spacing.lg },
+  errorText: { ...typography.bodySmall, color: colors.negative },
 });
