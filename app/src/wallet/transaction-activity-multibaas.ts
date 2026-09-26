@@ -14,7 +14,7 @@ import {
 import { sepolia } from 'viem/chains';
 
 import {
-  MULTIBAAS_ALIASES,
+  MULTIBAAS_CONTRACTS,
   MULTIBAAS_MAX_QUERY_LIMIT,
   createMultiBaasClient,
   formatAddressFilterValue,
@@ -72,7 +72,7 @@ export function buildUsdcTransferQuery(account: Address, direction: 'sent' | 're
         filter: {
           rule: 'and',
           children: [
-            { fieldType: 'contract_address_alias', operator: 'equal', value: MULTIBAAS_ALIASES.usdc },
+            { fieldType: 'contract_address', operator: 'equal', value: MULTIBAAS_CONTRACTS.usdc.address },
             {
               fieldType: 'input',
               inputIndex: direction === 'sent' ? 0 : 1,
@@ -98,9 +98,9 @@ export function buildUserOperationQuery(account: Address): EventQuery {
           rule: 'and',
           children: [
             {
-              fieldType: 'contract_address_alias',
+              fieldType: 'contract_address',
               operator: 'equal',
-              value: MULTIBAAS_ALIASES.entryPoint,
+              value: MULTIBAAS_CONTRACTS.entryPoint.address,
             },
             {
               fieldType: 'input',
@@ -233,7 +233,7 @@ export async function readEthTransfers({
   await Promise.all(
     operationRows.map(async (row) => {
       const transactionHash = parseHash(row.txHash);
-      const userOperationHash = parseHash(row.userOpHash);
+      const userOperationHash = parseBytes32(row.userOpHash);
       const nonce = parseUint(row.nonce);
       if (!transactionHash || !userOperationHash || nonce === null) return;
       if (explained.has(transactionHash.toLowerCase())) return;
@@ -308,7 +308,7 @@ export function normalizeMultiBaasActivity({
 
   for (const row of operations) {
     const base = parseRowBase(row);
-    const userOperationHash = parseHash(row.userOpHash);
+    const userOperationHash = parseBytes32(row.userOpHash);
     const paymaster = parseAddress(row.paymaster);
     const success = parseBoolean(row.success);
     const actualGasCost = parseUint(row.actualGasCost);
@@ -401,6 +401,30 @@ function parseHash(value: unknown): Hash | null {
   return typeof value === 'string' && isHash(value) ? value : null;
 }
 
+/**
+ * MultiBaas returns `bytes32` event inputs as a JSON byte array string such as
+ * `[138, 228, ...]` rather than hex. Accept either form.
+ */
+export function parseBytes32(value: unknown): Hash | null {
+  const hex = parseHash(value);
+  if (hex) return hex;
+  if (typeof value !== 'string' || !value.startsWith('[')) return null;
+  let bytes: unknown;
+  try {
+    bytes = JSON.parse(value);
+  } catch {
+    return null;
+  }
+  if (
+    !Array.isArray(bytes) ||
+    bytes.length !== 32 ||
+    !bytes.every((byte) => Number.isInteger(byte) && byte >= 0 && byte <= 255)
+  ) {
+    return null;
+  }
+  return `0x${bytes.map((byte: number) => byte.toString(16).padStart(2, '0')).join('')}` as Hash;
+}
+
 function parseAddress(value: unknown): Address | null {
   return typeof value === 'string' && isAddress(value, { strict: false }) ? getAddress(value) : null;
 }
@@ -410,10 +434,18 @@ function parseBlockNumber(value: unknown): number | null {
   return typeof parsed === 'number' && Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : null;
 }
 
-function parseTimestamp(value: unknown): string | null {
+/**
+ * MultiBaas returns Postgres-style timestamps such as `2026-09-26 05:45:12+00`. Hermes only
+ * guarantees ISO-8601 parsing, so rewrite them to `2026-09-26T05:45:12+00:00` first.
+ */
+export function parseTimestamp(value: unknown): string | null {
   if (typeof value !== 'string') return null;
-  const time = Date.parse(value);
-  return Number.isFinite(time) ? new Date(time).toISOString() : null;
+  const match = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2}(?:\.\d+)?)(Z|[+-]\d{2}(?::?\d{2})?)?$/.exec(value);
+  if (!match) return null;
+  const [, date, time, zone = 'Z'] = match;
+  const offset = zone === 'Z' ? 'Z' : zone.length === 3 ? `${zone}:00` : zone.includes(':') ? zone : `${zone.slice(0, 3)}:${zone.slice(3)}`;
+  const parsed = Date.parse(`${date}T${time}${offset}`);
+  return Number.isFinite(parsed) ? new Date(parsed).toISOString() : null;
 }
 
 function parseUint(value: unknown): bigint | null {

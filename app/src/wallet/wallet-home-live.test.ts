@@ -2,6 +2,7 @@ import { CURRENT_WALLET_IDENTITY_PINS, type WalletIdentityStorage } from './wall
 import { createWalletHomeLiveProvider } from './wallet-home-live';
 import type { RegisteredPrimaryPasskey } from './passkey-ceremony';
 
+jest.mock('@/launcher/default-home', () => ({ defaultHomeClient: {} }));
 jest.mock('./wallet-identity-native-storage', () => ({
   walletIdentityNativeStorage: { read: jest.fn(), write: jest.fn(), clear: jest.fn() },
 }));
@@ -92,7 +93,7 @@ describe('wallet Home live provider', () => {
       },
     });
 
-    await expect(provider.load()).rejects.toThrow('Wallet balance RPC is not Ethereum Sepolia');
+    await expect(provider.load()).rejects.toThrow('MultiBaas deployment is not Ethereum Sepolia');
   });
 
   it('values a zero ETH balance at zero without requiring a price feed', async () => {
@@ -120,6 +121,18 @@ describe('wallet Home live provider', () => {
     expect(readContract).not.toHaveBeenCalledWith(
       expect.objectContaining({ functionName: 'latestRoundData' }),
     );
+  });
+
+  it('reads balances through MultiBaas by default and names a missing setting', async () => {
+    const saved = process.env.EXPO_PUBLIC_MULTIBAAS_BASE_URL;
+    delete process.env.EXPO_PUBLIC_MULTIBAAS_BASE_URL;
+    try {
+      const provider = createWalletHomeLiveProvider({ storage: createStorage(), now: () => now });
+      await expect(provider.load()).rejects.toThrow('EXPO_PUBLIC_MULTIBAAS_BASE_URL is not configured');
+    } finally {
+      if (saved === undefined) delete process.env.EXPO_PUBLIC_MULTIBAAS_BASE_URL;
+      else process.env.EXPO_PUBLIC_MULTIBAAS_BASE_URL = saved;
+    }
   });
 
   it('does not query balances without a derived persisted account', async () => {

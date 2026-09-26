@@ -1,14 +1,16 @@
 import { AppState } from 'react-native';
-import { createPublicClient, formatEther, formatUnits, http, type Address } from 'viem';
+import { formatEther, formatUnits, type Address } from 'viem';
 import { sepolia } from 'viem/chains';
 
+import { createMultiBaasClient, readMultiBaasConfigFromEnv } from './multibaas';
+import { createMultiBaasBalanceClient } from './multibaas-balance-client';
 import type { WalletHomeProvider } from './wallet-home';
 import { SEPOLIA_ETH_USD_FEED_ADDRESS, SEPOLIA_USDC_ADDRESS } from './sepolia';
 import { readPersistedWalletIdentity, type WalletIdentityStorage } from './wallet-identity';
 import { walletIdentityNativeStorage } from './wallet-identity-native-storage';
 import { SODERA_FIXTURE_USERNAME } from '@/onboarding/onboarding';
 
-type SepoliaBalanceClient = {
+export type SepoliaBalanceClient = {
   getChainId(): Promise<number>;
   getBalance(parameters: { address: Address }): Promise<bigint>;
   readContract(parameters: {
@@ -24,7 +26,7 @@ const ETH_USD_DECIMALS = 8;
 const ETH_USD_MAX_AGE_SECONDS = 7_200n;
 const ETH_USD_MAX_FUTURE_SECONDS = 300n;
 const WEI_PER_ETH = 10n ** 18n;
-const SEPOLIA_READ_ABI = [
+export const SEPOLIA_READ_ABI = [
   {
     type: 'function',
     name: 'balanceOf',
@@ -68,9 +70,9 @@ export function createWalletHomeLiveProvider({
   const getClient = () => {
     if (client) return client;
     if (defaultClient) return defaultClient;
-    const rpcUrl = process.env.EXPO_PUBLIC_SEPOLIA_RPC_URL;
-    if (!rpcUrl) throw new Error('EXPO_PUBLIC_SEPOLIA_RPC_URL is required for wallet balances');
-    defaultClient = createPublicClient({ chain: sepolia, transport: http(rpcUrl) });
+    defaultClient = createMultiBaasBalanceClient({
+      client: createMultiBaasClient({ config: readMultiBaasConfigFromEnv() }),
+    });
     return defaultClient;
   };
 
@@ -89,7 +91,7 @@ export function createWalletHomeLiveProvider({
           args: [identity.account],
         }),
       ]);
-      if (chainId !== sepolia.id) throw new Error('Wallet balance RPC is not Ethereum Sepolia');
+      if (chainId !== sepolia.id) throw new Error('MultiBaas deployment is not Ethereum Sepolia');
       if (typeof usdcBalanceResult !== 'bigint') throw new Error('Invalid Sepolia USDC balance');
 
       const ethValueUsdCents =

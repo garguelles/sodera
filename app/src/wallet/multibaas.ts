@@ -1,23 +1,29 @@
 import { getAddress, type Address } from 'viem';
 
+import { SEPOLIA_ETH_USD_FEED_ADDRESS, SEPOLIA_USDC_ADDRESS } from './sepolia';
+
+const ENTRY_POINT_V07_ADDRESS: Address = '0x0000000071727De22E5E9d8BAf0edAc6f37da032';
+
 export const MULTIBAAS_API_PREFIX = '/api/v0';
 export const MULTIBAAS_CHAIN = 'ethereum';
 
-export const MULTIBAAS_ALIASES = Object.freeze({
-  usdc: 'usdc',
-  entryPoint: 'entrypoint_v07',
-  ethUsdFeed: 'eth_usd_feed',
+/**
+ * Contracts linked in the MultiBaas deployment. Requests address them by their fixed chain
+ * address; the label is the contract name chosen in the MultiBaas console when linking, and is
+ * required only for method calls. Aliases are not used because the console cannot rename them.
+ */
+export const MULTIBAAS_CONTRACTS = Object.freeze({
+  usdc: { address: SEPOLIA_USDC_ADDRESS as Address, label: 'usdc' },
+  entryPoint: { address: ENTRY_POINT_V07_ADDRESS, label: 'usdc2' },
+  ethUsdFeed: { address: SEPOLIA_ETH_USD_FEED_ADDRESS as Address, label: 'ethprice' },
 });
 
 /**
- * Address form used as a value in `input` event-query filters. Checksummed is the plan default;
- * switch to 'lowercase' if `pnpm verify:multibaas` step 7 shows only lowercase matches.
+ * `input` event-query filters match addresses only in lowercase; a checksummed value returns
+ * no rows (confirmed against the deployment by `pnpm verify:multibaas` step 7).
  */
-export const MULTIBAAS_ADDRESS_FILTER_CASE: 'checksummed' | 'lowercase' = 'checksummed';
-
 export function formatAddressFilterValue(address: Address) {
-  const checksummed = getAddress(address);
-  return MULTIBAAS_ADDRESS_FILTER_CASE === 'lowercase' ? checksummed.toLowerCase() : checksummed;
+  return getAddress(address).toLowerCase();
 }
 
 export type MultiBaasConfig = { baseUrl: string; apiKey: string };
@@ -86,7 +92,12 @@ export type MultiBaasClient = {
     query: EventQuery,
     options?: { offset?: number; limit?: number },
   ): Promise<Record<string, unknown>[]>;
-  callMethod(alias: string, label: string, method: string, args: readonly unknown[]): Promise<unknown>;
+  callMethod(
+    addressOrAlias: string,
+    label: string,
+    method: string,
+    args: readonly unknown[],
+  ): Promise<unknown>;
   getAddress(
     address: Address | string,
     include: readonly MultiBaasAddressInclude[],
@@ -154,9 +165,9 @@ export function createMultiBaasClient({
       }
       return result.rows;
     },
-    async callMethod(alias, label, method, args) {
+    async callMethod(addressOrAlias, label, method, args) {
       const result = await request(
-        `/chains/${MULTIBAAS_CHAIN}/addresses/${encodeURIComponent(alias)}/contracts/${encodeURIComponent(label)}/methods/${encodeURIComponent(method)}`,
+        `/chains/${MULTIBAAS_CHAIN}/addresses/${encodeURIComponent(addressOrAlias)}/contracts/${encodeURIComponent(label)}/methods/${encodeURIComponent(method)}`,
         { args, formatInts: 'as_strings' },
       );
       if (!isRecord(result) || !('output' in result)) {

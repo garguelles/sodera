@@ -6,6 +6,8 @@ import type { TransactionActivityTransfer } from './transaction-activity';
 import {
   createMultiBaasTransactionActivityProvider,
   normalizeMultiBaasActivity,
+  parseBytes32,
+  parseTimestamp,
 } from './transaction-activity-multibaas';
 import type { UserOperationTransactionReader } from './user-operation-calls';
 import { encodeBundle, encodeKernelCalls } from './user-operation-calls-fixtures';
@@ -125,6 +127,39 @@ describe('normalizeMultiBaasActivity', () => {
     ]);
   });
 
+  it('reads an operation row in the shape MultiBaas returns', () => {
+    const userOpBytes = Array.from({ length: 32 }, () => 0xcc);
+    const result = normalize({
+      operations: [
+        {
+          actualGasCost: '133746347871830',
+          actualGasUsed: '121054',
+          blockNumber: '11784436',
+          nonce: '7',
+          paymaster: '0x777777777777aec03fd955926dbf81597e66834c',
+          success: 'true',
+          timestamp: '2026-09-26 06:26:00+00',
+          txHash: hash('aa'),
+          userOpHash: `[${userOpBytes.join(', ')}]`,
+        },
+      ],
+    });
+
+    expect(result).toEqual({
+      skippedCount: 0,
+      items: [
+        expect.objectContaining({
+          kind: 'operation',
+          userOperationHash: hash('cc'),
+          success: true,
+          sponsored: true,
+          blockNumber: 11784436,
+          timestamp: '2026-09-26T06:26:00.000Z',
+        }),
+      ],
+    });
+  });
+
   it('counts malformed rows as skipped', () => {
     const result = normalize({
       usdcSent: [
@@ -178,6 +213,38 @@ describe('normalizeMultiBaasActivity', () => {
   });
 });
 
+describe('parseBytes32', () => {
+  it('accepts hex and the byte array form MultiBaas returns', () => {
+    const bytes = Array.from({ length: 32 }, (_, index) => index * 8);
+    const hex = `0x${bytes.map((byte) => byte.toString(16).padStart(2, '0')).join('')}`;
+
+    expect(parseBytes32(hex)).toBe(hex);
+    expect(parseBytes32(`[${bytes.join(', ')}]`)).toBe(hex);
+  });
+
+  it('rejects wrong lengths and values', () => {
+    expect(parseBytes32('[1, 2, 3]')).toBeNull();
+    expect(parseBytes32(`[${Array(32).fill(256).join(',')}]`)).toBeNull();
+    expect(parseBytes32('[not json')).toBeNull();
+    expect(parseBytes32(12)).toBeNull();
+  });
+});
+
+describe('parseTimestamp', () => {
+  it('accepts the timestamp forms MultiBaas and ISO-8601 use', () => {
+    expect(parseTimestamp('2026-09-26 05:45:12+00')).toBe('2026-09-26T05:45:12.000Z');
+    expect(parseTimestamp('2026-09-26 14:45:12.5+09:00')).toBe('2026-09-26T05:45:12.500Z');
+    expect(parseTimestamp('2026-09-26T05:45:12Z')).toBe('2026-09-26T05:45:12.000Z');
+    expect(parseTimestamp('2026-09-26T05:45:12-0130')).toBe('2026-09-26T07:15:12.000Z');
+  });
+
+  it('rejects anything else', () => {
+    expect(parseTimestamp('yesterday')).toBeNull();
+    expect(parseTimestamp('2026-09-26')).toBeNull();
+    expect(parseTimestamp(1790401512)).toBeNull();
+  });
+});
+
 describe('createMultiBaasTransactionActivityProvider', () => {
   it('sends the three event queries and reports an empty account', async () => {
     const client = createClient();
@@ -212,7 +279,7 @@ describe('createMultiBaasTransactionActivityProvider', () => {
           filter: {
             rule: 'and',
             children: [
-              { fieldType: 'contract_address_alias', operator: 'equal', value: 'usdc' },
+              { fieldType: 'contract_address', operator: 'equal', value: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238' },
               { fieldType: 'input', inputIndex: 0, operator: 'equal', value: account },
             ],
           },
@@ -224,7 +291,7 @@ describe('createMultiBaasTransactionActivityProvider', () => {
     expect(received.events[0].filter).toEqual({
       rule: 'and',
       children: [
-        { fieldType: 'contract_address_alias', operator: 'equal', value: 'usdc' },
+        { fieldType: 'contract_address', operator: 'equal', value: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238' },
         { fieldType: 'input', inputIndex: 1, operator: 'equal', value: account },
       ],
     });
@@ -246,7 +313,7 @@ describe('createMultiBaasTransactionActivityProvider', () => {
           filter: {
             rule: 'and',
             children: [
-              { fieldType: 'contract_address_alias', operator: 'equal', value: 'entrypoint_v07' },
+              { fieldType: 'contract_address', operator: 'equal', value: '0x0000000071727De22E5E9d8BAf0edAc6f37da032' },
               { fieldType: 'input', inputIndex: 1, operator: 'equal', value: account },
             ],
           },

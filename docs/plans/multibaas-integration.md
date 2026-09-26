@@ -2,9 +2,9 @@
 
 Status: approved scope, not yet implemented. Branch: `feat/curvegrid`. No Linear ticket; commits use `{type}: {description}`.
 
-This document is one large ticket split into seven sub-tickets. Sections 1 to 4 integrate MultiBaas. Sections 5 to 7 add the wallet agent. Each section is written so that a fresh model can implement it without the conversation that produced this plan. Read "Shared context" and "Prerequisites" before any MultiBaas section, and additionally "Wallet agent" before sections 5 to 7. Sections 2, 3, and 4 depend on the client module and verification script delivered by section 1 and are otherwise independent of each other. Section 6 depends on section 5. Section 7 depends on section 5 and reuses section 6's intent flow.
+This document is one large ticket split into sub-tickets numbered 1 to 7. Section 2, an asset flows card, was removed; the other numbers are unchanged. Sections 1, 3, and 4 integrate MultiBaas. Sections 5 to 7 add the wallet agent. Each section is written so that a fresh model can implement it without the conversation that produced this plan. Read "Shared context" and "Prerequisites" before any MultiBaas section, and additionally "Wallet agent" before sections 5 to 7. Sections 3 and 4 depend on the client module and verification script delivered by section 1 and are otherwise independent of each other. Section 6 depends on section 5. Section 7 depends on section 5 and reuses section 6's intent flow.
 
-Priority: sections 1, 2, and 3 are the MultiBaas deliverable and are frontend-only. Sections 5, 6, and 7 are the agent deliverable; section 5 adds the project's only backend, the `agent/` service. Section 4 is low priority. It is retained so the design is not lost, would add its endpoints to the `agent/` service, and is not scheduled.
+Priority: sections 1 and 3 are the MultiBaas deliverable and are frontend-only. Sections 5, 6, and 7 are the agent deliverable; section 5 adds the project's only backend, the `agent/` service. Section 4 is low priority. It is retained so the design is not lost, would add its endpoints to the `agent/` service, and is not scheduled.
 
 ## Scope decisions
 
@@ -70,8 +70,8 @@ ERC-20 `Transfer(address indexed from, address indexed to, uint256 value)` has i
       "filter": {
         "rule": "and",
         "children": [
-          { "fieldType": "contract_address_alias", "operator": "equal", "value": "usdc" },
-          { "fieldType": "input", "inputIndex": 1, "operator": "equal", "value": "0x..." }
+          { "fieldType": "contract_address", "operator": "equal", "value": "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238" },
+          { "fieldType": "input", "inputIndex": 1, "operator": "equal", "value": "0x<lowercase address>" }
         ]
       }
     }
@@ -82,7 +82,14 @@ ERC-20 `Transfer(address indexed from, address indexed to, uint256 value)` has i
 ```
 
   Enumerations from the SDK: `type` and `fieldType` accept `input`, `contract_label`, `contract_name`, `contract_address`, `contract_address_alias`, `block_number`, `triggered_at`, `event_signature`, `block_hash`, `tx_hash`, `tx_from`. `operator` accepts `equal`, `notequal`, `lessthan`, `greaterthan`, `lessthanorequal`, `greaterthanorequal`. `rule` accepts `and`, `or`. `aggregator` on a select field accepts `add`, `subtract`, `last`, `first`, `min`, `max`; when any aggregator is used, `groupBy` must name a non-aggregated alias. The response is `{ status, message, result: { rows: Record<string, unknown>[] } }`. Row values for `uint256` inputs are strings.
-- Contract reads: `POST /chains/ethereum/addresses/{alias}/contracts/{label}/methods/{method}` with body `{ "args": [...], "formatInts": "as_strings" }`. The response is `{ status, message, result: { kind: "MethodCallResponse", output } }`. `formatInts: "as_strings"` prevents precision loss; parse with `BigInt`.
+
+  Confirmed against the deployment on 2026-09-26:
+  - `limit` above 50 returns HTTP 400 `invalid request`.
+  - `input` filters match addresses only in lowercase; a checksummed value returns no rows. `contract_address` filters accept either case.
+  - Address values come back lowercase. `block_number` comes back as a string. `bool` inputs come back as the strings `"true"` and `"false"`.
+  - `triggered_at` comes back Postgres-style, `2026-09-26 06:26:00+00`, not ISO-8601.
+  - `bytes32` inputs such as `userOpHash` come back as a JSON byte array string, `[138, 228, ...]`, not hex.
+- Contract reads: `POST /chains/ethereum/addresses/{address}/contracts/{label}/methods/{method}` with body `{ "args": [...], "formatInts": "as_strings" }`. The response is `{ status, message, result: { kind: "MethodCallResponse", output } }`. `formatInts: "as_strings"` prevents precision loss; parse with `BigInt`. `latestRoundData` returns `output` as an array of five strings. The address lookup returns the wei balance in a `balance` string field.
 - Address lookup: `GET /chains/ethereum/addresses/{address}?include=balance` (also `code`, `nonce`, `contractLookup`). The response schema is not published in the reference pages; the prerequisites spike records the actual field that holds the wei balance.
 - Chain status: `GET /chains/ethereum/status`. The spike records the actual field that holds the chain id.
 - Webhooks are configured in the UI with a label, URL, and one event type: `event.emitted` (any synced contract event) or `transaction.included` (Cloud Wallet transactions only, unused here). Each request carries `X-MultiBaas-Signature` and `X-MultiBaas-Timestamp`. The signature is hex `HMAC-SHA256(secret, rawBody || timestampDecimalString)`. The payload is a JSON array of `{ id, event: "event.emitted", data }` where `data` matches the list-events API shape (event name, signature, inputs, transaction and contract fields). Retry behaviour is undocumented; treat delivery as at-least-once and make the receiver idempotent on `id`. How the secret is obtained is undocumented; the prerequisites step records where the UI shows it.
@@ -93,11 +100,12 @@ ERC-20 `Transfer(address indexed from, address indexed to, uint256 value)` has i
 These steps need the Curvegrid console and cannot be automated from the repo.
 
 1. Create a MultiBaas deployment on Ethereum Sepolia. Record its domain.
-2. Add USDC by address (`0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238`). It is a `FiatTokenProxy`; confirm the discovered ABI is the implementation ABI containing `Transfer`, `balanceOf`, and `decimals`. Contract label `usdc`, address alias `usdc`. Enable sync events. Starting block: the most recent block the free tier allows (100 back from head). Record the block number.
-3. Add EntryPoint v0.7 by address (`0x0000000071727De22E5E9d8BAf0edAc6f37da032`). Confirm the ABI contains `UserOperationEvent`. Label `entrypoint_v07`, alias `entrypoint_v07`. Enable sync events from the same starting block.
-4. Add the Chainlink aggregator by address (`0x694AA1769357215DE4FAC081bf1f309aDC325306`). If ABI discovery fails on the proxy, link it to a hand-entered ABI containing only `decimals()` and `latestRoundData()`. Label `eth_usd_feed`, alias `eth_usd_feed`. Do not enable event sync.
+2. Add USDC by address (`0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238`). It is a `FiatTokenProxy`; confirm the discovered ABI is the implementation ABI containing `Transfer`, `balanceOf`, and `decimals`. Contract label `usdc`. Enable sync events. Starting block: the most recent block the free tier allows (100 back from head). Record the block number.
+3. Add EntryPoint v0.7 by address (`0x0000000071727De22E5E9d8BAf0edAc6f37da032`). Confirm the ABI contains `UserOperationEvent`. Enable sync events from the same starting block. The deployment's label for it is `usdc2`.
+4. Add the Chainlink aggregator by address (`0x694AA1769357215DE4FAC081bf1f309aDC325306`). If ABI discovery fails on the proxy, link it to a hand-entered ABI containing only `decimals()` and `latestRoundData()`. The deployment's label for it is `ethprice`. Do not enable event sync.
 5. Create a DApp User API key. Copy it immediately.
 6. Watch the event indexing status for USDC for at least ten minutes. If the indexer falls behind the chain head because of the 2 events per second cap, stop and raise it: ask Curvegrid for the hackathon plan or a raised limit. Do not proceed to section 1 with a lagging indexer; the activity feed would silently miss transfers.
+Aliases are not used anywhere: the console cannot rename them after linking, so the app addresses contracts by their fixed address and uses the label only for method calls. The labels live in `MULTIBAAS_CONTRACTS` in `app/src/wallet/multibaas.ts`.
 7. Populate `app/.env.local` with the four variables listed below, and run `pnpm verify:multibaas` from `app/` once section 1 step 1.1 has landed. The verification script is the acceptance gate for this setup.
 
 Variables added to `app/.env.example` by section 1 (values empty in the example, real values only in `.env.local`):
@@ -127,7 +135,7 @@ The Transactions screen lists, newest first: USDC transfers in and out, and ever
 ### Files
 
 Create:
-- `app/src/wallet/multibaas.ts` — client module: config, request helper, event-query and method-call helpers, alias and label constants.
+- `app/src/wallet/multibaas.ts` — client module: config, request helper, event-query and method-call helpers, contract address and label constants.
 - `app/src/wallet/multibaas.test.ts`
 - `app/src/wallet/transaction-activity-multibaas.ts` — the provider.
 - `app/src/wallet/transaction-activity-multibaas.test.ts`
@@ -155,7 +163,7 @@ Delete:
 
 ```ts
 export const MULTIBAAS_API_PREFIX = '/api/v0';
-export const MULTIBAAS_ALIASES = Object.freeze({
+export const MULTIBAAS_CONTRACTS = Object.freeze({ // { address, label } per contract; replaces aliases
   usdc: 'usdc',
   entryPoint: 'entrypoint_v07',
   ethUsdFeed: 'eth_usd_feed',
@@ -164,7 +172,7 @@ export type MultiBaasConfig = { baseUrl: string; apiKey: string };
 export function readMultiBaasConfigFromEnv(): MultiBaasConfig; // throws a clear error naming the missing EXPO_PUBLIC_ variable
 export type MultiBaasClient = {
   executeEventQuery(query: EventQuery, options?: { offset?: number; limit?: number }): Promise<Record<string, unknown>[]>;
-  callMethod(alias: string, label: string, method: string, args: readonly unknown[]): Promise<unknown>;
+  callMethod(addressOrAlias: string, label: string, method: string, args: readonly unknown[]): Promise<unknown>;
   getAddress(address: Address, include: readonly ('balance' | 'nonce' | 'code')[]): Promise<Record<string, unknown>>;
   getChainStatus(): Promise<Record<string, unknown>>;
 };
@@ -179,15 +187,14 @@ Request rules: send `Authorization: Bearer`, `accept: application/json`, and `co
 
 `app/scripts/verify-multibaas.mjs` reads `MULTIBAAS_BASE_URL` and `MULTIBAAS_API_KEY`, then asserts in order:
 1. `GET /chains/ethereum/status` succeeds and reports chain id 11155111. Print the whole `result` once so the field name is recorded.
-2. `GET /chains/ethereum/addresses/usdc?include=contractLookup` resolves the alias to the pinned USDC address. Same for `entrypoint_v07` and `eth_usd_feed`.
+2. Each pinned contract is linked under its label in `MULTIBAAS_CONTRACTS`.
 3. `callMethod('usdc', 'usdc', 'decimals', [])` returns `"6"`.
 4. `callMethod('eth_usd_feed', 'eth_usd_feed', 'latestRoundData', [])` returns five values; print them so the tuple shape is recorded.
 5. `GET /chains/ethereum/addresses/{account}?include=balance` for an account passed as `VERIFY_ACCOUNT` (default: the pinned USDC address, which holds ETH on Sepolia). Print `result` so the balance field name is recorded, and assert the value parses as a `BigInt`.
-6. An event query over `Transfer` filtered by `contract_address_alias == usdc` with `limit=5` returns at least one row with `txHash`, `blockNumber`, `timestamp`, `from`, `to`, `value` aliases populated.
-7. The same query with an added `input` filter on index 1 using a lowercase address returns rows, then with the checksummed form of the same address. Record which forms match. The provider uses whichever works; if both work, use checksummed.
-8. An event query over `UserOperationEvent` filtered by `contract_address_alias == entrypoint_v07` with `limit=5` returns rows with input aliases 0 through 6 populated.
-9. A `triggered_at` filter with `greaterthanorequal` and an ISO-8601 value from one hour ago returns rows and none older than that. If the value format is rejected, try a Unix seconds string and record the working form. Section 2 depends on this answer.
-10. The request in step 6 sent from Node with no `Origin` header succeeds, which is the CORS proof.
+6. An event query over `Transfer` filtered by the USDC `contract_address` with `limit=5` returns at least one row with `txHash`, `blockNumber`, `timestamp`, `from`, `to`, `value` aliases populated.
+7. The same query with an added `input` filter on a mixed-case sender address returns rows in lowercase form. Only lowercase matches, so the provider sends lowercase.
+8. An event query over `UserOperationEvent` filtered by the EntryPoint `contract_address` with `limit=5` returns rows with input aliases 0 through 6 populated.
+9. The request in step 6 sent from Node with no `Origin` header succeeds, which is the CORS proof.
 
 Register it as `"verify:multibaas": "node --env-file-if-exists=.env.local ./scripts/verify-multibaas.mjs"`. Apply the findings from steps 1, 4, 5, 7, and 9 to the constants in `multibaas.ts`, with a short comment beside each, if any assumed field name was wrong.
 
@@ -240,9 +247,9 @@ Native ETH transfers emit no events, so MultiBaas sees only the `UserOperationEv
 `load()`:
 1. Read the account.
 2. Run three requests with `Promise.all`:
-   - USDC sent: `Transfer`, filter `and(contract_address_alias == usdc, input[0] == account)`, select txHash, blockNumber, timestamp, from, to, value; `orderBy: 'timestamp', order: 'DESC'`, `limit`.
+   - USDC sent: `Transfer`, filter `and(contract_address == USDC, input[0] == lowercase account)`, select txHash, blockNumber, timestamp, from, to, value; `orderBy: 'timestamp', order: 'DESC'`, `limit`.
    - USDC received: same with `input[1] == account`.
-   - Operations: `UserOperationEvent`, filter `and(contract_address_alias == entrypoint_v07, input[1] == account)`, select txHash, blockNumber, timestamp, userOpHash (0), paymaster (2), success (4), actualGasCost (5), actualGasUsed (6); same ordering and limit.
+   - Operations: `UserOperationEvent`, filter `and(contract_address == EntryPoint, input[1] == lowercase account)`, select txHash, blockNumber, timestamp, userOpHash (0), paymaster (2), success (4), actualGasCost (5), actualGasUsed (6); same ordering and limit.
 3. Decode ETH sends for operations that no USDC transfer explains (see 1.3).
 4. Normalise with an exported pure function `normalizeMultiBaasActivity({ account, usdcSent, usdcReceived, operations, ethTransfers })` returning `{ items, skippedCount }`, so tests cover it without the client:
    - Validate every row: `txHash` is a hash, `blockNumber` is a safe non-negative integer (rows may deliver it as a string; accept both), `timestamp` parses, addresses pass `isAddress`, `value` and gas fields parse as `BigInt`, `success` is boolean or the strings `"true"`/`"false"`. Malformed rows increment `skippedCount` and are dropped.
@@ -267,7 +274,7 @@ Delete the Blockscout provider and test. The only Blockscout use left under `app
 ### Tests
 
 - `multibaas.test.ts`: request headers and URL composition for each helper; error mapping for thrown fetch, non-2xx, and invalid body; `formatInts` always sent; `readMultiBaasConfigFromEnv` names the missing variable.
-- `transaction-activity-multibaas.test.ts`: `normalizeMultiBaasActivity` covers USDC in and out, a USDC send merged with its operation, an ETH send decoded from its transaction, a standalone failed self-funded operation, malformed rows counted as skipped, zero-value and self-transfer rows dropped, and ordering. A provider-level test with a fake client asserts the three query bodies (aliases, filter shape, input indexes, ordering, limit) and the `empty` result.
+- `transaction-activity-multibaas.test.ts`: `normalizeMultiBaasActivity` covers USDC in and out, a USDC send merged with its operation, an ETH send decoded from its transaction, a standalone failed self-funded operation, malformed rows counted as skipped, zero-value and self-transfer rows dropped, and ordering. A provider-level test with a fake client asserts the three query bodies (contract addresses, filter shape, input indexes, ordering, limit) and the `empty` result.
 - `user-operation-calls.test.ts`: single call, batch with mixed calls, matching sender and nonce in a shared bundle, no-ETH operation, undecodable input.
 - `transactions-screen.test.tsx`: update fixtures to the new item shapes; add a test for an operation row and a failed row.
 
@@ -278,74 +285,11 @@ Delete the Blockscout provider and test. The only Blockscout use left under `app
 - On a device with a deployed account: a USDC send made in the app appears as one row with the sponsored badge; the same operation is not duplicated; an ETH send appears with amount and recipient; a USDC transfer sent to the account from an external wallet appears as received.
 - Blockscout is used under `app/src` only for received ETH.
 
-## Section 2: Asset flows card on the launcher home
-
-### Goal
-
-Add a card beside Market Watch that summarises the account's own activity over the last seven days from MultiBaas: USDC in, USDC out, operations run, and gas sponsored. This is the "digital asset dashboard" entry: it makes the user's own assets understandable, whereas Market Watch shows global prices.
-
-### Dependencies
-
-Section 1 step 1.1 (client module) and the answer to verification step 9 (the working `triggered_at` filter value format).
-
-### Files
-
-Create:
-- `app/src/launcher/asset-flows.ts` — loader and pure aggregation.
-- `app/src/launcher/asset-flows.test.ts`
-
-Modify:
-- `app/src/components/launcher-home.tsx` — add `AssetFlowsCard` under `MarketCard`.
-- `app/src/components/launcher-home.test.tsx` — mock the loader like `loadMarketPrices` is mocked.
-
-### Design
-
-`asset-flows.ts` exports:
-
-```ts
-export type AssetFlows = {
-  windowStart: string;      // ISO-8601
-  usdcInMicro: bigint;      // raw 6-decimal units
-  usdcOutMicro: bigint;
-  operationCount: number;
-  sponsoredCount: number;
-  gasSponsoredWei: bigint;
-  gasSelfFundedWei: bigint;
-};
-export function loadAssetFlows({ storage, client, now, days = 7 }): Promise<AssetFlows>;
-export function aggregateAssetFlows({ usdcIn, usdcOut, operations }, windowStart): AssetFlows; // pure
-```
-
-Queries. All use the filter form proven by verification step 9 for the time window, combined with `and`:
-- USDC in: `Transfer`, `and(contract_address_alias == usdc, input[1] == account, triggered_at >= windowStart)`, select `value` with `aggregator: 'add'` aliased `total`, and `input[1]` aliased `account` as the `groupBy` field. If the aggregation returns no row, the total is zero.
-- USDC out: same with `input[0]`.
-- Operations: `UserOperationEvent`, `and(contract_address_alias == entrypoint_v07, input[1] == account, triggered_at >= windowStart)`, select `paymaster` (2), `success` (4), `actualGasCost` (5), with `limit: 500` and no aggregation, then count and sum client-side. Client-side counting is deliberate: there is no count aggregator, and the count endpoint exists only for saved queries.
-
-If the time filter proves unusable in verification step 9, fall back to a `block_number >= startBlock` filter, with `startBlock` computed as the latest block from the chain status minus `days * 7200` (Sepolia targets 12-second blocks). Record which path was used in the research file.
-
-Card UI in `launcher-home.tsx`, placed directly under `MarketCard`, styled like it (`marketCard` container, eyebrow "ASSET FLOWS · MULTIBAAS", status text "Last 7 days"):
-- Two columns like `priceRow`: "USDC in" with `+{formatUnits(usdcInMicro, 6)}` in the up colour, "USDC out" with `-{...}` in the neutral colour.
-- A second row of two small stats: "Operations" `{operationCount}` with "{sponsoredCount} sponsored" beneath, and "Gas covered" showing `formatEther(gasSponsoredWei)` ETH with "you paid {formatEther(gasSelfFundedWei)}" beneath when non-zero.
-- Loading, error, and retry states mirror `MarketCard` exactly, including the "Try again ↗" affordance and an accessibility label "Retry asset flows".
-- Refresh on `AppState` active after five minutes, same as `MarketCard`.
-- If the wallet identity is not ready (throws), render the card with copy "Your flows appear once your wallet is set up." and no retry.
-
-### Tests
-
-- `asset-flows.test.ts`: `aggregateAssetFlows` on fixture rows; `loadAssetFlows` with a fake client asserts three query bodies including the window filter and `groupBy`, and zero results when aggregation rows are empty.
-- `launcher-home.test.tsx`: mock `loadAssetFlows`; assert the formatted values render, the retry path works, and the wallet-not-ready copy renders when the loader rejects with the identity error.
-
-### Acceptance criteria
-
-- The card shows non-zero USDC in after receiving a USDC transfer on a device, and the operation count increments after a send.
-- Market Watch and its tests are unchanged.
-- `pnpm lint` and `pnpm test --runInBand` pass.
-
 ## Section 3: Token and price reads through the contract-call API
 
 ### Goal
 
-Move the USDC balance and the Chainlink ETH/USD read from the public RPC to MultiBaas, so the app depends on one keyed service for token and activity data. Move the ETH native balance too if verification step 5 showed the address endpoint returns it.
+Move the USDC balance and the Chainlink ETH/USD read from the public RPC to MultiBaas, so the app depends on one keyed service for token and activity data. The ETH native balance moves too: the address endpoint returns it for any address, matching the RPC to the wei.
 
 ### Dependencies
 
@@ -365,10 +309,10 @@ Modify:
 
 `wallet-home-live.ts` already isolates chain access behind `SepoliaBalanceClient` with `getChainId`, `getBalance`, and `readContract`. Keep that interface and the provider logic untouched, including the Chainlink staleness rules (`ETH_USD_MAX_AGE_SECONDS`, future tolerance, zero fallback). Only the default client changes.
 
-`createMultiBaasBalanceClient({ client, rpcUrl })` returns a `SepoliaBalanceClient`:
-- `getChainId()`: `client.getChainStatus()` and read the chain id field recorded in the research file. Return it as a number.
-- `getBalance({ address })`: if verification step 5 proved the address endpoint returns a wei balance, call `client.getAddress(address, ['balance'])` and `BigInt` the recorded field. Otherwise construct a viem public client over `rpcUrl` for this one call and document in the file header that ETH balance stays on RPC.
-- `readContract({ address, functionName, args })`: map the pinned address to its alias and label (`SEPOLIA_USDC_ADDRESS` to `usdc`, `SEPOLIA_ETH_USD_FEED_ADDRESS` to `eth_usd_feed`); throw for any other address. `balanceOf` returns `BigInt(output)`. `decimals` returns `Number(output)`. `latestRoundData` returns the five-element tuple of `BigInt`s in the order `roundId, answer, startedAt, updatedAt, answeredInRound`, converting from whatever shape verification step 4 recorded (array of strings, or an object keyed by output name). The provider's `isChainlinkRoundData` guard requires exactly that tuple.
+`createMultiBaasBalanceClient({ client })` returns a `SepoliaBalanceClient`:
+- `getChainId()`: `client.getChainStatus()` and read its `chainID` field, confirmed against the deployment. Return it as a number.
+- `getBalance({ address })`: call `client.getAddress(address, ['balance'])` and `BigInt` its `balance` string.
+- `readContract({ address, functionName, args })`: map the pinned address to its label from `MULTIBAAS_CONTRACTS` (`SEPOLIA_USDC_ADDRESS` to `usdc`, `SEPOLIA_ETH_USD_FEED_ADDRESS` to `ethprice`); throw for any other address. `balanceOf` returns `BigInt(output)`. `decimals` returns `Number(output)`. `latestRoundData` returns the five-element tuple of `BigInt`s in the order `roundId, answer, startedAt, updatedAt, answeredInRound`, converting from the confirmed array of five strings. The provider's `isChainlinkRoundData` guard requires exactly that tuple.
 
 Keep the `abi` parameter in the interface for compatibility; the MultiBaas client ignores it.
 
@@ -927,10 +871,9 @@ MultiBaas rows are resolved by the section 1 script and applied in `multibaas.ts
 | Field name for chain id in chain status | 1.1 step 1 | section 3 |
 | Shape of `latestRoundData` output (array or keyed object) | 1.1 step 4 | section 3 |
 | Whether the address endpoint returns a wei balance, and its field name | 1.1 step 5 | section 3 |
-| Address case sensitivity in `input` filters | 1.1 step 7 | sections 1, 2, 4 |
-| Working value format for `triggered_at` filters | 1.1 step 9 | section 2 |
-| Non-browser requests succeed without CORS registration | 1.1 step 10 | all |
-| USDC indexer keeps up under the free-tier 2 events per second cap | prerequisites step 6 | sections 1, 2, 4 |
+| Address case sensitivity in `input` filters | 1.1 step 7 | sections 1, 4 |
+| Non-browser requests succeed without CORS registration | 1.1 step 9 | all |
+| USDC indexer keeps up under the free-tier 2 events per second cap | prerequisites step 6 | sections 1, 4 |
 | Where the webhook HMAC secret is shown | section 4 setup step 3 | section 4 (low priority) |
 | Exact `event.emitted` payload layout | section 4 setup step 4 | section 4 (low priority) |
 | `toolRunner` forwards `output_config.format` | Section 5 implementation, first run | Section 5 (fallback documented) |

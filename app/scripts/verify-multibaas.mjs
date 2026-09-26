@@ -5,10 +5,11 @@ import { getAddress, isAddress, isHash } from 'viem';
 // Keep these in sync with src/wallet/multibaas.ts and src/wallet/sepolia.ts.
 const API_PREFIX = '/api/v0';
 const SEPOLIA_CHAIN_ID = 11155111n;
-const PINNED = {
-  usdc: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238',
-  entrypoint_v07: '0x0000000071727De22E5E9d8BAf0edAc6f37da032',
-  eth_usd_feed: '0x694AA1769357215DE4FAC081bf1f309aDC325306',
+// Keep in sync with MULTIBAAS_CONTRACTS in src/wallet/multibaas.ts.
+const CONTRACTS = {
+  usdc: { address: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238', label: 'usdc' },
+  entryPoint: { address: '0x0000000071727De22E5E9d8BAf0edAc6f37da032', label: 'usdc2' },
+  ethUsdFeed: { address: '0x694AA1769357215DE4FAC081bf1f309aDC325306', label: 'ethprice' },
 };
 
 if (!process.env.MULTIBAAS_BASE_URL || !process.env.MULTIBAAS_API_KEY) {
@@ -16,7 +17,7 @@ if (!process.env.MULTIBAAS_BASE_URL || !process.env.MULTIBAAS_API_KEY) {
 }
 
 const apiUrl = `${process.env.MULTIBAAS_BASE_URL.replace(/\/+$/, '')}${API_PREFIX}`;
-const verifyAccount = getAddress(process.env.VERIFY_ACCOUNT ?? PINNED.usdc);
+const verifyAccount = getAddress(process.env.VERIFY_ACCOUNT ?? CONTRACTS.usdc.address);
 
 async function request(path, body) {
   const headers = {
@@ -45,9 +46,9 @@ async function query(eventQuery, limit) {
   return result.rows;
 }
 
-async function callMethod(alias, label, method, args) {
+async function callMethod(address, label, method, args) {
   const result = await request(
-    `/chains/ethereum/addresses/${alias}/contracts/${label}/methods/${method}`,
+    `/chains/ethereum/addresses/${address}/contracts/${label}/methods/${method}`,
     { args, formatInts: 'as_strings' },
   );
   if ('kind' in result) assert.equal(result.kind, 'MethodCallResponse');
@@ -68,13 +69,6 @@ function findChainId(value, depth = 0) {
   return undefined;
 }
 
-function findAddressField(value, depth = 0) {
-  if (!value || typeof value !== 'object' || depth > 3) return [];
-  return Object.values(value).flatMap((entry) =>
-    typeof entry === 'string' && isAddress(entry) ? [entry] : findAddressField(entry, depth + 1),
-  );
-}
-
 const transferSelect = [
   { type: 'tx_hash', alias: 'txHash' },
   { type: 'block_number', alias: 'blockNumber' },
@@ -93,7 +87,7 @@ function transferQuery(extraFilters = []) {
         filter: {
           rule: 'and',
           children: [
-            { fieldType: 'contract_address_alias', operator: 'equal', value: 'usdc' },
+            { fieldType: 'contract_address', operator: 'equal', value: CONTRACTS.usdc.address },
             ...extraFilters,
           ],
         },
@@ -121,24 +115,29 @@ assert.ok(chainId, 'chain status did not include a chain id field');
 assert.equal(BigInt(chainId.entry), SEPOLIA_CHAIN_ID);
 console.log(`[1] chain id field: ${chainId.key}`);
 
-// 2. Aliases resolve to the pinned addresses.
-for (const [alias, pinned] of Object.entries(PINNED)) {
-  const result = await request(`/chains/ethereum/addresses/${alias}?include=contractLookup`);
-  const addresses = findAddressField(result).map((address) => address.toLowerCase());
+// 2. Each pinned contract is linked under its label.
+for (const [name, { address, label }] of Object.entries(CONTRACTS)) {
+  const result = await request(`/contracts/${label}`);
+  const instances = (result.instances ?? []).map((instance) => String(instance.address ?? '').toLowerCase());
   assert.ok(
-    addresses.includes(pinned.toLowerCase()),
-    `alias ${alias} did not resolve to ${pinned}: ${JSON.stringify(result)}`,
+    instances.includes(address.toLowerCase()),
+    `${name} (${address}) is not linked under the label ${label}: ${JSON.stringify(result.instances)}`,
   );
-  console.log(`[2] alias ${alias} resolves to ${pinned}`);
+  console.log(`[2] ${name} is linked under label ${label}`);
 }
 
 // 3. USDC decimals through the method-call API.
-const decimals = await callMethod('usdc', 'usdc', 'decimals', []);
+const decimals = await callMethod(CONTRACTS.usdc.address, CONTRACTS.usdc.label, 'decimals', []);
 assert.equal(String(decimals), '6');
 console.log('[3] usdc.decimals() = 6');
 
 // 4. Chainlink latestRoundData shape.
-const roundData = await callMethod('eth_usd_feed', 'eth_usd_feed', 'latestRoundData', []);
+const roundData = await callMethod(
+  CONTRACTS.ethUsdFeed.address,
+  CONTRACTS.ethUsdFeed.label,
+  'latestRoundData',
+  [],
+);
 printFinding(4, 'latestRoundData output', roundData);
 const roundValues = Array.isArray(roundData) ? roundData : Object.values(roundData ?? {});
 assert.equal(roundValues.length, 5, 'latestRoundData did not return five values');
@@ -151,30 +150,28 @@ assert.ok(balanceKey, 'address result has no balance field');
 const balance = BigInt(addressResult[balanceKey]);
 console.log(`[5] balance field "${balanceKey}" = ${balance} wei`);
 
-// 6. Transfer event query. Step 10 relies on this request being sent without an Origin header.
+// 6. Transfer event query. Step 9 relies on this request being sent without an Origin header.
 const transfers = await query(transferQuery(), 5);
 assert.ok(transfers.length > 0, 'USDC Transfer query returned no rows; is event sync enabled?');
 transfers.forEach(assertTransferRow);
 printFinding(6, 'first USDC Transfer row', transfers[0]);
 
-// 7. Address case sensitivity in input filters.
-const recipient = getAddress(transfers[0].to);
+// 7. Address case in input filters. Use a sender with letters in its address, since the zero
+// address reads the same in both forms. The app sends lowercase (formatAddressFilterValue).
+const sender = getAddress(transfers.find((row) => /[a-f]/i.test(row.from.slice(2)))?.from ?? transfers[0].from);
 const caseFindings = {};
 for (const [form, value] of [
-  ['lowercase', recipient.toLowerCase()],
-  ['checksummed', recipient],
+  ['lowercase', sender.toLowerCase()],
+  ['checksummed', sender],
 ]) {
   const rows = await query(
-    transferQuery([{ fieldType: 'input', inputIndex: 1, operator: 'equal', value }]),
+    transferQuery([{ fieldType: 'input', inputIndex: 0, operator: 'equal', value }]),
     5,
   );
   caseFindings[form] = rows.length;
 }
-printFinding(7, `input filter rows for ${recipient}`, caseFindings);
-assert.ok(
-  caseFindings.lowercase > 0 || caseFindings.checksummed > 0,
-  'neither lowercase nor checksummed address matched an input filter',
-);
+printFinding(7, `input filter rows for ${sender}`, caseFindings);
+assert.ok(caseFindings.lowercase > 0, 'a lowercase address did not match an input filter');
 
 // 8. UserOperationEvent query.
 const operations = await query(
@@ -197,7 +194,7 @@ const operations = await query(
         filter: {
           rule: 'and',
           children: [
-            { fieldType: 'contract_address_alias', operator: 'equal', value: 'entrypoint_v07' },
+            { fieldType: 'contract_address', operator: 'equal', value: CONTRACTS.entryPoint.address },
           ],
         },
       },
@@ -215,31 +212,13 @@ for (const alias of ['userOpHash', 'sender', 'paymaster', 'nonce', 'success', 'a
   );
 }
 printFinding(8, 'first UserOperationEvent row', operations[0]);
-
-// 9. triggered_at filter value format.
-const since = new Date(Date.now() - 60 * 60 * 1000);
-const timeFindings = {};
-for (const [form, value] of [
-  ['iso8601', since.toISOString()],
-  ['unixSeconds', String(Math.floor(since.getTime() / 1000))],
-]) {
-  try {
-    const rows = await query(
-      transferQuery([{ fieldType: 'triggered_at', operator: 'greaterthanorequal', value }]),
-      20,
-    );
-    const older = rows.filter((row) => Date.parse(row.timestamp) < since.getTime());
-    timeFindings[form] = { rows: rows.length, olderThanCutoff: older.length };
-  } catch (error) {
-    timeFindings[form] = { error: error.message };
-  }
-}
-printFinding(9, `triggered_at >= ${since.toISOString()}`, timeFindings);
+// bytes32 inputs arrive as a JSON byte array string; the app converts them in parseBytes32.
+const userOpHash = operations[0].userOpHash;
 assert.ok(
-  Object.values(timeFindings).some((finding) => finding.rows > 0 && finding.olderThanCutoff === 0),
-  'no triggered_at value format returned rows bounded by the cutoff',
+  isHash(userOpHash) || (Array.isArray(JSON.parse(userOpHash)) && JSON.parse(userOpHash).length === 32),
+  `userOpHash is neither hex nor a 32-byte array: ${userOpHash}`,
 );
 
-// 10. CORS proof.
-console.log('\n[10] Event queries from Node with no Origin header succeeded.');
+// 9. CORS proof.
+console.log('\n[9] Event queries from Node with no Origin header succeeded.');
 console.log('\nMultiBaas verification passed.');
