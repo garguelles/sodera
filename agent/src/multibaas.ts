@@ -9,6 +9,8 @@ export const MULTIBAAS_CONTRACTS = Object.freeze({
   usdc: { address: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238' as Address, label: 'usdc' },
   entryPoint: { address: '0x0000000071727De22E5E9d8BAf0edAc6f37da032' as Address, label: 'usdc2' },
   ethUsdFeed: { address: '0x694AA1769357215DE4FAC081bf1f309aDC325306' as Address, label: 'ethprice' },
+  aqua: { address: '0x1111113ccf1426a8e30e2bff5e005d929bf6a90a' as Address, label: 'aqua' },
+  aquaSwapVmRouter: { address: '0x1111113Db0e0ef9D0E3A50d5f094a3a57a26C0DE' as Address, label: 'aquaswapvmrouter' },
 });
 
 export const MULTIBAAS_MAX_QUERY_LIMIT = 50;
