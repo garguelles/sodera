@@ -56,7 +56,11 @@ Observations common to the passing variants:
 - **The app builds the approvals, not the backend.** The backend returns only the router call and the quote figures (`amountIn`, `maxAmountIn`, `amountOut`, `route`, `priceImpact`, `requestId`, deadline). The app generates the approvals deterministically. Its guard therefore needs to accept exactly one API-supplied call: the router's `execute(bytes,bytes[],uint256)` (selector `0x3593564c`) on `0x7E4f…43f3`, with `value ≤ maxAmountIn` when paying with ETH and `0` when paying with USDC.
 - **Router version stays pinned to 2.1.2.** This router is not the pinned Swap router 2.0 (`0x3A9D…F98b`), and Permit2 allowances are per spender, so the two flows don't share allowances.
 - **Retry transient failures once.** Transient `UpstreamTimeoutError` (404) and 429 responses should get one retry in the backend before failing.
-- **Decoding stays open.** Decoding the router call with `@uniswap/v4-sdk`'s `V4BaseActionsParser` is still to be confirmed in the frontend guard commit. The spike relied on target and selector checks plus the asset-change simulation.
+- **Decoding works with the 2.1.2 layout.** `V4BaseActionsParser.parseCalldata(input, URVersion.V2_1_2)` decodes the API's `V4_SWAP` inputs; parsed as 2.0, the exact-output amounts come out garbled. Captured shapes:
+    - v4, paying ETH: commands `0x1004` (`V4_SWAP`, then `SWEEP` of ETH to the account), with actions `SWAP_EXACT_OUT`, `SETTLE` (ETH, open delta) and `TAKE` (USDC to the account).
+    - v4, paying USDC: command `0x10`, with actions `SWAP_EXACT_OUT`, `SETTLE` (USDC, payer is user) and `TAKE` (ETH to the account).
+    - v3, paying ETH: commands `0x0b010c` (`WRAP_ETH` into the router, `V3_SWAP_EXACT_OUT` to the account, `UNWRAP_WETH` of the leftover to the account).
+- **Deadline.** `/swap_5792` ignores a requested deadline and encodes one 30 minutes after quoting, so the backend decodes it from the calldata and the app checks it matches.
 
 ## Sources
 

@@ -82,16 +82,18 @@ All work lands on one branch, `feat/pay-with-any-token`, as separate commits, wi
         - errors: `NoRouteFound` maps to 422 `no_route`, upstream 429 to 503 `busy` with `retry-after`, a timeout to 504, and anything else to 502.
     - Acceptance: vitest covers auth, validation, rate limits, error mapping, and that the key never appears in responses. A smoke test passes on Railway with the env var set.
 3. **Frontend: call guard and quote client.**
-    - Files: `app/src/wallet/pay-with-swap.ts`, `payQuote` in the agent client (zod-parsed response with a timeout), and the Trading Universal Router (and proxy, if chosen) addresses in `app/src/wallet/sepolia.ts`.
-    - Treat every call from the API as untrusted:
-        - Targets must be on an allowlist: USDC, Permit2 or the proxy, and the Trading Universal Router.
-        - USDC calls may only `approve` Permit2 or the proxy, for no more than `maxAmountIn`.
-        - Permit2 approvals must be for the router, at most `maxAmountIn`, and expire within 1 hour.
-        - The router call must use the `execute(bytes,bytes[],uint256)` selector, with a deadline in the future and no more than about 30 minutes out (the `/swap_5792` default).
-        - Total ETH value may not exceed `maxAmountIn`, and must be 0 when paying with USDC.
-    - Decode the `V4_SWAP` input with `@uniswap/v4-sdk`'s `V4BaseActionsParser`. Verify the swap actions, the exact output amount and the maximum input, and that nothing is taken or swept to anyone but the Kernel. Commands the parser can't decode (v2/v3 legs) fall back to the target, selector and value checks plus the asset-change simulation.
-    - `buildPayWithCalls(quote, transfer)` returns `[...guardedCalls, transfer.call]`, reusing `parseSendTransfer` from `app/src/wallet/send-transfer.ts`. This is the same batching pattern as `app/src/agent/plan-encoder.ts`.
-    - Acceptance: each tampered case is rejected before any passkey prompt: a foreign target, an oversized approval, excess ETH value, a stale deadline, a wrong selector, or a foreign take or sweep.
+    - Files: `app/src/wallet/pay-with-swap.ts` (with real captured quotes in `pay-with-swap-fixtures.ts`), `payQuote` in the agent client (zod-parsed response, 20 s timeout, `PayQuoteError` with `no_route`, `busy`, `timeout`, `unreachable` or `error`), and the Trading Universal Router and WETH addresses in `app/src/wallet/sepolia.ts`.
+    - The only call taken from the API is the router call, and it is untrusted. `verifyPayWithSwap` checks:
+        - the quote matches the request (assets and exact amount), and `amountIn ≤ maxAmountIn`;
+        - the target is the Trading Universal Router, and the call is `execute(bytes,bytes[],uint256)`;
+        - the deadline equals the quote's, is in the future and is at most about 30 minutes out;
+        - the ETH value is at most `maxAmountIn`, or 0 when paying with USDC;
+        - every command, with the allow-revert flag rejected: `V4_SWAP`, `V3_SWAP_EXACT_OUT`, `V2_SWAP_EXACT_OUT`, `WRAP_ETH` (only when paying with ETH, into the router), `UNWRAP_WETH` and `SWEEP` (only to the account). Any other command is rejected.
+        - `V4_SWAP` is decoded with `@uniswap/v4-sdk`'s `V4BaseActionsParser` using `URVersion.V2_1_2` (the 2.0 layout misreads the amounts). Only exact-output swaps from the pay currency to the receive currency, `SETTLE`/`SETTLE_ALL` in the pay currency, and `TAKE` to the account or `TAKE_ALL` of the receive currency are allowed.
+        - v2 and v3 paths must run between the pay and receive tokens (WETH for ETH), with recipients limited to the account or the router.
+        - the exact outputs add up to the requested amount, and the maximum inputs to at most `maxAmountIn`.
+    - `buildPayWithCalls` returns `[USDC.approve(Permit2, maxAmountIn), Permit2.approve(USDC, router, maxAmountIn, deadline), swap, transfer]` when paying with USDC, and `[swap, transfer]` when paying with ETH. The approvals reuse `buildUsdcPermit2Approvals` from `uniswap-swap-calls.ts`, and the transfer is the wallet's own, of exactly `amountOut` to the payee.
+    - Acceptance: the four captured quotes pass, and each tampered case is rejected before any passkey prompt: another amount or direction, a foreign target, a wrong selector, excess ETH value, a mismatched or expired deadline, a lower maximum, a take, sweep, swap or unwrap to someone else, an allow-revert or unknown command, and a wrap when paying with USDC. `pnpm verify:uniswap` still matches the golden Swap calldata.
 4. **Frontend: Send UI.**
     - Files: `app/src/components/send-screen.tsx` and `app/src/wallet/send-transfer.ts`.
     - Add a "Pay with" selector on the amount step. When it matches the asset being sent, the existing path runs unchanged and nothing calls `/pay/quote`.
