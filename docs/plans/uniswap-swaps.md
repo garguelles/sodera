@@ -87,6 +87,8 @@ Revisit this when Sodera supports more tokens or mainnet. Routing is the hard pa
 2. Optionally, the SDKs encode the chosen route.
 3. The swap screen, review, and passkey flow stay unchanged. Quoting and call building remain isolated in `uniswap-quote.ts` and `uniswap-swap-calls.ts`.
 
+[The SDK adoption plan](uniswap-sdk-adoption.md) later revisited the SDK decision on a separate branch. It adopts `@uniswap/sdk-core` and `@uniswap/v4-sdk` for currencies, the pool key, trade math and `V4Planner` encoding. The Quoter call, approvals and RPC stay on `viem`, and the swap calldata is unchanged byte for byte. The reasons for not using the Trading API still apply.
+
 ## Pull requests
 
 Do not write unit tests for this hackathon build. Verify each PR with `npx tsc --noEmit` and `pnpm lint` from `app/`, keep the existing `pnpm test` suite passing, run `pnpm verify:uniswap` for on-chain checks, and exercise the screen on a device or emulator. Live device swaps in both directions are the acceptance evidence.

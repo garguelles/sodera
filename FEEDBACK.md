@@ -26,10 +26,22 @@ Sodera is a seedless, passkey-controlled smart-account wallet and Android launch
    - An ERC-4337 wallet wants a list of calls (approvals plus swap) to batch into one UserOperation. It may not support off-chain typed-data signing at all.
    - Keeping the API key out of a mobile app bundle also requires a backend proxy.
    - *Suggestion:* a "calls" output mode (EIP-5792-style `calls[]`) that uses on-chain Permit2 approvals instead of signatures.
-5. **The SDKs are heavy for a viem-first mobile app.**
-   - The v4 and Universal Router SDKs bring in `ethers` v5 and `jsbi` alongside `viem`, and are untested in Expo / React Native.
-   - For one pool we hand-encoded `V4_SWAP` (actions `SWAP_EXACT_IN_SINGLE`, `SETTLE_ALL`, `TAKE_ALL`) with `viem` instead. The command → actions → params nesting took careful reading.
-   - *Suggestion:* a small, dependency-light, viem-native encoder for Universal Router v4 commands, or complete worked calldata examples in the docs.
+5. **The SDKs read well, but they are heavy for a viem-first mobile app.**
+   - We adopted `@uniswap/sdk-core` 7.19.4 and `@uniswap/v4-sdk` 2.4.1 to make the code easier to read.
+   - **What worked well:**
+     - `V4Planner` with `SWAP_EXACT_IN_SINGLE`, `SETTLE_ALL` and `TAKE_ALL` produced calldata byte-identical to our proven hand encoding, using the default Universal Router v2.0 structs.
+     - `Trade.createUncheckedTrade` fits a flow driven by the Quoter. It gives `minimumAmountOut`, `executionPrice` and `priceImpact` without any tick data.
+     - `Pool.getPoolKey` and `Pool.getPoolId` replaced our hard-coded pool ID.
+   - **Install weight:** `v4-sdk` depends on `v3-sdk`, which pulls in `@uniswap/swap-router-contracts`, then `hardhat-watcher`, then `hardhat`, all as runtime dependencies. That added 173 packages and about 100 MB of native Hardhat binaries to a mobile app's install.
+   - **Bundle weight:** our Android Hermes bundle grew by 1.56 MB, from 7.41 MB to 8.97 MB (+21%), from just the pieces we import.
+     - Part of that is `ethers` v5's BIP-39 word lists, pulled in through `ethers/lib/utils`.
+     - `ethers` also logs "Missing strong random number source" at startup in React Native.
+   - **Node ESM:** the ESM builds use extensionless relative imports, and import JSON without `with { type: 'json' }`, so Node cannot load them. Our Node verification scripts load the CommonJS builds instead.
+   - **Ergonomics:**
+     - No SDK offers a v4 quote client.
+     - `addTrade` emits the multi-hop `SWAP_EXACT_IN` action even for a single pool. We had to use `addAction(SWAP_EXACT_IN_SINGLE)` to match known-good calldata.
+     - Amounts cross between `bigint` (viem) and strings or JSBI (SDK).
+   - *Suggestion:* a slim v4 package without the v3 and Hardhat dependencies, with `bigint`-native types, Node-compatible ESM, and a V4 Quoter helper.
 6. **Docs URLs and addresses are easy to get wrong.**
    - `docs.uniswap.org` links redirect to `developers.uniswap.org`, sometimes through a second `llms.mdx` redirect, and some older paths return 404.
    - Sepolia also has more than one Universal Router deployment. We had to verify each address against Etherscan, because search results mixed up the v3 Factory and the Universal Router.

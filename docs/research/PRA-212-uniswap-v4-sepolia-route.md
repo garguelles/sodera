@@ -25,7 +25,7 @@ The swap uses these Uniswap contracts. They are listed in the [Uniswap v4 deploy
 | PoolManager | [`0xE03A1074c86CFeDd5C142C4F04F1a1536e203543`](https://sepolia.etherscan.io/address/0xE03A1074c86CFeDd5C142C4F04F1a1536e203543) |
 | Permit2 | [`0x000000000022D473030F116dDEE9F6B43aC78BA3`](https://sepolia.etherscan.io/address/0x000000000022D473030F116dDEE9F6B43aC78BA3) |
 
-The pinned values live in `app/src/wallet/sepolia.ts` as `SWAP_POOL_KEY` and `SWAP_POOL_ID`, next to the contract addresses.
+The contract addresses live in `app/src/wallet/sepolia.ts`. The pool key and ID are derived in `app/src/wallet/uniswap-sdk.ts` with the Uniswap SDK's `Pool.getPoolKey` and `Pool.getPoolId`.
 
 ## Why this pool
 
@@ -54,16 +54,17 @@ Run from `app/`:
 pnpm verify:uniswap
 ```
 
-The script reads `SEPOLIA_RPC_URL` (see `app/.env.example`). It imports the app's own pinned constants (`sepolia.ts`), quote module (`uniswap-quote.ts`) and swap-call builder (`uniswap-swap-calls.ts`), so it checks the code the app runs. It asserts the following:
+The script reads `SEPOLIA_RPC_URL` (see `app/.env.example`). It imports the app's own modules: the addresses (`sepolia.ts`), the SDK pool key and ID (`uniswap-sdk.ts`), quotes (`uniswap-quote.ts`) and the swap-call builder (`uniswap-swap-calls.ts`). That way it checks the code the app runs. It asserts the following:
 
 1. The RPC reports chain ID `11155111`.
 2. Every contract above, and USDC, has runtime bytecode.
-3. The pool key's currencies are sorted, and `keccak256(abi.encode(SWAP_POOL_KEY))` equals `SWAP_POOL_ID`.
-4. StateView reports a nonzero `sqrtPriceX96` and nonzero active liquidity.
-5. `quoteSwap` returns a nonzero output for 0.001 ETH → USDC and for 1 USDC → ETH.
-6. `buildSwapCalls` returns one call for ETH → USDC, sent to the Universal Router with exactly the input ETH. Its `eth_call` succeeds with a minimum output 0.5% below the quote. The call uses the `V4_SWAP` command with the `SWAP_EXACT_IN_SINGLE`, `SETTLE_ALL` and `TAKE_ALL` actions, and runs from a simulation account with a state-overridden ETH balance.
-7. The same swap with a minimum one unit above the quote reverts with `V4TooLittleReceived(uint256,uint256)`, selector `0x8b063d73`.
-8. `buildSwapCalls` returns three calls for USDC → ETH: USDC `approve` to Permit2, Permit2 `approve` to the Universal Router, and the swap. An `eth_simulateV1` run of that batch succeeds and pays the account at least the minimum ETH. It runs from a simulation account given a USDC balance by overriding FiatToken storage slot 9. Afterwards, both the USDC allowance to Permit2 and the Permit2 allowance to the router are zero.
+3. The pool key's currencies are sorted. `keccak256(abi.encode(SWAP_POOL_KEY))` and the SDK's `Pool.getPoolId` both equal the pinned pool ID.
+4. For fixed inputs, `buildSwapCalls` reproduces the golden calldata of the original hand-encoded builder in both directions. The golden values are keccak256 hashes of each call's data, plus its target and value.
+5. StateView reports a nonzero `sqrtPriceX96` and nonzero active liquidity.
+6. `quoteSwap` returns a nonzero output for 0.001 ETH → USDC and for 1 USDC → ETH. The minimum received from the SDK trade is exactly `amountOut × 9950 / 10000`, and the script prints the trade's price impact.
+7. `buildSwapCalls` returns one call for ETH → USDC, sent to the Universal Router with exactly the input ETH. Its `eth_call` succeeds with a minimum output 0.5% below the quote. The call uses the `V4_SWAP` command with the `SWAP_EXACT_IN_SINGLE`, `SETTLE_ALL` and `TAKE_ALL` actions, and runs from a simulation account with a state-overridden ETH balance.
+8. The same swap with a minimum one unit above the quote reverts with `V4TooLittleReceived(uint256,uint256)`, selector `0x8b063d73`.
+9. `buildSwapCalls` returns three calls for USDC → ETH: USDC `approve` to Permit2, Permit2 `approve` to the Universal Router, and the swap. An `eth_simulateV1` run of that batch succeeds and pays the account at least the minimum ETH. It runs from a simulation account given a USDC balance by overriding FiatToken storage slot 9. Afterwards, both the USDC allowance to Permit2 and the Permit2 allowance to the router are zero.
 
 Observed on 2026-09-26 through `https://ethereum-sepolia-rpc.publicnode.com`:
 
@@ -76,7 +77,9 @@ Observed on 2026-09-26 through `https://ethereum-sepolia-rpc.publicnode.com`:
 - Minimum above quote: reverted with `V4TooLittleReceived`
 - 1 USDC → ETH batch (block `11784194`): every call succeeded, 0.000031428307909673 ETH was received (exactly the quote), and both allowances ended at zero
 
-The script imports TypeScript modules, so it runs with `--experimental-strip-types` and a small resolver hook (`app/scripts/lib/register-ts-resolver.mjs`) for their extensionless relative imports. It was verified on Node 22.14, 24.12 and 25.8.
+The script imports TypeScript modules, so it runs with `--experimental-strip-types` and a small resolver hook (`app/scripts/lib/register-ts-resolver.mjs`). The hook resolves the modules' extensionless relative imports. It also loads the Uniswap SDKs' CommonJS builds, because their ESM builds only work in bundlers. It was verified on Node 22.14, 24.12 and 25.8.
+
+With the SDK (block `11784594`), the golden calldata matched in both directions. The price impact of 0.001 ETH → USDC and 1 USDC → ETH was under 0.01% each. Live quotes also showed about 0.29% for 0.5 ETH, 0.57% for 1 ETH, and 1.12% for 2 ETH, which the app flags as high.
 
 ## Live swaps
 
