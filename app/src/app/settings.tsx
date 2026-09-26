@@ -1,6 +1,8 @@
 import { Stack } from 'expo-router/stack';
 
 import { LauncherSettingsScreen } from '@/components/launcher-settings-screen';
+import { platinum } from '@/constants/theme';
+import { launcherClient } from '@/launcher/launcher-client';
 import { launcherPreferencesNativeStorage } from '@/launcher/launcher-preferences-native-storage';
 
 export default function SettingsRoute() {
@@ -10,12 +12,12 @@ export default function SettingsRoute() {
         options={{
           headerShown: true,
           headerShadowVisible: false,
-          headerStyle: { backgroundColor: '#171713' },
-          headerTintColor: '#f3f0e8',
+          headerStyle: { backgroundColor: platinum.colors.canvas },
+          headerTintColor: platinum.colors.platinum,
           title: 'Settings',
         }}
       />
-      <LauncherSettingsScreen preferencesStorage={launcherPreferencesNativeStorage} />
+      <LauncherSettingsScreen client={launcherClient} preferencesStorage={launcherPreferencesNativeStorage} />
     </>
   );
 }
