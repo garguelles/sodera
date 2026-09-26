@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { StyleSheet, Text } from 'react-native';
 import { State } from 'react-native-gesture-handler';
 import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
@@ -116,6 +116,43 @@ describe('HomeGrid', () => {
       ]);
       await Promise.resolve();
       expect(onResize).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('drag to move', () => {
+    const drag = (translationX: number, translationY: number) =>
+      act(async () => {
+        fireGestureHandler(getByGestureTestId('home-grid-move'), [
+          { state: State.BEGAN, translationX: 0, translationY: 0 },
+          { state: State.ACTIVE, translationX, translationY },
+          { state: State.END, translationX, translationY },
+        ]);
+      });
+
+    it('moves the selected widget to a free slot and reports drag state', async () => {
+      const onMove = jest.fn();
+      const onDragActiveChange = jest.fn();
+      await renderGrid(defaultHomeLayout(), { editing: true, selectedId: 'activity', onMove, onDragActiveChange });
+
+      await drag(0, 80); // one 66 dp row plus a gap: into the extra row
+      expect(onMove).toHaveBeenCalledWith('activity', 0, 8);
+      expect(onDragActiveChange.mock.calls).toEqual([[true], [false]]);
+    });
+
+    it('swaps with a same-size widget it is dropped on', async () => {
+      const onMove = jest.fn();
+      await renderGrid(defaultHomeLayout(), { editing: true, selectedId: 'wallet', onMove });
+
+      await drag(170, 0); // onto Phone
+      expect(onMove).toHaveBeenCalledWith('wallet', 2, 2);
+    });
+
+    it('does not move onto a widget of a different size', async () => {
+      const onMove = jest.fn();
+      await renderGrid(defaultHomeLayout(), { editing: true, selectedId: 'swap-earn', onMove });
+
+      await drag(0, -150); // onto Wallet, which is 2×2
+      expect(onMove).not.toHaveBeenCalled();
     });
   });
 

@@ -70,6 +70,29 @@ export function moveWidget(layout: HomeLayout, id: WidgetId, x: number, y: numbe
   return replaceItem(layout, id, (item) => ({ ...item, x, y }));
 }
 
+/**
+ * Swaps a widget with the one whose top-left cell is (x, y) when both are the same size: the dragged widget takes that
+ * slot and the other takes the dragged widget's old slot. Returns null when there is no same-size widget there.
+ */
+export function swapWidgets(layout: HomeLayout, id: WidgetId, x: number, y: number): HomeLayout | null {
+  const dragged = layout.items.find((item) => item.id === id);
+  const other = layout.items.find((item) => item.id !== id && item.x === x && item.y === y);
+  if (!dragged || !other || other.w !== dragged.w || other.h !== dragged.h) return null;
+  return {
+    ...layout,
+    items: layout.items.map((item) => {
+      if (item.id === dragged.id) return { ...item, x, y };
+      if (item.id === other.id) return { ...item, x: dragged.x, y: dragged.y };
+      return item;
+    }),
+  };
+}
+
+/** Where a dragged widget ends up when released at (x, y): moved into free space, swapped with a same-size widget, or null. */
+export function dropWidget(layout: HomeLayout, id: WidgetId, x: number, y: number): HomeLayout | null {
+  return moveWidget(layout, id, x, y) ?? swapWidgets(layout, id, x, y);
+}
+
 /** Resizes a widget in place, keeping its top-left cell, or returns null when it would not fit. */
 export function resizeWidget(layout: HomeLayout, id: WidgetId, size: WidgetSize): HomeLayout | null {
   return replaceItem(layout, id, (item) => ({ ...item, w: size.w, h: size.h }));
@@ -147,6 +170,18 @@ export function cellRect(item: Pick<HomeLayoutItem, 'x' | 'y' | 'w' | 'h'>, metr
     width: item.w * metrics.columnWidth + (item.w - 1) * metrics.gap,
     height: rowTop(metrics, item.y + item.h) - rowTop(metrics, item.y) - metrics.gap,
   };
+}
+
+/**
+ * Top-left cell for a widget of `size` dropped with the finger at `point`: its top row is the row under the finger and
+ * it is centred on the finger's column, clamped to the grid. Rows past `metrics.rowHeights` use the empty-row height.
+ */
+export function dropSlot(point: { x: number; y: number }, size: WidgetSize, metrics: GridMetrics): GridCell {
+  const column = Math.floor(point.x / (metrics.columnWidth + metrics.gap));
+  let y = 0;
+  while (rowTop(metrics, y + 1) <= point.y) y += 1;
+  const x = column - Math.floor((size.w - 1) / 2);
+  return { x: Math.min(Math.max(x, 0), Math.max(HOME_GRID.columns - size.w, 0)), y: Math.max(y, 0) };
 }
 
 /** Nearest top-left cell for a widget of `size` whose top-left corner is at `point`, clamped to the columns. */

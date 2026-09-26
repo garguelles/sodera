@@ -1,5 +1,5 @@
 import { SymbolView } from 'expo-symbols';
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
@@ -15,6 +15,8 @@ type WidgetSheetProps = {
   open: boolean;
   onOpenChange(open: boolean): void;
   onAdd(id: WidgetId): void;
+  /** A row was dragged out of the sheet and released at this window position. */
+  onDrop(id: WidgetId, absoluteX: number, absoluteY: number): void;
 };
 
 const { colors, radius, spacing, typography } = platinum;
@@ -24,17 +26,52 @@ export const WIDGET_SHEET_COLLAPSED_HEIGHT = 32;
 const OPEN_FRACTION = 0.55;
 const DRAG_THRESHOLD = 40;
 const ANIMATION_MS = 220;
+/** Hold before a row starts dragging, so a quick swipe still scrolls the list and a tap still adds. */
+const ROW_DRAG_HOLD_MS = 200;
+const GHOST_WIDTH = 200;
+const GHOST_HEIGHT = 56;
 
 /**
  * Bottom sheet listing the widgets that can be added. Open, it covers 55 % of the window; collapsed, only the grab
  * handle shows. Tapping the handle toggles it, dragging the handle down collapses it, and tapping outside collapses it.
  */
-export function WidgetSheet({ definitions, placedIds, open, onOpenChange, onAdd }: WidgetSheetProps) {
+export function WidgetSheet({ definitions, placedIds, open, onOpenChange, onAdd, onDrop }: WidgetSheetProps) {
   const { height: windowHeight } = useWindowDimensions();
   const sheetHeight = Math.round(windowHeight * OPEN_FRACTION);
   const hiddenOffset = sheetHeight - WIDGET_SHEET_COLLAPSED_HEIGHT;
   const offset = useSharedValue(open ? 0 : hiddenOffset);
   const drag = useSharedValue(0);
+  // Dragging a row: the ghost follows the finger in the coordinates of the screen container, measured on drag start.
+  const originRef = useRef<View>(null);
+  const origin = useRef({ x: 0, y: 0 });
+  const [draggingId, setDraggingId] = useState<WidgetId | null>(null);
+  const ghostX = useSharedValue(0);
+  const ghostY = useSharedValue(0);
+  const ghostStyle = useAnimatedStyle(() => ({ transform: [{ translateX: ghostX.value }, { translateY: ghostY.value }] }));
+
+  const moveGhost = (absoluteX: number, absoluteY: number) => {
+    ghostX.value = absoluteX - origin.current.x - GHOST_WIDTH / 2;
+    ghostY.value = absoluteY - origin.current.y - GHOST_HEIGHT / 2;
+  };
+
+  const rowDrag = (id: WidgetId) =>
+    Gesture.Pan()
+      .activateAfterLongPress(ROW_DRAG_HOLD_MS)
+      .runOnJS(true)
+      .onStart((event) => {
+        originRef.current?.measureInWindow((x, y) => {
+          origin.current = { x, y };
+          moveGhost(event.absoluteX, event.absoluteY);
+        });
+        moveGhost(event.absoluteX, event.absoluteY);
+        setDraggingId(id);
+        onOpenChange(false);
+      })
+      .onUpdate((event) => moveGhost(event.absoluteX, event.absoluteY))
+      .onEnd((event) => onDrop(id, event.absoluteX, event.absoluteY))
+      .onFinalize(() => setDraggingId(null))
+      .withTestId(`widget-sheet-row-drag-${id}`);
+  const draggingDefinition = definitions.find((definition) => definition.id === draggingId);
 
   useEffect(() => {
     offset.value = withTiming(open ? 0 : hiddenOffset, { duration: ANIMATION_MS });
@@ -59,6 +96,7 @@ export function WidgetSheet({ definitions, placedIds, open, onOpenChange, onAdd 
 
   return (
     <>
+      <View ref={originRef} pointerEvents="none" style={StyleSheet.absoluteFill} />
       {open ? (
         <Pressable
           accessibilityLabel="Close widgets"
@@ -80,36 +118,44 @@ export function WidgetSheet({ definitions, placedIds, open, onOpenChange, onAdd 
         </GestureDetector>
         <View style={styles.header}>
           <Text style={styles.title}>Sodera widgets</Text>
-          {/* Section 5 adds dragging and changes this to the mock's "drag onto home". */}
-          <Text style={styles.hint}>tap to add</Text>
+          <Text style={styles.hint}>drag onto home</Text>
         </View>
         <ScrollView contentContainerStyle={styles.list}>
           {definitions.map((definition) => {
             const placed = placedIds.has(definition.id);
             return (
-              <Pressable
-                key={definition.id}
-                accessibilityRole="button"
-                accessibilityLabel={placed ? `${definition.title}, on home` : `Add ${definition.title}`}
-                accessibilityState={{ disabled: placed }}
-                disabled={placed}
-                onPress={() => onAdd(definition.id)}
-                style={({ pressed }) => [styles.row, placed && styles.placed, pressed && styles.pressed]}>
-                <View style={styles.icon}>
-                  <SymbolView importantForAccessibility="no" name={definition.icon} size={20} tintColor={colors.secondaryText} />
-                </View>
-                <View style={styles.copy}>
-                  <Text style={styles.rowTitle}>{definition.title}</Text>
-                  <Text numberOfLines={1} style={styles.subtitle}>{definition.subtitle}</Text>
-                </View>
-                <Text style={styles.chip}>
-                  {placed ? 'On home' : definition.sizes.map((size) => `${size.w}×${size.h}`).join(' · ')}
-                </Text>
-              </Pressable>
+              <GestureDetector key={definition.id} gesture={rowDrag(definition.id).enabled(!placed)}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={placed ? `${definition.title}, on home` : `Add ${definition.title}`}
+                  accessibilityState={{ disabled: placed }}
+                  disabled={placed}
+                  onPress={() => onAdd(definition.id)}
+                  style={({ pressed }) => [styles.row, placed && styles.placed, pressed && styles.pressed]}>
+                  <View style={styles.icon}>
+                    <SymbolView importantForAccessibility="no" name={definition.icon} size={20} tintColor={colors.secondaryText} />
+                  </View>
+                  <View style={styles.copy}>
+                    <Text style={styles.rowTitle}>{definition.title}</Text>
+                    <Text numberOfLines={1} style={styles.subtitle}>{definition.subtitle}</Text>
+                  </View>
+                  <Text style={styles.chip}>
+                    {placed ? 'On home' : definition.sizes.map((size) => `${size.w}×${size.h}`).join(' · ')}
+                  </Text>
+                </Pressable>
+              </GestureDetector>
             );
           })}
         </ScrollView>
       </Animated.View>
+      {draggingDefinition ? (
+        <Animated.View pointerEvents="none" style={[styles.ghost, ghostStyle]} testID="widget-sheet-drag-ghost">
+          <View style={styles.ghostIcon}>
+            <SymbolView importantForAccessibility="no" name={draggingDefinition.icon} size={18} tintColor={colors.platinum} />
+          </View>
+          <Text numberOfLines={1} style={styles.rowTitle}>{draggingDefinition.title}</Text>
+        </Animated.View>
+      ) : null}
     </>
   );
 }
@@ -142,4 +188,6 @@ const styles = StyleSheet.create({
   subtitle: { ...typography.caption, color: colors.mutedText },
   chip: { ...typography.labelSmall, color: colors.emerald, backgroundColor: colors.emeraldWash, borderRadius: radius.sm, overflow: 'hidden', paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
   pressed: { opacity: 0.7 },
+  ghost: { position: 'absolute', left: 0, top: 0, width: GHOST_WIDTH, height: GHOST_HEIGHT, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.md, borderRadius: radius.full, backgroundColor: colors.surfaceHigh, borderWidth: 1, borderColor: colors.cyan, boxShadow: platinum.shadow.raised },
+  ghostIcon: { width: 36, height: 36, borderRadius: radius.full, backgroundColor: colors.glassRaised, alignItems: 'center', justifyContent: 'center' },
 });

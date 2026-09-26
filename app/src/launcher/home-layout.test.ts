@@ -2,6 +2,8 @@ import {
   addWidget,
   cellRect,
   columnWidth,
+  dropSlot,
+  dropWidget,
   fits,
   gridHeight,
   HOME_GRID,
@@ -13,6 +15,7 @@ import {
   rowHeights,
   rowTop,
   slotAt,
+  swapWidgets,
   type GridMetrics,
   type HomeLayout,
 } from './home-layout';
@@ -151,6 +154,37 @@ describe('home layout', () => {
     });
   });
 
+  describe('swapWidgets and dropWidget', () => {
+    const layout = layoutOf(
+      { id: 'wallet', x: 0, y: 0, w: 2, h: 2 },
+      { id: 'phone', x: 2, y: 0, w: 2, h: 2 },
+      { id: 'swap-earn', x: 0, y: 2, w: 4, h: 1 },
+      { id: 'activity', x: 0, y: 3, w: 4, h: 1 },
+    );
+
+    it('swaps two widgets of the same size', () => {
+      expect(swapWidgets(layout, 'wallet', 2, 0)?.items.slice(0, 2)).toEqual([
+        { id: 'wallet', x: 2, y: 0, w: 2, h: 2 },
+        { id: 'phone', x: 0, y: 0, w: 2, h: 2 },
+      ]);
+      expect(swapWidgets(layout, 'activity', 0, 2)?.items.slice(2)).toEqual([
+        { id: 'swap-earn', x: 0, y: 3, w: 4, h: 1 },
+        { id: 'activity', x: 0, y: 2, w: 4, h: 1 },
+      ]);
+    });
+
+    it('does not swap with a different size or a partial overlap', () => {
+      expect(swapWidgets(layout, 'swap-earn', 0, 0)).toBeNull();
+      expect(swapWidgets(layout, 'wallet', 2, 1)).toBeNull();
+    });
+
+    it('moves into free space first, then swaps, else fails', () => {
+      expect(dropWidget(layout, 'activity', 0, 5)?.items.at(-1)).toEqual({ id: 'activity', x: 0, y: 5, w: 4, h: 1 });
+      expect(dropWidget(layout, 'phone', 0, 0)?.items[1]).toEqual({ id: 'phone', x: 0, y: 0, w: 2, h: 2 });
+      expect(dropWidget(layout, 'swap-earn', 0, 1)).toBeNull();
+    });
+  });
+
   describe('resizeWidget', () => {
     const layout = layoutOf({ id: 'wallet', x: 0, y: 0, w: 2, h: 2 }, { id: 'phone', x: 2, y: 0, w: 2, h: 2 });
 
@@ -245,6 +279,16 @@ describe('home layout', () => {
         const rect = cellRect({ x: 0, y, w: 1, h: 1 }, uneven);
         expect(slotAt({ x: rect.left, y: rect.top + 5 }, { w: 1, h: 1 }, uneven)).toEqual({ x: 0, y });
       }
+    });
+
+    it('drops with the top row under the finger, centred on its column', () => {
+      // uneven rows: 49, 49, 68, 68, 110; tops 0, 61, 122, 202, 282, 404
+      expect(dropSlot({ x: 10, y: 300 }, { w: 4, h: 2 }, uneven)).toEqual({ x: 0, y: 4 });
+      expect(dropSlot({ x: 10, y: 403 }, { w: 4, h: 1 }, uneven)).toEqual({ x: 0, y: 4 });
+      expect(dropSlot({ x: 10, y: 420 }, { w: 4, h: 1 }, uneven)).toEqual({ x: 0, y: 5 });
+      expect(dropSlot({ x: 200, y: 10 }, { w: 2, h: 2 }, uneven)).toEqual({ x: 2, y: 0 });
+      expect(dropSlot({ x: 300, y: 10 }, { w: 2, h: 2 }, uneven)).toEqual({ x: 2, y: 0 });
+      expect(dropSlot({ x: 5, y: 10 }, { w: 2, h: 1 }, uneven)).toEqual({ x: 0, y: 0 });
     });
 
     it('snaps to the nearest slot and clamps to the columns', () => {

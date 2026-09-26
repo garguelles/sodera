@@ -1,6 +1,6 @@
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { BackHandler, type ScrollView } from 'react-native';
+import { BackHandler, type ScrollView, type View } from 'react-native';
 
 import { readAgentConfigFromEnv } from '@/agent/agent-client';
 import { HomeGrid } from '@/components/home-grid';
@@ -15,10 +15,16 @@ import { SwapEarnWidget } from '@/components/widgets/swap-earn-widget';
 import { WalletWidget } from '@/components/widgets/wallet-widget';
 import {
   addWidget,
+  columnWidth,
+  dropWidget,
+  fits,
+  gridHeight,
   HOME_GRID,
   removeWidget,
   resizeWidget,
+  rowCount,
   rowTop,
+  dropSlot,
   type GridCell,
   type HomeLayout,
   type HomeLayoutItem,
@@ -51,6 +57,8 @@ export default function HomeScreen() {
   // The empty cell the sheet was opened from; the next added widget goes there if it fits.
   const [pendingCell, setPendingCell] = useState<GridCell | null>(null);
   const scrollRef = useRef<ScrollView | null>(null);
+  const gridRef = useRef<View | null>(null);
+  const [widgetDragActive, setWidgetDragActive] = useState(false);
   const scrollMetrics = useRef({ offset: 0, viewportHeight: 0 });
   const { edit } = useLocalSearchParams<{ edit?: string }>();
   const openPhone = () => router.push('/phone');
@@ -132,6 +140,30 @@ export default function HomeScreen() {
     }
   };
 
+  const handleMove = (id: WidgetId, x: number, y: number) => applyLayout(dropWidget(layout, id, x, y));
+
+  /** A widget dragged out of the sheet was released: place it in the slot under the finger, or reopen the sheet. */
+  const handleDrop = (id: WidgetId, absoluteX: number, absoluteY: number) => {
+    const grid = gridRef.current;
+    if (!grid) return setSheetOpen(true);
+    grid.measureInWindow((gridX, gridY, gridWidth) => {
+      const size = getWidgetDefinition(id).defaultSize;
+      const rows = rowCount(layout) + 1; // the extra edit-mode row
+      const metrics = { columnWidth: columnWidth(gridWidth), gap: HOME_GRID.gap, rowHeights: layoutRowHeights(layout.items, rows) };
+      const x = absoluteX - gridX;
+      const y = absoluteY - gridY;
+      const overGrid = x >= 0 && x <= gridWidth && y >= 0 && y <= gridHeight(metrics, rows);
+      const slot = dropSlot({ x, y }, size, metrics);
+      const candidate = { id, ...slot, ...size };
+      if (overGrid && fits(layout, candidate)) {
+        applyLayout({ ...layout, items: [...layout.items, candidate] });
+        setSelectedId(id);
+      } else {
+        setSheetOpen(true);
+      }
+    });
+  };
+
   const handleResize = (id: WidgetId, size: WidgetSize) => applyLayout(resizeWidget(layout, id, size));
 
   const handleCycleSize = (id: WidgetId) => {
@@ -174,6 +206,7 @@ export default function HomeScreen() {
       editing={editing}
       onDone={exitEdit}
       scrollRef={scrollRef}
+      scrollEnabled={!widgetDragActive}
       onScrollMetrics={(metrics) => {
         scrollMetrics.current = metrics;
       }}
@@ -186,6 +219,7 @@ export default function HomeScreen() {
             open={sheetOpen}
             onOpenChange={changeSheetOpen}
             onAdd={handleAdd}
+            onDrop={handleDrop}
           />
         ) : null
       }
@@ -201,6 +235,10 @@ export default function HomeScreen() {
           onResize={handleResize}
           onCycleSize={handleCycleSize}
           onAddAt={handleAddAt}
+          onMove={handleMove}
+          onDragActiveChange={setWidgetDragActive}
+          scrollGestureRef={scrollRef}
+          gridRef={gridRef}
         />
       }
       onOpenAssistant={agentConfigured && account ? () => router.push('/assistant') : undefined}

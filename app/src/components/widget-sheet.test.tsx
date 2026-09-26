@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { State } from 'react-native-gesture-handler';
 import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
 
@@ -9,7 +9,7 @@ import { WIDGET_REGISTRY } from '@/launcher/widget-registry';
 const definitions = WIDGET_REGISTRY.filter((definition) => definition.removable);
 
 async function renderSheet(props: Partial<Parameters<typeof WidgetSheet>[0]> = {}) {
-  const handlers = { onOpenChange: jest.fn(), onAdd: jest.fn() };
+  const handlers = { onOpenChange: jest.fn(), onAdd: jest.fn(), onDrop: jest.fn() };
   await render(
     <WidgetSheet definitions={definitions} placedIds={new Set<WidgetId>()} open {...handlers} {...props} />,
   );
@@ -21,6 +21,7 @@ describe('WidgetSheet', () => {
     await renderSheet();
 
     expect(screen.getByText('Sodera widgets')).toBeOnTheScreen();
+    expect(screen.getByText('drag onto home')).toBeOnTheScreen();
     expect(screen.getByText('Market pulse')).toBeOnTheScreen();
     expect(screen.getByText('BTC, ETH · 24h')).toBeOnTheScreen();
     expect(screen.getByText('4×2 · 2×2')).toBeOnTheScreen();
@@ -71,5 +72,19 @@ describe('WidgetSheet', () => {
     expect(screen.queryByTestId('widget-sheet-backdrop')).not.toBeOnTheScreen();
     await fireEvent.press(screen.getByRole('button', { name: 'Show widgets' }));
     expect(onOpenChange).toHaveBeenLastCalledWith(true);
+  });
+
+  it('collapses while a row is dragged and reports where it was dropped', async () => {
+    const { onOpenChange, onDrop } = await renderSheet();
+
+    await act(async () => {
+      fireGestureHandler(getByGestureTestId('widget-sheet-row-drag-activity'), [
+        { state: State.BEGAN, absoluteX: 100, absoluteY: 700 },
+        { state: State.ACTIVE, absoluteX: 120, absoluteY: 400 },
+        { state: State.END, absoluteX: 180, absoluteY: 300 },
+      ]);
+    });
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(onDrop).toHaveBeenCalledWith('activity', 180, 300);
   });
 });

@@ -1,6 +1,8 @@
 import { SymbolView } from 'expo-symbols';
-import { type ReactNode, type RefObject, useRef } from 'react';
-import { type GestureResponderEvent, type NativeScrollEvent, type NativeSyntheticEvent, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { type ReactNode, type RefObject, useRef, useState } from 'react';
+import { type GestureResponderEvent, type NativeScrollEvent, type NativeSyntheticEvent, Pressable, type ScrollView as RNScrollView, StyleSheet, Text, View } from 'react-native';
+// Gesture handler's ScrollView, so a widget drag can block scrolling instead of racing it.
+import { ScrollView } from 'react-native-gesture-handler';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { platinum } from '@/constants/theme';
@@ -15,11 +17,13 @@ type LauncherScreenProps = {
   /** Edit mode: the header shows `EDIT HOME` and a Done pill, and swipe-up is disabled. */
   editing?: boolean;
   onDone?: () => void;
-  /** Drawn over the screen, such as the widgets sheet in edit mode. */
+  /** Drawn over everything below the header, such as the widgets sheet in edit mode; the header stays usable. */
   overlay?: ReactNode;
   /** Extra space at the end of the scroll content so an overlay does not cover the last row. */
   contentInsetBottom?: number;
-  scrollRef?: RefObject<ScrollView | null>;
+  scrollRef?: RefObject<RNScrollView | null>;
+  /** False while a widget is being dragged. */
+  scrollEnabled?: boolean;
   /** Scroll offset and visible height of the home scroll view. */
   onScrollMetrics?: (metrics: { offset: number; viewportHeight: number }) => void;
 };
@@ -36,10 +40,14 @@ export function LauncherScreen({
   overlay,
   contentInsetBottom = 0,
   scrollRef,
+  scrollEnabled = true,
   onScrollMetrics,
 }: LauncherScreenProps) {
   const touchStart = useRef<{ x: number; y: number } | null>(null);
   const scrollMetrics = useRef({ offset: 0, viewportHeight: 0 });
+  const [headerBottom, setHeaderBottom] = useState(0);
+  const measureHeader = (event: { nativeEvent: { layout: { y: number; height: number } } }) =>
+    setHeaderBottom(event.nativeEvent.layout.y + event.nativeEvent.layout.height);
 
   const reportScroll = (next: Partial<{ offset: number; viewportHeight: number }>) => {
     scrollMetrics.current = { ...scrollMetrics.current, ...next };
@@ -62,7 +70,7 @@ export function LauncherScreen({
   return (
     <SafeAreaView style={styles.screen}>
       {editing ? (
-        <View style={styles.header}>
+        <View onLayout={measureHeader} style={styles.header}>
           <Text style={styles.editTitle}>EDIT HOME</Text>
           <Pressable
             accessibilityRole="button"
@@ -74,7 +82,7 @@ export function LauncherScreen({
           </Pressable>
         </View>
       ) : (
-        <View style={styles.header}>
+        <View onLayout={measureHeader} style={styles.header}>
           <View style={styles.brand}>
             <View style={styles.mark}><View style={styles.markCore} /></View>
             <Text style={styles.wordmark}>SODERA</Text>
@@ -101,6 +109,7 @@ export function LauncherScreen({
       )}
       <ScrollView
         ref={scrollRef}
+        scrollEnabled={scrollEnabled}
         style={styles.content}
         contentContainerStyle={[styles.contentInner, editing && styles.contentEditing, { paddingBottom: spacing.md + contentInsetBottom }]}
         contentInsetAdjustmentBehavior="automatic"
@@ -114,7 +123,11 @@ export function LauncherScreen({
         <Text style={styles.gestureText}>SWIPE UP FOR PHONE</Text>
         <View style={styles.gestureBar} />
       </View>
-      {overlay}
+      {overlay ? (
+        <View pointerEvents="box-none" style={[styles.overlay, { top: headerBottom }]}>
+          {overlay}
+        </View>
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -128,6 +141,7 @@ const styles = StyleSheet.create({
   markCore: { width: 13, height: 13, borderRadius: radius.full, backgroundColor: colors.platinum },
   wordmark: { ...typography.label, color: colors.platinum, letterSpacing: 3 },
   settingsButton: { width: 38, height: 38, borderRadius: radius.full, backgroundColor: colors.glass, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
+  overlay: { position: 'absolute', left: 0, right: 0, bottom: 0 },
   editTitle: { ...typography.label, color: colors.platinum, letterSpacing: 3 },
   // 38 tall like the header buttons, so the header does not change height; the hit slop brings it to 44.
   doneButton: { height: 38, paddingHorizontal: spacing.lg, borderRadius: radius.full, backgroundColor: colors.platinum, alignItems: 'center', justifyContent: 'center' },

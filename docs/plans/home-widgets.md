@@ -1,6 +1,6 @@
 # Home widgets plan
 
-Status: approved scope. Sections 1 to 4 implemented; section 5 not yet implemented. Branch: `feat/home-widgets`. No Linear ticket; commits use `{type}: {description}`.
+Status: approved scope. Sections 1 to 5 implemented. Branch: `feat/home-widgets`. No Linear ticket; commits use `{type}: {description}`.
 
 This document is one large ticket split into sub-tickets numbered 1 to 5. Each section is written so that a fresh model can implement it without the conversation that produced this plan. Read "Scope decisions" and "Shared context" before any section. Section 2 depends on section 1. Section 3 depends on section 2. Section 4 depends on section 3. Section 5 depends on sections 3 and 4.
 
@@ -27,7 +27,7 @@ Reference: the "Edit mode (redesign)" Claude Design mock, section 4a, supplied a
 
 - One instance of each widget. The sheet dims a widget that is already on the home.
 - No intent bar widget. The mock's intent bar is a reference only; Dera stays the header button that opens `/assistant`, and its chat composer stays inside the assistant. Every widget is always available, so there is no availability context.
-- No auto-compaction. Empty cells stay empty, as on Android's home. Row count is derived from the lowest item, so trailing empty rows disappear on their own.
+- No auto-compaction. Empty cells stay empty, as on Android's home. Dropping a dragged widget onto a widget of the same size swaps the two; other widgets never move to make room. Row count is derived from the lowest item, so trailing empty rows disappear on their own.
 - Layout is persisted in the existing launcher preferences JSON. No Kotlin change. `homeLayout: null` means "use the default layout for the current widget availability"; the layout is persisted only after the first edit.
 - The balance-visibility toggle moves from `WalletHome` local state into the same preferences, so the home widget and the wallet screen agree.
 - Entering edit mode uses one gesture-handler long-press on the whole grid, hit-tested against the cells. A `Pressable.onLongPress` per cell never fires, because each widget's own buttons take the touch first; when the grid long-press activates, gesture handler cancels the widget's touch, so the tile does not also open. Settings gets an "Edit home" row because long-press is undiscoverable.
@@ -444,9 +444,25 @@ Device only. `react-native-gesture-handler/jest-utils` (`fireGestureHandler`) ma
 ### Acceptance criteria
 
 - Move Swap / Earn below Activity; relaunch: it stays.
-- Dropping onto an occupied slot springs back.
+- Dropping Wallet onto Phone swaps them. Dropping onto a widget of a different size springs back.
 - Drag Activity from the sheet onto an empty 4×1 row: it lands there and is selected.
 - Scrolling still works when nothing is being dragged, on Android and on web.
+
+### Implementation notes
+
+Implemented and checked on an Android device: Market pulse dragged from the sheet onto the empty row below Activity lands there and is selected, with the sheet collapsing and the row following the finger during the drag; dragging Market pulse onto Activity shows a red candidate slot and springs back; Swap / Earn dragged below Activity moves there, and back again; tile taps still open their screens afterwards. Not checked: relaunch after a move (moves save through the same path as resize and remove, which were checked in section 3), scrolling during edit mode on a layout long enough to scroll, and anything on web. Differences and additions:
+
+- Scroll vs drag: the home `ScrollView` is now gesture handler's `ScrollView`, and the move pan calls `blocksExternalGesture` on it. Turning `scrollEnabled` off from JS when the pan starts, as planned, loses the race: the native scroll view claims the touch before the state update lands. `scrollEnabled` is still turned off while a drag is active.
+- The move pan runs its callbacks on the JS thread (`runOnJS(true)`) and writes the translation into shared values; the candidate slot is state that only changes when the slot or its fit changes. The dragged cell is drawn above the others, the edit chrome hides during the drag, and the translation resets when the moved widget's position changes, so it does not jump back for a frame.
+- Drop rule for the sheet: the widget's top row is the row under the finger and it is centred on the finger's column (`dropSlot` in `home-layout.ts`). The planned "finger is the centre of the widget" rule put a 4×2 Market pulse's top row on Activity when dropped on the empty row below it.
+- The grid is measured with `measureInWindow` when the widget is dropped, not when the drag starts, so no scroll offset is needed.
+- Sheet rows start dragging after a 200 ms hold (`activateAfterLongPress`), so a quick swipe still scrolls the list and a tap still adds. The ghost is a pill with the widget's icon and title, drawn in the sheet's overlay container.
+- A drop that misses the grid or does not fit reopens the sheet. There is no candidate highlight during a sheet drag.
+- The sheet hint now reads the mock's "drag onto home".
+- Swap: added after review. `swapWidgets` and `dropWidget` (move into free space, else swap with a same-size widget whose top-left cell is the drop slot) are in `home-layout.ts`; the candidate highlight is cyan for a swap too. Checked on the device by swapping Wallet and Phone and back.
+- The sheet's tap-outside backdrop covered the header, so Done needed two taps while the sheet was open. `LauncherScreen` now draws `overlay` in a container that starts below the header.
+- Hot reload remounts the home route, which ends edit mode; this only affects development.
+- Tests: `fireGestureHandler` covers a move into a free slot, a blocked move, and a sheet row drag reporting its drop point; the gesture calls are wrapped in `act` because they update state.
 
 ## Open verifications
 
@@ -455,7 +471,7 @@ Device only. `react-native-gesture-handler/jest-utils` (`fireGestureHandler`) ma
 | Declared widget heights match the pre-widget home | Section 2 device check: resolved, all widgets match `main` | all |
 | The grid long-press does not conflict with tile taps or with the resize pans | Section 3 device check: resolved; long-press is disabled while editing | sections 3, 5 |
 | `pointerEvents="none"` on widgets in edit mode still lets the cell `Pressable` receive taps on Android | Section 3 device check: resolved | sections 3, 4 |
-| `measureInWindow` plus scroll offset gives correct drop slots on web | Section 5 | section 5 |
+| `measureInWindow` at drop time gives correct drop slots on web | Section 5: verified on Android only | section 5 |
 
 ## Sources
 
