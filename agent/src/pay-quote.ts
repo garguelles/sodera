@@ -1,4 +1,4 @@
-import { getAddress, isAddress, zeroAddress, type Address, type Hex } from 'viem';
+import { decodeFunctionData, getAddress, isAddress, parseAbi, zeroAddress, type Address, type Hex } from 'viem';
 import { z } from 'zod';
 
 import { TradingApiError, TRADING_ROUTER_VERSION, type TradingApiClient } from './uniswap-trading.ts';
@@ -10,9 +10,10 @@ import { TradingApiError, TRADING_ROUTER_VERSION, type TradingApiClient } from '
 
 export const SEPOLIA_CHAIN_ID = 11155111;
 export const TRADING_UNIVERSAL_ROUTER: Address = '0x7E4f6c5e954Da5c61B3423D81E2277431Ac043f3';
-const EXECUTE_SELECTOR = '0x3593564c';
 const SLIPPAGE_PERCENT = 0.5;
-const DEADLINE_SECONDS = 600;
+// /swap_5792 ignores a requested deadline and encodes its own, 30 minutes after quoting.
+const MAX_DEADLINE_SECONDS = 30 * 60 + 120;
+const universalRouterAbi = parseAbi(['function execute(bytes commands, bytes[] inputs, uint256 deadline) payable']);
 
 export const PAY_ASSETS = {
   ETH: { address: zeroAddress, decimals: 18, maxAmountOut: 10n ** 18n },
@@ -90,19 +91,29 @@ export function createPayQuoter({ trading, now = Date.now }: { trading: TradingA
     }
 
     const quotedAt = now();
-    const deadline = Math.floor(quotedAt / 1000) + DEADLINE_SECONDS;
     const batch = await trading.swap5792({
       quote,
       ...(quoted.permitData ? { permitData: quoted.permitData } : {}),
-      deadline,
     });
 
     // The API also returns unlimited approvals; the app replaces them with ones capped at maxAmountIn.
     const calls: { to?: string; data?: string; value?: string }[] = Array.isArray(batch.calls) ? batch.calls : [];
     const routerCalls = calls.filter((call) => call.to?.toLowerCase() === TRADING_UNIVERSAL_ROUTER.toLowerCase());
     const [routerCall] = routerCalls;
-    if (routerCalls.length !== 1 || !routerCall?.data?.startsWith(EXECUTE_SELECTOR)) {
+    if (routerCalls.length !== 1 || !routerCall?.data) {
       throw new UnexpectedPayCallsError('Expected exactly one Universal Router execute call');
+    }
+    let deadline: number;
+    try {
+      const { functionName, args } = decodeFunctionData({ abi: universalRouterAbi, data: routerCall.data as Hex });
+      if (functionName !== 'execute') throw new Error('not execute');
+      deadline = Number(args[2]);
+    } catch {
+      throw new UnexpectedPayCallsError('Expected exactly one Universal Router execute call');
+    }
+    const nowSeconds = Math.floor(quotedAt / 1000);
+    if (deadline <= nowSeconds || deadline > nowSeconds + MAX_DEADLINE_SECONDS) {
+      throw new UnexpectedPayCallsError('Router deadline is outside the expected window');
     }
     const value = BigInt(routerCall.value ?? '0');
     if (request.payAsset === 'ETH' ? value > maxAmountIn : value !== 0n) {

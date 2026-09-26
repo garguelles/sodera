@@ -7,7 +7,7 @@ Research date: 2026-09-26
 **Go.** The Uniswap Trading API can give Sodera's Kernel smart account batchable calls that pay a recipient an exact amount on Ethereum Sepolia. The mechanism for [the pay with any token plan](../plans/pay-with-any-token.md) is:
 
 1. The backend calls `POST /quote` with `type: EXACT_OUTPUT`, `swapper` = the Kernel, no `recipient`, `protocols: [V2, V3, V4]`, `slippageTolerance: 0.5` and `x-universal-router-version: 2.1.2`.
-2. It then calls `POST /swap_5792` with the quote (and `permitData`, when returned) and a deadline 10 minutes out. That returns ordered calls, and the backend keeps **only the single Universal Router 2.1.2 call** (`0x7E4f6c5e954Da5c61B3423D81E2277431Ac043f3`).
+2. It then calls `POST /swap_5792` with the quote (and `permitData`, when returned). It ignores a requested deadline and encodes its own, 30 minutes after quoting, so the backend reads the deadline back from the calldata. That returns ordered calls, and the backend keeps **only the single Universal Router 2.1.2 call** (`0x7E4f6c5e954Da5c61B3423D81E2277431Ac043f3`).
 3. The app builds its own bounded approvals when paying with USDC: `USDC.approve(Permit2, maxAmountIn)` and `Permit2.approve(USDC, router, maxAmountIn, deadline)`. These replace the API's unlimited ones.
 4. The app appends its own transfer of the exact amount to the payee, and runs everything as one Kernel UserOperation.
 

@@ -1,4 +1,4 @@
-import { getAddress, zeroAddress } from 'viem';
+import { encodeFunctionData, getAddress, parseAbi, zeroAddress } from 'viem';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
@@ -14,7 +14,11 @@ import { ACCOUNT } from './test/fixtures.ts';
 const USDC = '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238';
 const PERMIT2 = '0x000000000022D473030F116dDEE9F6B43aC78BA3';
 const NOW = Date.parse('2026-09-26T08:00:00.000Z');
-const ROUTER_DATA = `0x3593564c${'00'.repeat(64)}`;
+const ROUTER_DEADLINE = NOW / 1000 + 1800;
+const executeAbi = parseAbi(['function execute(bytes commands, bytes[] inputs, uint256 deadline) payable']);
+const routerData = (deadline = ROUTER_DEADLINE) =>
+  encodeFunctionData({ abi: executeAbi, functionName: 'execute', args: ['0x10', ['0x'], BigInt(deadline)] });
+const ROUTER_DATA = routerData();
 
 const ethToUsdc: PayQuoteRequest = { account: ACCOUNT, payAsset: 'ETH', receiveAsset: 'USDC', amountOut: '10000000' };
 const usdcToEth: PayQuoteRequest = {
@@ -98,13 +102,12 @@ describe('pay quoter', () => {
     expect(trading.swap5792).toHaveBeenCalledWith({
       quote: quoteResponse(usdcToEth).quote,
       permitData: { domain: {}, types: {}, values: {} },
-      deadline: NOW / 1000 + 600,
     });
     expect(quote).toEqual({
       quoteId: 'quote-1',
       requestId: 'req-1',
       quotedAt: '2026-09-26T08:00:00.000Z',
-      deadline: NOW / 1000 + 600,
+      deadline: ROUTER_DEADLINE,
       routerVersion: '2.1.2',
       payAsset: 'USDC',
       receiveAsset: 'ETH',
@@ -122,6 +125,8 @@ describe('pay quoter', () => {
       [ethToUsdc, quoteResponse(ethToUsdc), []],
       [ethToUsdc, quoteResponse(ethToUsdc), [routerCall('1005'), routerCall('1')]],
       [ethToUsdc, quoteResponse(ethToUsdc), [{ ...routerCall('1005'), data: '0xdeadbeef' }]],
+      [ethToUsdc, quoteResponse(ethToUsdc), [{ ...routerCall('1005'), data: routerData(NOW / 1000 - 1) }]],
+      [ethToUsdc, quoteResponse(ethToUsdc), [{ ...routerCall('1005'), data: routerData(NOW / 1000 + 3600) }]],
       [ethToUsdc, quoteResponse(ethToUsdc), [routerCall('1006')]],
       [usdcToEth, quoteResponse(usdcToEth), [routerCall('1')]],
       [

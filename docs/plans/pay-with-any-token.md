@@ -73,7 +73,7 @@ All work lands on one branch, `feat/pay-with-any-token`, as separate commits, wi
         - `type: EXACT_OUTPUT` and `protocols: [V2, V3, V4]`;
         - `slippageTolerance: 0.5` and router version 2.1.2;
         - the call option chosen in the spike;
-        - `deadline` = now + 10 min;
+        - the router's own deadline, which `/swap_5792` sets 30 minutes after quoting and ignores a requested one; the backend decodes it from the calldata and reports it;
         - **no `recipient`**.
     - Normalized response: `{ quoteId, requestId, quotedAt, deadline, routerVersion, payAsset, receiveAsset, amountIn, maxAmountIn, amountOut, route, priceImpactPercent, swap: { to, value, data } }`. `swap` is the only call the backend passes on, and it must be the Universal Router's `execute`. The spike showed that `/swap_5792` returns unlimited approvals, so the app builds bounded ones itself. The key, upstream headers and raw body never appear in responses or logs. Logs mask the account and keep the Uniswap `requestId`.
     - Operations:
@@ -87,7 +87,7 @@ All work lands on one branch, `feat/pay-with-any-token`, as separate commits, wi
         - Targets must be on an allowlist: USDC, Permit2 or the proxy, and the Trading Universal Router.
         - USDC calls may only `approve` Permit2 or the proxy, for no more than `maxAmountIn`.
         - Permit2 approvals must be for the router, at most `maxAmountIn`, and expire within 1 hour.
-        - The router call must use the `execute(bytes,bytes[],uint256)` selector, with a deadline in the future and no more than 10 minutes out.
+        - The router call must use the `execute(bytes,bytes[],uint256)` selector, with a deadline in the future and no more than about 30 minutes out (the `/swap_5792` default).
         - Total ETH value may not exceed `maxAmountIn`, and must be 0 when paying with USDC.
     - Decode the `V4_SWAP` input with `@uniswap/v4-sdk`'s `V4BaseActionsParser`. Verify the swap actions, the exact output amount and the maximum input, and that nothing is taken or swept to anyone but the Kernel. Commands the parser can't decode (v2/v3 legs) fall back to the target, selector and value checks plus the asset-change simulation.
     - `buildPayWithCalls(quote, transfer)` returns `[...guardedCalls, transfer.call]`, reusing `parseSendTransfer` from `app/src/wallet/send-transfer.ts`. This is the same batching pattern as `app/src/agent/plan-encoder.ts`.
@@ -126,7 +126,7 @@ All work lands on one branch, `feat/pay-with-any-token`, as separate commits, wi
 - **Refund recipient.** Never pass `recipient`. The guard and the asset-change simulation catch any take or sweep to a foreign address.
 - **Two routers.** They have separate Permit2 allowances, and mixing router versions breaks calldata, so the version header stays pinned.
 - **Sepolia liquidity.** Pools are thin and mispriced (about 11.8× the Chainlink ETH/USD price at the time of writing). `NoRouteFound` and high price impact are expected at times, and the UI must surface them.
-- **Quote freshness.** Classic quotes have no expiry. The 30 s TTL, the 10 min deadline and the slippage bound together limit stale execution.
+- **Quote freshness.** Classic quotes have no expiry. The 30 s TTL, the router's 30 min deadline (with the Permit2 approval expiring at it) and the slippage bound together limit stale execution.
 - **Shared quota.** All users share the key's 6 req/s default limit, so the backend's global limiter and 429 mapping protect it.
 - **Bundler simulation.** It only proves the batch doesn't revert. The asset-change simulation is the check on amounts.
 - **App token scope.** The app token already deters only casual abuse, and it now also gates a quote proxy. The proxy never signs anything, and every call is re-verified on the device.
