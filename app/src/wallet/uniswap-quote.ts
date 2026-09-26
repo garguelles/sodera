@@ -1,4 +1,4 @@
-import { createPublicClient, formatUnits, http, parseUnits, type PublicClient } from 'viem';
+import { createPublicClient, formatUnits, http, parseAbi, parseUnits, type PublicClient } from 'viem';
 import { sepolia } from 'viem/chains';
 
 import { SEPOLIA_UNISWAP_V4_QUOTER_ADDRESS } from './sepolia';
@@ -31,39 +31,11 @@ export type SwapQuote = {
 
 export type SwapQuoteClient = Pick<PublicClient, 'getChainId' | 'simulateContract'>;
 
-const v4QuoterAbi = [
-  {
-    type: 'function',
-    name: 'quoteExactInputSingle',
-    stateMutability: 'nonpayable',
-    inputs: [
-      {
-        name: 'params',
-        type: 'tuple',
-        components: [
-          {
-            name: 'poolKey',
-            type: 'tuple',
-            components: [
-              { name: 'currency0', type: 'address' },
-              { name: 'currency1', type: 'address' },
-              { name: 'fee', type: 'uint24' },
-              { name: 'tickSpacing', type: 'int24' },
-              { name: 'hooks', type: 'address' },
-            ],
-          },
-          { name: 'zeroForOne', type: 'bool' },
-          { name: 'exactAmount', type: 'uint128' },
-          { name: 'hookData', type: 'bytes' },
-        ],
-      },
-    ],
-    outputs: [
-      { name: 'amountOut', type: 'uint256' },
-      { name: 'gasEstimate', type: 'uint256' },
-    ],
-  },
-] as const;
+const v4QuoterAbi = parseAbi([
+  'struct PoolKey { address currency0; address currency1; uint24 fee; int24 tickSpacing; address hooks; }',
+  'struct QuoteExactSingleParams { PoolKey poolKey; bool zeroForOne; uint128 exactAmount; bytes hookData; }',
+  'function quoteExactInputSingle(QuoteExactSingleParams params) returns (uint256 amountOut, uint256 gasEstimate)',
+]);
 
 export function parseSwapAmount({
   direction,
