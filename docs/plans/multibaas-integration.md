@@ -1,0 +1,983 @@
+# MultiBaas and wallet agent plan
+
+Status: approved scope, not yet implemented. Branch: `feat/curvegrid`. No Linear ticket; commits use `{type}: {description}`.
+
+This document is one large ticket split into seven sub-tickets. Sections 1 to 4 integrate MultiBaas. Sections 5 to 7 add the wallet agent. Each section is written so that a fresh model can implement it without the conversation that produced this plan. Read "Shared context" and "Prerequisites" before any MultiBaas section, and additionally "Wallet agent" before sections 5 to 7. Sections 2, 3, and 4 depend on the client module and verification script delivered by section 1 and are otherwise independent of each other. Section 6 depends on section 5. Section 7 depends on section 5 and reuses section 6's intent flow.
+
+Priority: sections 1, 2, and 3 are the MultiBaas deliverable and are frontend-only. Sections 5, 6, and 7 are the agent deliverable; section 5 adds the project's only backend, the `agent/` service. Section 4 is low priority. It is retained so the design is not lost, would add its endpoints to the `agent/` service, and is not scheduled.
+
+## Scope decisions
+
+- MultiBaas replaces Blockscout as the activity source. Blockscout code is deleted, not kept as a fallback.
+- MultiBaas becomes the source for USDC balance and the Chainlink ETH/USD price. The ETH native balance moves to MultiBaas only if the address endpoint proves to return it; otherwise it stays on the public RPC.
+- The Graph is no longer the planned portfolio and activity source. `docs/hackathon-decisions.md` still says otherwise; editing that document is out of scope for this plan and will be handled separately.
+- Morpho vault data is out of scope.
+- The wallet agent is in scope as sections 5 to 7. Sections 1 to 4 must not depend on it.
+- One backend only. Section 5 creates `agent/`; section 4, if built, adds its webhook and device endpoints to that same service rather than a separate app.
+- Cloud Wallets, Transaction Manager, Safe Accounts, signer selector, and the Hardhat and Foundry plugins are not used. They assume EOAs or Safe multisigs. The passkey must remain Kernel's direct authority (ADR-0010).
+- Market Watch is unchanged. MultiBaas has no price data.
+- Outbound ETH sends made from this phone get their amount and recipient from a local journal written by the send flow. Inbound ETH from external wallets shows only as a balance change, because native transfers emit no events.
+
+## Shared context
+
+### Repository facts
+
+- `app/` is the Expo SDK 57 app. `landing/` is the static site behind Caddy on Railway. There is no backend today. Sections 1 to 3 need none. Section 5 adds the first one as a third top-level directory, `agent/`, and section 4 (low priority) adds endpoints to it.
+- Package manager is pnpm 12.3.4 (pinned via `packageManager`). Node 22 is required. Run commands from inside `app/`, `landing/`, or `agent/`; there is no root workspace.
+- Tests use `jest-expo` with `@testing-library/react-native`. Run `pnpm test --runInBand` and `pnpm lint` from `app/`. Every provider in the codebase is a factory that takes injectable `storage`, `fetcher`, or `client` parameters so tests never hit the network. Tests mock native storage modules with `jest.mock('./wallet-identity-native-storage', ...)`.
+- Environment: `app/.env.example` is copied to the gitignored `app/.env.local`. Node verification scripts read plain names (`SEPOLIA_RPC_URL`). The app reads only `EXPO_PUBLIC_*` names, which are embedded in the binary and must be treated as public. Follow this split for every new variable.
+- Verification scripts live in `app/scripts/*.mjs`, are registered in `app/package.json` under `verify:*`, and run with `node --env-file-if-exists=.env.local`. They use `node:assert/strict` and fail loudly. Follow `verify-kernel-live.mjs` for structure.
+- The persisted wallet identity is read with `readPersistedWalletIdentity(storage)` from `app/src/wallet/wallet-identity.ts`. It returns `{ credential, account, deployed }`, where `account` is the checksummed Kernel smart account address. Every provider gets the account this way.
+- Native key-value storage is not generic. `modules/sodera-passkey` exposes fixed methods (`readWalletIdentityAsync`, `writeOnboardingProfileAsync`, and so on) backed by Kotlin. Adding a native method requires a rebuild with `pnpm android`. Section 1 uses `expo-file-system` for the new journal to avoid that.
+- Screens receive providers as props and are wired in `app/src/app/*.tsx` route files. Example: `app/src/app/transactions.tsx` passes `blockscoutTransactionActivityProvider` into `TransactionsScreen`.
+- The send flow (`app/src/components/send-screen.tsx`) calls `client.prepare(calls)` to get a `KernelOperationReview`, then `client.execute(review.userOperationHash)` after the passkey ceremony, and receives `KernelOperationEvidence` with `userOperationHash`, `transactionHash`, `account`, and `receipt.actualGasCostWei`. On success it calls `walletHomeLiveProvider.refresh()`.
+
+### Pinned on-chain facts (Ethereum Sepolia, chain id 11155111)
+
+| Item | Value | Source in repo |
+| --- | --- | --- |
+| USDC (Circle testnet, 6 decimals, FiatTokenProxy) | `0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238` | `app/src/wallet/sepolia.ts`, `docs/research/sepolia-usdc-wbtc-assets.md` |
+| Chainlink ETH/USD aggregator (8 decimals) | `0x694AA1769357215DE4FAC081bf1f309aDC325306` | `app/src/wallet/sepolia.ts`, `docs/research/PRA-221-sepolia-eth-usd-price.md` |
+| ERC-4337 EntryPoint v0.7 | `0x0000000071727De22E5E9d8BAf0edAc6f37da032` | `app/src/wallet/kernel-webauthn.ts` |
+| Public execution RPC | `https://ethereum-sepolia-rpc.publicnode.com` | `app/.env.example`, `docs/research/PRA-187-sepolia-rpc-provider.md` |
+
+EntryPoint v0.7 emits `UserOperationEvent(bytes32 indexed userOpHash, address indexed sender, address indexed paymaster, uint256 nonce, bool success, uint256 actualGasCost, uint256 actualGasUsed)`. Input indexes are therefore: 0 `userOpHash`, 1 `sender`, 2 `paymaster`, 3 `nonce`, 4 `success`, 5 `actualGasCost`, 6 `actualGasUsed`. A sponsored operation has a non-zero `paymaster`.
+
+ERC-20 `Transfer(address indexed from, address indexed to, uint256 value)` has input indexes 0 `from`, 1 `to`, 2 `value`.
+
+### MultiBaas facts (verified against docs.curvegrid.com and the TypeScript SDK on 2026-09-26)
+
+- A deployment is bound to one network at creation and cannot be changed. It has its own domain, for example `https://abc123.multibaas.com`. REST calls go to `{domain}/api/v0/...`. Confirm the `/api/v0` prefix in the prerequisites spike; the operation pages are published under that path.
+- Authentication is a bearer token: `Authorization: Bearer <api key>`. Keys are not visible after creation. A "DApp User" key is the kind designed to be embedded in client code and is limited to reads, unsigned transaction composition, and event data.
+- CORS origin registration exists for browser clients. A native app sends no `Origin` header, so CORS should not apply. The prerequisites spike proves this with a non-browser request.
+- Contracts deployed elsewhere are added with "Contract from Address" (ABI discovered via Blockscout, Etherscan, or Sourcify, with proxy detection) or by linking an address to an ABI already in the library. Each linked contract has a contract label and an address alias. API paths use both: `/chains/ethereum/addresses/{address-or-alias}/contracts/{label}/methods/{method}`.
+- Event syncing is enabled per linked address with a starting block. Syncing starts from that block; it does not backfill earlier history. Free tier: event indexing is capped at 2 events per second and starts at most 100 blocks behind the chain head. This is a real risk for Sepolia USDC, which is a high-volume test token. See prerequisites.
+- Event queries (`POST /queries?offset=&limit=`) take this body. Default `limit` is 10; pass an explicit limit.
+
+```json
+{
+  "events": [
+    {
+      "eventName": "Transfer",
+      "select": [
+        { "type": "tx_hash", "alias": "txHash" },
+        { "type": "block_number", "alias": "blockNumber" },
+        { "type": "triggered_at", "alias": "timestamp" },
+        { "type": "input", "inputIndex": 0, "alias": "from" },
+        { "type": "input", "inputIndex": 1, "alias": "to" },
+        { "type": "input", "inputIndex": 2, "alias": "value" }
+      ],
+      "filter": {
+        "rule": "and",
+        "children": [
+          { "fieldType": "contract_address_alias", "operator": "equal", "value": "usdc" },
+          { "fieldType": "input", "inputIndex": 1, "operator": "equal", "value": "0x..." }
+        ]
+      }
+    }
+  ],
+  "orderBy": "timestamp",
+  "order": "DESC"
+}
+```
+
+  Enumerations from the SDK: `type` and `fieldType` accept `input`, `contract_label`, `contract_name`, `contract_address`, `contract_address_alias`, `block_number`, `triggered_at`, `event_signature`, `block_hash`, `tx_hash`, `tx_from`. `operator` accepts `equal`, `notequal`, `lessthan`, `greaterthan`, `lessthanorequal`, `greaterthanorequal`. `rule` accepts `and`, `or`. `aggregator` on a select field accepts `add`, `subtract`, `last`, `first`, `min`, `max`; when any aggregator is used, `groupBy` must name a non-aggregated alias. The response is `{ status, message, result: { rows: Record<string, unknown>[] } }`. Row values for `uint256` inputs are strings.
+- Contract reads: `POST /chains/ethereum/addresses/{alias}/contracts/{label}/methods/{method}` with body `{ "args": [...], "formatInts": "as_strings" }`. The response is `{ status, message, result: { kind: "MethodCallResponse", output } }`. `formatInts: "as_strings"` prevents precision loss; parse with `BigInt`.
+- Address lookup: `GET /chains/ethereum/addresses/{address}?include=balance` (also `code`, `nonce`, `contractLookup`). The response schema is not published in the reference pages; the prerequisites spike records the actual field that holds the wei balance.
+- Chain status: `GET /chains/ethereum/status`. The spike records the actual field that holds the chain id.
+- Webhooks are configured in the UI with a label, URL, and one event type: `event.emitted` (any synced contract event) or `transaction.included` (Cloud Wallet transactions only, unused here). Each request carries `X-MultiBaas-Signature` and `X-MultiBaas-Timestamp`. The signature is hex `HMAC-SHA256(secret, rawBody || timestampDecimalString)`. The payload is a JSON array of `{ id, event: "event.emitted", data }` where `data` matches the list-events API shape (event name, signature, inputs, transaction and contract fields). Retry behaviour is undocumented; treat delivery as at-least-once and make the receiver idempotent on `id`. How the secret is obtained is undocumented; the prerequisites step records where the UI shows it.
+- The reference implementation is Curvegrid's Matsuri sample app: a frontend-only React app that calls MultiBaas with a DApp User key, computes balances from Transfer events with event queries, and reads contract state with the method-call endpoint. Sodera follows the same shape but uses `fetch` rather than the axios-based SDK, to match the existing Blockscout and CoinGecko providers and to keep the fetcher injectable in tests.
+
+## Prerequisites (human setup, then the spike)
+
+These steps need the Curvegrid console and cannot be automated from the repo. Record every value and answer in `docs/research/multibaas-sepolia.md` as you go, in the same style as the other research files.
+
+1. Create a MultiBaas deployment on Ethereum Sepolia. Record its domain.
+2. Add USDC by address (`0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238`). It is a `FiatTokenProxy`; confirm the discovered ABI is the implementation ABI containing `Transfer`, `balanceOf`, and `decimals`. Contract label `usdc`, address alias `usdc`. Enable sync events. Starting block: the most recent block the free tier allows (100 back from head). Record the block number.
+3. Add EntryPoint v0.7 by address (`0x0000000071727De22E5E9d8BAf0edAc6f37da032`). Confirm the ABI contains `UserOperationEvent`. Label `entrypoint_v07`, alias `entrypoint_v07`. Enable sync events from the same starting block.
+4. Add the Chainlink aggregator by address (`0x694AA1769357215DE4FAC081bf1f309aDC325306`). If ABI discovery fails on the proxy, link it to a hand-entered ABI containing only `decimals()` and `latestRoundData()`. Label `eth_usd_feed`, alias `eth_usd_feed`. Do not enable event sync.
+5. Create a DApp User API key. Copy it immediately.
+6. Watch the event indexing status for USDC for at least ten minutes. If the indexer falls behind the chain head because of the 2 events per second cap, stop and raise it: ask Curvegrid for the hackathon plan or a raised limit. Do not proceed to section 1 with a lagging indexer; the activity feed would silently miss transfers.
+7. Populate `app/.env.local` with the four variables listed below, and run `pnpm verify:multibaas` from `app/` once section 1 step 1.1 has landed. The verification script is the acceptance gate for this setup.
+
+Variables added to `app/.env.example` by section 1 (values empty in the example, real values only in `.env.local`):
+
+```
+# Node verification settings.
+MULTIBAAS_BASE_URL=
+MULTIBAAS_API_KEY=
+
+# Mobile settings are embedded in the app and must be treated as public.
+EXPO_PUBLIC_MULTIBAAS_BASE_URL=
+EXPO_PUBLIC_MULTIBAAS_API_KEY=
+```
+
+`MULTIBAAS_BASE_URL` is the deployment domain without a trailing slash and without `/api/v0`. The client module appends the prefix.
+
+## Section 1: Activity feed from event queries
+
+### Goal
+
+Replace the Blockscout activity provider with a MultiBaas provider built on two event queries, extend the activity item model so smart-account operations appear, and add a local journal so ETH sends made from this phone keep their amount and recipient.
+
+### Outcome
+
+The Transactions screen lists, newest first: USDC transfers in and out, and every user operation the account executed with success flag, sponsorship, and gas cost. USDC sends merge with their operation into one row. ETH sends from this phone show amount and recipient from the journal. Blockscout is gone from the codebase.
+
+### Files
+
+Create:
+- `app/src/wallet/multibaas.ts` — client module: config, request helper, event-query and method-call helpers, alias and label constants.
+- `app/src/wallet/multibaas.test.ts`
+- `app/src/wallet/transaction-activity-multibaas.ts` — the provider.
+- `app/src/wallet/transaction-activity-multibaas.test.ts`
+- `app/src/wallet/operation-journal.ts` — ETH send journal.
+- `app/src/wallet/operation-journal.test.ts`
+- `app/scripts/verify-multibaas.mjs` — verification script.
+
+Modify:
+- `app/src/wallet/transaction-activity.ts` — item model and `source` union.
+- `app/src/components/transactions-screen.tsx` and its test — render operation rows, update copy.
+- `app/src/components/send-screen.tsx` and its test — write the journal on success.
+- `app/src/app/transactions.tsx` — wire the new provider.
+- `app/package.json` — add `verify:multibaas` and the `expo-file-system` dependency.
+- `app/.env.example`, `app/README.md` — new variables and the verification command.
+
+Delete:
+- `app/src/wallet/transaction-activity-blockscout.ts`
+- `app/src/wallet/transaction-activity-blockscout.test.ts`
+
+### Steps
+
+**1.1 Client module and verification script.**
+
+`app/src/wallet/multibaas.ts` exports:
+
+```ts
+export const MULTIBAAS_API_PREFIX = '/api/v0';
+export const MULTIBAAS_ALIASES = Object.freeze({
+  usdc: 'usdc',
+  entryPoint: 'entrypoint_v07',
+  ethUsdFeed: 'eth_usd_feed',
+});
+export type MultiBaasConfig = { baseUrl: string; apiKey: string };
+export function readMultiBaasConfigFromEnv(): MultiBaasConfig; // throws a clear error naming the missing EXPO_PUBLIC_ variable
+export type MultiBaasClient = {
+  executeEventQuery(query: EventQuery, options?: { offset?: number; limit?: number }): Promise<Record<string, unknown>[]>;
+  callMethod(alias: string, label: string, method: string, args: readonly unknown[]): Promise<unknown>;
+  getAddress(address: Address, include: readonly ('balance' | 'nonce' | 'code')[]): Promise<Record<string, unknown>>;
+  getChainStatus(): Promise<Record<string, unknown>>;
+};
+export function createMultiBaasClient({ config, fetcher = fetch }: { config: MultiBaasConfig; fetcher?: typeof fetch }): MultiBaasClient;
+```
+
+Also export the `EventQuery`, `EventQueryEvent`, `EventQueryField`, and `EventQueryFilter` types, written by hand from the enumerations in Shared context. Do not add the `@curvegrid/multibaas-sdk` package.
+
+Request rules: send `Authorization: Bearer`, `accept: application/json`, and `content-type: application/json` on POSTs. Treat a thrown fetch as "MultiBaas could not be reached", a non-2xx as `MultiBaas returned HTTP {status}`, and a body without the expected `result` shape as "MultiBaas returned invalid data". These message conventions match the Blockscout provider being removed, and the screens display them verbatim.
+
+`callMethod` always sends `formatInts: 'as_strings'` and returns `result.output`. It throws if `result.kind` is present and is not `MethodCallResponse`.
+
+`app/scripts/verify-multibaas.mjs` reads `MULTIBAAS_BASE_URL` and `MULTIBAAS_API_KEY`, then asserts in order:
+1. `GET /chains/ethereum/status` succeeds and reports chain id 11155111. Print the whole `result` once so the field name is recorded.
+2. `GET /chains/ethereum/addresses/usdc?include=contractLookup` resolves the alias to the pinned USDC address. Same for `entrypoint_v07` and `eth_usd_feed`.
+3. `callMethod('usdc', 'usdc', 'decimals', [])` returns `"6"`.
+4. `callMethod('eth_usd_feed', 'eth_usd_feed', 'latestRoundData', [])` returns five values; print them so the tuple shape is recorded.
+5. `GET /chains/ethereum/addresses/{account}?include=balance` for an account passed as `VERIFY_ACCOUNT` (default: the pinned USDC address, which holds ETH on Sepolia). Print `result` so the balance field name is recorded, and assert the value parses as a `BigInt`.
+6. An event query over `Transfer` filtered by `contract_address_alias == usdc` with `limit=5` returns at least one row with `txHash`, `blockNumber`, `timestamp`, `from`, `to`, `value` aliases populated.
+7. The same query with an added `input` filter on index 1 using a lowercase address returns rows, then with the checksummed form of the same address. Record which forms match. The provider uses whichever works; if both work, use checksummed.
+8. An event query over `UserOperationEvent` filtered by `contract_address_alias == entrypoint_v07` with `limit=5` returns rows with input aliases 0 through 6 populated.
+9. A `triggered_at` filter with `greaterthanorequal` and an ISO-8601 value from one hour ago returns rows and none older than that. If the value format is rejected, try a Unix seconds string and record the working form. Section 2 depends on this answer.
+10. The request in step 6 sent from Node with no `Origin` header succeeds, which is the CORS proof.
+
+Register it as `"verify:multibaas": "node --env-file-if-exists=.env.local ./scripts/verify-multibaas.mjs"`. Record the findings from steps 1, 4, 5, 7, and 9 in `docs/research/multibaas-sepolia.md` and update the constants in `multibaas.ts` if any assumed field name was wrong.
+
+**1.2 Activity item model.**
+
+In `app/src/wallet/transaction-activity.ts`, replace the flat `TransactionActivityItem` with a discriminated union and change `source`:
+
+```ts
+export type TransactionActivityTransfer = {
+  kind: 'transfer';
+  id: string;
+  transactionHash: Hash;
+  direction: 'sent' | 'received';
+  asset: 'ETH' | 'USDC';
+  amount: string;            // decimal string, no unit
+  counterparty: Address;
+  timestamp: string;         // ISO-8601
+  blockNumber: number;
+  operation: { userOperationHash: Hash; success: boolean; sponsored: boolean; actualGasCostWei: string } | null;
+};
+export type TransactionActivityOperation = {
+  kind: 'operation';
+  id: string;
+  transactionHash: Hash;
+  userOperationHash: Hash;
+  success: boolean;
+  sponsored: boolean;
+  actualGasCostWei: string;
+  timestamp: string;
+  blockNumber: number;
+};
+export type TransactionActivityItem = TransactionActivityTransfer | TransactionActivityOperation;
+export type TransactionActivityProvider = {
+  source: 'multibaas' | 'fixture';
+  load(): Promise<TransactionActivityResult>;
+  subscribeToChanges(listener: () => void): () => void;
+};
+```
+
+`TransactionActivityResult` keeps its three statuses. `partial` is used when rows were skipped as malformed, with the same message wording as today.
+
+**1.3 Operation journal.**
+
+`app/src/wallet/operation-journal.ts` persists ETH sends made on this phone. Storage is a JSON file at `${FileSystem.documentDirectory}sodera-operation-journal.json` via `expo-file-system` (install with `pnpm exec expo install expo-file-system` so the version matches SDK 57). Keep the storage behind an injectable interface `{ read(): Promise<string | null>; write(value: string): Promise<void> }` like the other storages so tests use an in-memory object.
+
+```ts
+export type JournaledEthSend = {
+  userOperationHash: Hash;
+  transactionHash: Hash;
+  account: Address;
+  recipient: Address;
+  valueWei: string;
+  recordedAt: string; // ISO-8601
+};
+export function createOperationJournal(storage): {
+  append(entry: JournaledEthSend): Promise<void>;
+  list(account: Address): Promise<JournaledEthSend[]>;
+};
+```
+
+Schema: `{ schemaVersion: 1, entries: JournaledEthSend[] }`. Cap at 200 entries, dropping the oldest. A corrupt file is treated as empty and overwritten on the next append. `append` serialises writes the same way `launcher-preferences.ts` does, by chaining on a `writes` promise.
+
+In `send-screen.tsx`, after `executionClient.execute(approvedHash)` returns and before `setStep('success')`, append `{ userOperationHash: evidence.userOperationHash, transactionHash: evidence.transactionHash, account: evidence.account, recipient: review.calls[0].to, valueWei: review.calls[0].valueWei, recordedAt: new Date().toISOString() }`. Wrap it in try/catch and ignore failure, exactly as the `markPersistedWalletIdentityDeployed` call does; the chain result is authoritative. Inject the journal via a `journal` prop with a default, so the existing send-screen tests can pass a mock and assert the append.
+
+**1.4 Provider.**
+
+`createMultiBaasTransactionActivityProvider({ storage = walletIdentityNativeStorage, client = createMultiBaasClient({ config: readMultiBaasConfigFromEnv() }) lazily, journal = defaultOperationJournal, limit = 100 })` in `app/src/wallet/transaction-activity-multibaas.ts`. `source: 'multibaas'`. Same `subscribeToChanges` (AppState active) and `refresh()` as the current providers.
+
+`load()`:
+1. Read the account.
+2. Run three requests with `Promise.all`:
+   - USDC sent: `Transfer`, filter `and(contract_address_alias == usdc, input[0] == account)`, select txHash, blockNumber, timestamp, from, to, value; `orderBy: 'timestamp', order: 'DESC'`, `limit`.
+   - USDC received: same with `input[1] == account`.
+   - Operations: `UserOperationEvent`, filter `and(contract_address_alias == entrypoint_v07, input[1] == account)`, select txHash, blockNumber, timestamp, userOpHash (0), paymaster (2), success (4), actualGasCost (5), actualGasUsed (6); same ordering and limit.
+3. Read the journal for the account.
+4. Normalise with an exported pure function `normalizeMultiBaasActivity({ account, usdcSent, usdcReceived, operations, journal })` returning `{ items, skippedCount }`, so tests cover it without the client:
+   - Validate every row: `txHash` is a hash, `blockNumber` is a safe non-negative integer (rows may deliver it as a string; accept both), `timestamp` parses, addresses pass `isAddress`, `value` and gas fields parse as `BigInt`, `success` is boolean or the strings `"true"`/`"false"`. Malformed rows increment `skippedCount` and are dropped.
+   - USDC rows become `transfer` items with `asset: 'USDC'`, `amount: formatUnits(value, 6)`, `counterparty` checksummed, `id: erc20:{txHash}:{direction}:{from}:{to}:{value}` (there is no log index in the query output; include enough fields to be unique), `operation: null` for now. Drop zero-value rows and rows where from equals to.
+   - Operation rows become `operation` items: `sponsored = paymaster !== zeroAddress`, `id: userop:{userOpHash}`.
+   - Merge: for each operation item, if a USDC transfer item shares its `transactionHash`, set that transfer's `operation` field and drop the standalone operation item. If instead a journal entry shares its `userOperationHash`, replace the operation item with a `transfer` item `{ asset: 'ETH', direction: 'sent', amount: formatEther(valueWei), counterparty: recipient, operation: {...}, id: eth:{userOpHash} }` using the row's timestamp and block. Otherwise keep the operation item.
+   - Sort newest first by timestamp, then blockNumber, then id, matching the current comparator.
+5. Return `ready`, `partial`, or `empty` exactly as the Blockscout provider does.
+
+Export `multiBaasTransactionActivityProvider = createMultiBaasTransactionActivityProvider()` and wire it in `app/src/app/transactions.tsx`.
+
+**1.5 Transactions screen.**
+
+- Subtitle copy: "Latest USDC transfers and smart account operations indexed by MultiBaas." Empty-state copy: "Transfers and operations will appear here once MultiBaas indexes them."
+- `TransactionRow` handles both kinds. Transfer rows render as today, plus a small secondary line when `operation` is set: "Sponsored · gas 0.000012 ETH" or "Self-funded · gas ..." and "Failed" in the warning colour when `success` is false. Operation rows render title "Account operation", the secondary line above, a neutral icon, and no amount column. Accessibility labels must describe the row fully, since tests select by label.
+- Keep `testID="transactions-list"` and the horizontal padding assertions intact.
+
+**1.6 Cleanup.**
+
+Delete the Blockscout provider and test. Grep for `blockscout` and `Blockscout` across `app/src` and remove every reference. Update `app/README.md` with the new environment variables and `pnpm verify:multibaas`. Do not touch the `docs/hackathon-decisions.md` Graph statements.
+
+### Tests
+
+- `multibaas.test.ts`: request headers and URL composition for each helper; error mapping for thrown fetch, non-2xx, and invalid body; `formatInts` always sent; `readMultiBaasConfigFromEnv` names the missing variable.
+- `transaction-activity-multibaas.test.ts`: `normalizeMultiBaasActivity` covers USDC in and out, a USDC send merged with its operation, an ETH send restored from the journal, a standalone failed self-funded operation, malformed rows counted as skipped, zero-value and self-transfer rows dropped, and ordering. A provider-level test with a fake client asserts the three query bodies (aliases, filter shape, input indexes, ordering, limit) and the `empty` result.
+- `operation-journal.test.ts`: append and list by account, cap at 200, corrupt file handling, serialised writes.
+- `transactions-screen.test.tsx`: update fixtures to the new item shapes; add a test for an operation row and a failed row.
+- `send-screen.test.tsx`: assert the journal receives one entry with the reviewed recipient and value after a successful execute, and that a journal failure does not change the success outcome.
+
+### Acceptance criteria
+
+- `pnpm verify:multibaas` passes against the real deployment and its findings are recorded in `docs/research/multibaas-sepolia.md`.
+- `pnpm lint` and `pnpm test --runInBand` pass.
+- On a device with a deployed account: a USDC send made in the app appears as one row with the sponsored badge; the same operation is not duplicated; an ETH send appears with amount and recipient; a USDC transfer sent to the account from an external wallet appears as received.
+- No file under `app/src` mentions Blockscout.
+
+## Section 2: Asset flows card on the launcher home
+
+### Goal
+
+Add a card beside Market Watch that summarises the account's own activity over the last seven days from MultiBaas: USDC in, USDC out, operations run, and gas sponsored. This is the "digital asset dashboard" entry: it makes the user's own assets understandable, whereas Market Watch shows global prices.
+
+### Dependencies
+
+Section 1 step 1.1 (client module) and the answer to verification step 9 (the working `triggered_at` filter value format).
+
+### Files
+
+Create:
+- `app/src/launcher/asset-flows.ts` — loader and pure aggregation.
+- `app/src/launcher/asset-flows.test.ts`
+
+Modify:
+- `app/src/components/launcher-home.tsx` — add `AssetFlowsCard` under `MarketCard`.
+- `app/src/components/launcher-home.test.tsx` — mock the loader like `loadMarketPrices` is mocked.
+
+### Design
+
+`asset-flows.ts` exports:
+
+```ts
+export type AssetFlows = {
+  windowStart: string;      // ISO-8601
+  usdcInMicro: bigint;      // raw 6-decimal units
+  usdcOutMicro: bigint;
+  operationCount: number;
+  sponsoredCount: number;
+  gasSponsoredWei: bigint;
+  gasSelfFundedWei: bigint;
+};
+export function loadAssetFlows({ storage, client, now, days = 7 }): Promise<AssetFlows>;
+export function aggregateAssetFlows({ usdcIn, usdcOut, operations }, windowStart): AssetFlows; // pure
+```
+
+Queries. All use the filter form proven by verification step 9 for the time window, combined with `and`:
+- USDC in: `Transfer`, `and(contract_address_alias == usdc, input[1] == account, triggered_at >= windowStart)`, select `value` with `aggregator: 'add'` aliased `total`, and `input[1]` aliased `account` as the `groupBy` field. If the aggregation returns no row, the total is zero.
+- USDC out: same with `input[0]`.
+- Operations: `UserOperationEvent`, `and(contract_address_alias == entrypoint_v07, input[1] == account, triggered_at >= windowStart)`, select `paymaster` (2), `success` (4), `actualGasCost` (5), with `limit: 500` and no aggregation, then count and sum client-side. Client-side counting is deliberate: there is no count aggregator, and the count endpoint exists only for saved queries.
+
+If the time filter proves unusable in verification step 9, fall back to a `block_number >= startBlock` filter, with `startBlock` computed as the latest block from the chain status minus `days * 7200` (Sepolia targets 12-second blocks). Record which path was used in the research file.
+
+Card UI in `launcher-home.tsx`, placed directly under `MarketCard`, styled like it (`marketCard` container, eyebrow "ASSET FLOWS · MULTIBAAS", status text "Last 7 days"):
+- Two columns like `priceRow`: "USDC in" with `+{formatUnits(usdcInMicro, 6)}` in the up colour, "USDC out" with `-{...}` in the neutral colour.
+- A second row of two small stats: "Operations" `{operationCount}` with "{sponsoredCount} sponsored" beneath, and "Gas covered" showing `formatEther(gasSponsoredWei)` ETH with "you paid {formatEther(gasSelfFundedWei)}" beneath when non-zero.
+- Loading, error, and retry states mirror `MarketCard` exactly, including the "Try again ↗" affordance and an accessibility label "Retry asset flows".
+- Refresh on `AppState` active after five minutes, same as `MarketCard`.
+- If the wallet identity is not ready (throws), render the card with copy "Your flows appear once your wallet is set up." and no retry.
+
+### Tests
+
+- `asset-flows.test.ts`: `aggregateAssetFlows` on fixture rows; `loadAssetFlows` with a fake client asserts three query bodies including the window filter and `groupBy`, and zero results when aggregation rows are empty.
+- `launcher-home.test.tsx`: mock `loadAssetFlows`; assert the formatted values render, the retry path works, and the wallet-not-ready copy renders when the loader rejects with the identity error.
+
+### Acceptance criteria
+
+- The card shows non-zero USDC in after receiving a USDC transfer on a device, and the operation count increments after a send.
+- Market Watch and its tests are unchanged.
+- `pnpm lint` and `pnpm test --runInBand` pass.
+
+## Section 3: Token and price reads through the contract-call API
+
+### Goal
+
+Move the USDC balance and the Chainlink ETH/USD read from the public RPC to MultiBaas, so the app depends on one keyed service for token and activity data. Move the ETH native balance too if verification step 5 showed the address endpoint returns it.
+
+### Dependencies
+
+Section 1 step 1.1 and the recorded answers to verification steps 1, 4, and 5.
+
+### Files
+
+Create:
+- `app/src/wallet/multibaas-balance-client.ts` — an implementation of the existing `SepoliaBalanceClient` interface.
+- `app/src/wallet/multibaas-balance-client.test.ts`
+
+Modify:
+- `app/src/wallet/wallet-home-live.ts` — export the `SepoliaBalanceClient` type, and make the default client the MultiBaas one.
+- `app/src/wallet/wallet-home-live.test.ts` — unchanged expectations, since the client is injected; add one test that the default path constructs the MultiBaas client.
+
+### Design
+
+`wallet-home-live.ts` already isolates chain access behind `SepoliaBalanceClient` with `getChainId`, `getBalance`, and `readContract`. Keep that interface and the provider logic untouched, including the Chainlink staleness rules (`ETH_USD_MAX_AGE_SECONDS`, future tolerance, zero fallback). Only the default client changes.
+
+`createMultiBaasBalanceClient({ client, rpcUrl })` returns a `SepoliaBalanceClient`:
+- `getChainId()`: `client.getChainStatus()` and read the chain id field recorded in the research file. Return it as a number.
+- `getBalance({ address })`: if verification step 5 proved the address endpoint returns a wei balance, call `client.getAddress(address, ['balance'])` and `BigInt` the recorded field. Otherwise construct a viem public client over `rpcUrl` for this one call and document in the file header that ETH balance stays on RPC.
+- `readContract({ address, functionName, args })`: map the pinned address to its alias and label (`SEPOLIA_USDC_ADDRESS` to `usdc`, `SEPOLIA_ETH_USD_FEED_ADDRESS` to `eth_usd_feed`); throw for any other address. `balanceOf` returns `BigInt(output)`. `decimals` returns `Number(output)`. `latestRoundData` returns the five-element tuple of `BigInt`s in the order `roundId, answer, startedAt, updatedAt, answeredInRound`, converting from whatever shape verification step 4 recorded (array of strings, or an object keyed by output name). The provider's `isChainlinkRoundData` guard requires exactly that tuple.
+
+Keep the `abi` parameter in the interface for compatibility; the MultiBaas client ignores it.
+
+The existing `provider.load()` check that the chain id equals Sepolia stays and now guards against pointing the app at a MultiBaas deployment on the wrong network.
+
+Do not change the kernel execution client. It keeps using the RPC and bundler URLs from `PRA-187`.
+
+### Tests
+
+- `multibaas-balance-client.test.ts`: URL and body for each call, `BigInt` conversion, tuple ordering for `latestRoundData` in both recorded shapes, rejection of unknown addresses, and the ETH balance path that was chosen.
+- Existing `wallet-home-live.test.ts` keeps passing with its injected mock client.
+
+### Acceptance criteria
+
+- Wallet home shows the same USDC balance and USD total as before the change on the same account.
+- With the MultiBaas variables removed from `.env.local`, wallet home shows a visible error naming the missing variable instead of silently using the RPC.
+- `pnpm lint` and `pnpm test --runInBand` pass.
+
+## Section 4: Received-payment notifications (low priority)
+
+Not scheduled. It requires a backend because MultiBaas webhooks need an always-reachable URL and the HMAC secret cannot be embedded in the app. That backend is the `agent/` service from section 5; this section adds endpoints to it. Keep it out of estimates until sections 1 to 3 and 5 are done and accepted.
+
+### Goal
+
+Notify the phone when USDC arrives at the account. MultiBaas delivers an `event.emitted` webhook for every synced USDC `Transfer`; a small service on Railway verifies the signature, matches the recipient against registered devices, and sends a push through Expo's push service. Tapping the notification opens the Transactions screen.
+
+### Dependencies
+
+Section 5 deployed. Section 1 for the activity feed the notification links to.
+
+### Constraints
+
+- ADR-0007 says the core wallet must not require Google services. Expo push on Android rides on Firebase Cloud Messaging. Notifications are therefore optional: the app must work fully when permission is denied, when the token cannot be obtained, or when the service is unreachable. Nothing in the wallet, signing, or onboarding path may depend on this section.
+- The service holds no keys that can move assets. It holds the webhook secret and, optionally, a MultiBaas key. It never sees a passkey or a user operation.
+
+### Files
+
+Add to the `agent/` service from section 5:
+- `agent/package.json` — add the `expo-server-sdk` dependency.
+- `agent/src/server.ts` — register `POST /devices` and `POST /webhooks/multibaas` beside the agent routes.
+- `agent/src/notify/webhook.ts` — signature verification and event filtering (pure functions).
+- `agent/src/notify/devices.ts` — device registry.
+- `agent/src/notify/push.ts` — Expo push sending.
+- `agent/src/notify/*.test.ts`
+- `agent/README.md` — add the notification environment, the MultiBaas webhook setup steps, and the manual smoke test.
+
+Modify in `app/`:
+- `app/app.json` — add the `expo-notifications` plugin with `defaultChannel: "payments"` and the app icon colour.
+- `app/package.json` — `expo-notifications` via `pnpm exec expo install expo-notifications`.
+- `app/.env.example` — no new variable; the app reuses `EXPO_PUBLIC_AGENT_BASE_URL` from section 6.
+- New `app/src/notifications/push-registration.ts` and test — permission, channel, token, registration call.
+- `app/src/components/wallet-home.tsx` or the wallet route — trigger registration once after the identity is ready.
+- `app/src/app/_layout.tsx` — notification response listener that routes to `/transactions`.
+- Root `README.md` — no change; section 5 already lists `agent/`.
+
+### Service design
+
+Environment (added to `agent/.env.example`; `PORT` already exists there):
+
+```
+MULTIBAAS_WEBHOOK_SECRET=
+USDC_ADDRESS=0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238
+DEVICE_STORE_PATH=/data/devices.json
+WEBHOOK_MAX_SKEW_SECONDS=300
+```
+
+Endpoints:
+- `GET /healthz` returns `{ ok: true }`.
+- `POST /devices` body `{ account, expoPushToken }`. Validate `account` with a strict address regex and checksum it; validate the token with `Expo.isExpoPushToken`. Upsert into the registry keyed by token, so one account can have several devices and a reinstall replaces its old token. Returns 204. No authentication for the hackathon; the only effect of abuse is unwanted notifications to a token the caller already owns. Rate limit by IP to 10 per minute in memory.
+- `POST /webhooks/multibaas`. Read the raw body bytes before parsing. Verify `X-MultiBaas-Signature` equals hex `HMAC-SHA256(secret, rawBody + X-MultiBaas-Timestamp)` using `crypto.timingSafeEqual`, and that the timestamp is within `WEBHOOK_MAX_SKEW_SECONDS` of now. Respond 401 on failure. On success respond 200 immediately and process asynchronously, so slow pushes never cause MultiBaas to consider the delivery failed.
+
+Processing (`notify/webhook.ts`, pure): for each element of the payload array with `event === 'event.emitted'`, keep it when the event name is `Transfer`, the contract address equals `USDC_ADDRESS` case-insensitively, and the `to` input matches a registered account. Dedupe on the element `id` with an in-memory set of the last 1,000 ids, because retry behaviour is undocumented. Produce `{ account, from, valueMicro, transactionHash }`. The exact location of the event name, inputs, contract address, and transaction hash inside `data` follows the list-events API shape; the implementer must capture one real payload during setup (step 4 of the setup list below) and pin the parsing to it with a test fixture.
+
+Push (`notify/push.ts`): title "USDC received", body `+{formatUnits(valueMicro, 6)} USDC from {shortened from}`, `channelId: 'payments'`, `data: { transactionHash, route: '/transactions' }`. Use `expo-server-sdk` chunking. Fetch receipts after 15 minutes and drop tokens whose receipt reports `DeviceNotRegistered`.
+
+Registry (`notify/devices.ts`): in-memory `Map` loaded from and written to `DEVICE_STORE_PATH` as JSON. On Railway, mount a volume at `/data`. If the file is unwritable, log once and continue in memory; the hackathon accepts loss on restart.
+
+### App design
+
+`push-registration.ts` exports `registerForPaymentNotifications({ account, baseUrl, notifications = Notifications, fetcher = fetch })`:
+1. On Android, create channel `payments` with `AndroidImportance.HIGH`.
+2. `getPermissionsAsync`; if not granted, `requestPermissionsAsync`. If still not granted, return `{ status: 'denied' }` and do nothing else.
+3. `getExpoPushTokenAsync({ projectId })` with the EAS project id from `Constants.expoConfig.extra.eas.projectId` (it is `528384a6-a965-47e1-baaf-c1ef3fdc1ccc` in `app.json`). Any throw returns `{ status: 'unavailable', message }`.
+4. `POST {baseUrl}/devices`. Any failure returns `{ status: 'unavailable', message }`.
+5. Return `{ status: 'registered' }`.
+
+Trigger it once per app process from the wallet route after the identity is ready, never from onboarding, and never block rendering on it. If `EXPO_PUBLIC_AGENT_BASE_URL` is unset, skip silently; this keeps the app buildable without the service.
+
+In `_layout.tsx`, add `Notifications.addNotificationResponseReceivedListener` and, when `response.notification.request.content.data.route` is `/transactions`, `router.push('/transactions')`. Also handle the cold-start case with `getLastNotificationResponseAsync`.
+
+### Setup steps (human)
+
+1. On the section 5 Railway service, mount a volume at `/data` and add the environment variables above. The public domain already exists.
+2. Android push credentials: Expo's push service requires FCM V1 credentials for Android. Create a Firebase project for `xyz.sodera.app`, download `google-services.json` into `app/`, reference it as `android.googleServicesFile` in `app.json`, and upload the FCM V1 service account key with `eas credentials`. Record in `docs/research/multibaas-sepolia.md` that this is an optional-feature dependency permitted by ADR-0007.
+3. In MultiBaas, create a webhook: label `sodera-notify`, URL `https://<service domain>/webhooks/multibaas`, event type `event.emitted`. Record where the UI presents the HMAC secret and set it as `MULTIBAAS_WEBHOOK_SECRET`.
+4. Send a small USDC transfer to a test account and capture the exact webhook payload from the service logs. Commit it, with addresses redacted to test values, as `agent/src/notify/__fixtures__/event-emitted.json`.
+
+### Tests
+
+- `notify/webhook.test.ts`: signature accept and reject, timestamp skew reject, filtering by event name, contract, and recipient against the fixture, dedupe on id.
+- `notify/devices.test.ts`: upsert by token, multiple devices per account, persistence round trip, unwritable path tolerated.
+- `notify/push.test.ts`: message shape and chunking with a mocked Expo client; token pruning on `DeviceNotRegistered`.
+- `push-registration.test.ts` in the app: denied permission short-circuits, token failure returns unavailable, success posts the right body, unset base URL skips.
+- A manual end-to-end check is recorded in `agent/README.md`: `curl` the webhook with a signed fixture and observe the push arrive.
+
+### Acceptance criteria
+
+- With the service deployed and a device registered, a USDC transfer to the account produces a notification within one minute of block inclusion. Tapping it opens the Transactions screen with the transfer listed.
+- Denying notification permission leaves every wallet flow working.
+- A webhook request with a wrong signature is rejected with 401 and nothing is sent.
+- `pnpm test` passes in `agent/`; `pnpm lint` and `pnpm test --runInBand` pass in `app/`.
+
+## Wallet agent (sections 5 to 7)
+
+The agent is designed against the finished hackathon app as defined by the specs in `docs/hackathon-specs.md`, not against the current tree. Other people are building the features it relies on. The "Seams" subsection names each interface the agent expects and how to stub it until the real one lands.
+
+### What the agent is
+
+The user types or dictates a sentence on the launcher home, for example "send 5 usdc to alice and put the rest in the vault". A backend service asks Claude to turn that sentence into a structured plan of catalogued actions, using read-only tools for balances, activity, name resolution, and quotes. The app validates the plan against a deterministic policy, encodes each action into Kernel calls, and hands them to the existing review screen and passkey ceremony as one batched operation. The model never signs, never produces calldata, and never chooses a contract address.
+
+This is Curvegrid's "separate intent from authority" pattern: intent (sentence) to agent (proposal) to policy (deterministic checks) to human approval (review screen) to secure signer (passkey and Kernel) to Ethereum. The app already implements the last three stages for manual sends; the agent adds the first two in front of them.
+
+The digest card is the reverse direction: the wallet writes two sentences about what changed and suggests one action, which enters the same flow pre-filled.
+
+### Agent shared context
+
+#### Agent repository facts
+
+Everything in the MultiBaas "Shared context" above applies. In addition:
+
+- The service lives in `agent/`, a third isolated top-level app deployed on Railway. Section 4, if built, adds its webhook and device endpoints to this service.
+- Execution path in the app: `createExecutionClient` returns a `KernelPasskeyExecutionClient` with `prepare(calls)` returning a `KernelOperationReview` pinned to a user operation hash, and `execute(confirmedHash)` that refuses if anything drifted. `KernelExecutionCall` is `{ to: Address; value: bigint; data: Hex }`. Kernel batches multiple calls into one operation, so one passkey ceremony covers a whole plan. See `app/src/wallet/kernel-passkey-execution.ts` and the flow in `app/src/components/send-screen.tsx`.
+- The review contract in `docs/sodera.md` sections 16 and 17: a human-readable summary before signing, simulation before signing, failed simulation blocks the path, and the passkey prompt appears only after explicit confirmation. The agent must not weaken any of these.
+- Sponsorship policy in `docs/hackathon-decisions.md`: a shared allowance of 10 sponsored operations per wallet per day, reset 00:00 UTC, enforced by the sponsorship service, with remaining-allowance UI required to use authoritative service data. The agent reads this figure; it does not compute it.
+- Section 45 of `docs/sodera.md` describes a future session-key model and states session keys are not part of the MVP. The agent therefore never holds delegated authority. Every plan is passkey-approved.
+
+#### Claude API facts (from the `claude-api` skill reference, TypeScript SDK)
+
+- Package `@anthropic-ai/sdk`; client `new Anthropic()` reads `ANTHROPIC_API_KEY` from the environment.
+- Model `claude-opus-5`. Thinking is adaptive by default; omit the `thinking` parameter. Depth is controlled by `output_config.effort` (`low`, `medium`, `high`, `xhigh`, `max`).
+- Tool runner: `betaZodTool({ name, description, inputSchema, run })` from `@anthropic-ai/sdk/helpers/beta/zod`, passed to `client.beta.messages.toolRunner({ model, max_tokens, tools, messages, ... })`. The runner executes tools and loops until the model stops calling them. Cap with `max_iterations`.
+- Structured outputs: `output_config.format = zodOutputFormat(schema)` from `@anthropic-ai/sdk/helpers/zod`, and `client.messages.parse(...)` exposes `parsed_output`. Whether `toolRunner` accepts `output_config.format` must be verified at implementation; the fallback is described in section 5.
+- Refusals: safety classifiers can return `stop_reason: "refusal"` with HTTP 200. Opt into server-side fallbacks with `betas: ["server-side-fallback-2026-07-01"]` and `fallbacks: "default"` on `client.beta.messages.*`. Always check `stop_reason` before reading content.
+- Errors are typed: `Anthropic.RateLimitError`, `Anthropic.AuthenticationError`, `Anthropic.BadRequestError`, `Anthropic.APIError`. Catch most specific first.
+- Prompt caching is prefix-based over `tools` then `system` then `messages`. Keep the tool list and system prompt byte-stable and put `cache_control: { type: "ephemeral" }` on the system block. Volatile data (the account snapshot) goes in the user message.
+- Prefill of assistant messages is not supported on this model family. Use the structured output format, not prefill, to force JSON.
+- Parse tool inputs with `JSON.parse` semantics only, never string matching.
+
+### Design decisions
+
+1. **The model chooses actions and parameters, never calldata.** The action catalog is fixed. The app encodes each action deterministically. A model output that is not a catalogued action fails schema validation before any code looks at it.
+2. **Policy is deterministic and duplicated.** The service checks the plan before returning it; the app re-checks on receipt with identical code and shared test vectors. A compromised service cannot widen what the app will encode.
+3. **Amounts are human decimal strings.** The model writes `"5"` or `"0.01"`, with the asset implied by the action. Policy converts with `parseUnits` and rejects more decimals than the asset has. Base-unit integers are error-prone for a language model.
+4. **Follow-ups are supported.** The service keeps the last five exchanges per account in memory, dropped on restart, so "make it 10 instead" works. Tool calls and results are not kept in the transcript, only the user sentences and the final plan JSON.
+5. **Authority-changing operations are excluded.** Recovery enrolment, primary passkey replacement, and username registration are never catalogued. They change who controls the wallet, not what it holds, and keep their own screens and review.
+6. **Every plan is passkey-approved.** No session keys, no delegated signer, no auto-execution. This follows the signing decisions and section 45 of the spec.
+7. **The app is the authority on its own state.** The app sends a context snapshot (balances, USD values, vault position, sponsorship allowance, address book) with every request. The service's tools cover only what the app cannot cheaply provide: activity history, name resolution, swap quotes, and price.
+8. **Clarification beats guessing.** When the sentence is ambiguous (no amount, unknown recipient, unknown asset), the model returns a clarification question instead of a plan. The plan card shows the question and keeps the sentence in the field.
+9. **Failure falls back to manual.** Any error in the agent path shows a short message and a button to the relevant manual screen. The agent never becomes a dependency for sending money.
+
+### Seams (interfaces expected from other tickets)
+
+Each seam is a TypeScript module path and signature the agent code imports. If the real module does not exist when a section starts, create the module at that path exporting the signature with a stub that throws `new Error('Not implemented: <ticket>')`, and gate the corresponding catalogue action off in policy (`actionEnabled`) until the real implementation lands. Never fake a success.
+
+| Seam | Path and signature | Owning ticket | Stub behaviour |
+| --- | --- | --- | --- |
+| USDC transfer encoder | `app/src/wallet/usdc-transfer.ts`: `encodeUsdcTransfer({ to: Address; amountMicro: bigint }): KernelExecutionCall` | PRA-198, PRA-196 | Implementable now: `viem.encodeFunctionData` for ERC-20 `transfer(address,uint256)` against the pinned USDC address. Build it if absent. |
+| ENS resolution | `app/src/identity/resolve-recipient.ts`: `resolveRecipient(input: string): Promise<{ address: Address; name: string \| null }>` | PRA-200, PRA-209 | Accept checksummed or lowercase addresses; throw for names. Names then come only from the address book. |
+| Swap quote and encoder | `app/src/swap/uniswap.ts`: `quoteSwap({ direction: 'eth_to_usdc' \| 'usdc_to_eth'; amountIn: bigint }): Promise<SwapQuote>` and `encodeSwap(quote: SwapQuote, { recipient: Address }): KernelExecutionCall[]` where `SwapQuote = { direction; amountIn: bigint; amountOut: bigint; minimumAmountOut: bigint; slippageBps: number; expiresAt: string; route: unknown }` | PRA-212, PRA-213 | Throw. `swap` action disabled. |
+| Vault encoders and position | `app/src/earn/morpho-vault.ts`: `encodeVaultDeposit({ amountMicro: bigint; owner: Address }): KernelExecutionCall[]`, `encodeVaultWithdraw({ amountMicro: bigint \| 'all'; owner: Address }): KernelExecutionCall[]`, `readVaultPosition(account: Address): Promise<{ assetsMicro: bigint; sharesRaw: bigint }>` | PRA-216, PRA-217, PRA-218, PRA-222 | Throw. Vault actions disabled. Position reads return `null` in the context snapshot. |
+| Sponsorship allowance | `app/src/wallet/sponsorship.ts`: `readSponsorshipAllowance(account: Address): Promise<{ remaining: number; limit: number; resetsAt: string } \| null>` | PRA-195, PRA-199 | Return `null`. The plan card omits the allowance line and the policy skips the allowance check. |
+| Shared operation review | `app/src/components/operation-review.tsx`: a screen or component that takes `calls: KernelExecutionCall[]`, `lines: ReviewLine[]`, and callbacks, runs `prepare`, shows the review, runs `execute` after confirmation | PRA-198 | Section 6 builds `PlanReviewScreen` by extracting the review and execute steps from `send-screen.tsx`. If PRA-198 lands a shared component first, use it and delete the extraction. |
+| Live activity | `app/src/wallet/transaction-activity-multibaas.ts` and the service-side event queries | Section 1 | The service's `get_activity` tool queries MultiBaas directly with the same query shapes. No app dependency. |
+
+The service does not import app code. The seam table tells the service author which MultiBaas queries and RPC reads to reuse, and tells the app author what to encode.
+
+### Action catalogue and proposal schema
+
+The schema is the contract between service and app. Define it once in each app as Zod (`agent/src/schema.ts` and `app/src/agent/schema.ts`) and keep them byte-identical; a test in each app loads `docs/plans/agent-schema-vectors.json` (created by section 5) and asserts that every vector parses or fails as recorded.
+
+```ts
+import { z } from 'zod';
+
+const decimalAmount = z.string().regex(/^(0|[1-9]\d*)(\.\d{1,18})?$/);
+const recipient = z.object({
+  kind: z.enum(['address', 'name']),
+  value: z.string().min(1).max(255),
+});
+
+export const ActionSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('send_eth'), recipient, amount: decimalAmount }),
+  z.object({ type: z.literal('send_usdc'), recipient, amount: decimalAmount }),
+  z.object({
+    type: z.literal('swap'),
+    direction: z.enum(['eth_to_usdc', 'usdc_to_eth']),
+    amountIn: decimalAmount,
+  }),
+  z.object({ type: z.literal('vault_deposit'), amount: decimalAmount }),
+  z.object({ type: z.literal('vault_withdraw'), amount: z.union([decimalAmount, z.literal('all')]) }),
+]);
+
+export const ProposalSchema = z.object({
+  kind: z.literal('plan'),
+  summary: z.string().min(1).max(280),
+  actions: z.array(ActionSchema).min(1).max(4),
+  assumptions: z.array(z.string().max(160)).max(5),
+});
+
+export const ClarificationSchema = z.object({
+  kind: z.literal('clarification'),
+  question: z.string().min(1).max(200),
+});
+
+export const AgentOutputSchema = z.discriminatedUnion('kind', [ProposalSchema, ClarificationSchema]);
+```
+
+`vault_withdraw` with `'all'` exists because share-to-asset rounding makes "withdraw everything" impossible to express as a decimal amount reliably.
+
+### Policy rules
+
+Implemented identically in `agent/src/policy.ts` and `app/src/agent/policy.ts` as `evaluatePolicy(output, context): PolicyResult` where `PolicyResult` is `{ ok: true; plan: EnrichedPlan } | { ok: false; violations: Violation[] }` and `Violation = { code; actionIndex: number | null; message }`. Shared vectors live in `docs/plans/agent-policy-vectors.json` (created by section 5) and both test suites assert them.
+
+| Code | Check | Reads | Message shown to user |
+| --- | --- | --- | --- |
+| `schema` | Output parses with `AgentOutputSchema` | output | "The assistant returned something the wallet cannot read." |
+| `action_disabled` | `actionEnabled[type]` is true (seams that are stubbed set it false) | app capability flags | "Swaps are not available yet." (per action) |
+| `too_many_actions` | `actions.length <= 4` (schema) and at most one `swap` per plan | output | "Plans are limited to four steps and one swap." |
+| `recipient_unresolved` | `kind: 'address'` passes `isAddress`; `kind: 'name'` is present in the address book or resolves via ENS (app side only; the service checks address book membership only) | address book, resolver | "I don't know who {name} is." |
+| `recipient_self` | Resolved recipient is not the account | context.account | "That would send to yourself." |
+| `amount_precision` | Decimals do not exceed 18 for ETH or 6 for USDC | output | "USDC amounts can have at most 6 decimals." |
+| `amount_zero` | Amount parses to a positive integer in base units | output | "Amounts must be greater than zero." |
+| `insufficient_eth` | Sum of ETH sends plus ETH swap inputs plus a reserve of 0.0005 ETH is at most the ETH balance | context.balances | "Not enough ETH. You have {balance}." |
+| `insufficient_usdc` | Sum of USDC sends, USDC swap inputs, and vault deposits, evaluated in plan order with swap outputs not counted as available, is at most the USDC balance | context.balances | "Not enough USDC. You have {balance}." |
+| `vault_insufficient` | Withdraw amount is at most the vault position's assets | context.vaultPosition | "The vault holds only {assets} USDC." |
+| `value_cap` | Total USD value of outgoing assets is at most `PLAN_VALUE_CAP_USD` (default 250) | context.prices | "Plans above $250 need the manual screens." |
+| `sponsorship` | If `context.sponsorship` is present, `remaining >= 1` | context.sponsorship | "No sponsored operations left today. Resets at {time}." |
+| `no_authority_ops` | Defensive: reject any action type outside the catalogue even if a future schema adds one | output | Same as `schema` |
+
+`EnrichedPlan` carries each action with resolved recipient address and name, base-unit amounts as `bigint`, USD estimate, and for swaps a placeholder the encoder fills after quoting. The plan card renders from `EnrichedPlan`, never from the raw model output.
+
+## Section 5: Agent service and proposal endpoint
+
+### Goal
+
+A Node service that turns a sentence plus a context snapshot into a validated proposal or a clarification, keeps a short per-account transcript, and exposes a health endpoint. Deployed on Railway.
+
+### Outcome
+
+`POST /agent/propose` returns a policy-checked plan for "send 0.01 eth to alice" against a context whose address book contains alice, returns a clarification for "send some eth", and returns a policy violation for an amount above the balance. The endpoint refuses requests without the app token and rate-limits per account.
+
+### Files
+
+Create the `agent/` app:
+- `agent/package.json` — `@sodera/agent`, `packageManager: pnpm@12.3.4`, `engines.node >= 22.12.0`, `type: module`. Dependencies: `@anthropic-ai/sdk`, `zod`, `viem`. Dev: `typescript ~6.0.3`, `@types/node`, `vitest`, `tsx`.
+- `agent/pnpm-lock.yaml`, `agent/tsconfig.json`, `agent/.env.example`, `agent/.gitignore`, `agent/.dockerignore`
+- `agent/Dockerfile` — `node:22-alpine`, `corepack enable`, `pnpm install --frozen-lockfile`, `pnpm build`, `CMD ["node", "dist/server.js"]`. Mirror `landing/Dockerfile`.
+- `agent/src/server.ts` — `node:http` server, routing, auth, rate limit, JSON errors.
+- `agent/src/schema.ts` — Zod schemas above plus `ContextSchema` and request/response schemas.
+- `agent/src/policy.ts` — policy rules above.
+- `agent/src/tools.ts` — `betaZodTool` definitions.
+- `agent/src/propose.ts` — the Claude call.
+- `agent/src/transcript.ts` — per-account memory.
+- `agent/src/multibaas.ts` — minimal client mirroring `app/src/wallet/multibaas.ts` (event query and method call helpers). Copy the shapes; do not import across apps.
+- `agent/src/prompts/system.md` — the system prompt, loaded at startup and cached.
+- `agent/src/*.test.ts`
+- `agent/README.md` — local run, environment, Railway deployment, the manual smoke test.
+- `docs/plans/agent-schema-vectors.json` and `docs/plans/agent-policy-vectors.json` — shared vectors.
+
+Modify:
+- Root `README.md` — add `agent/` to the applications table.
+
+### Environment (`agent/.env.example`)
+
+```
+PORT=8080
+ANTHROPIC_API_KEY=
+AGENT_APP_TOKEN=
+MULTIBAAS_BASE_URL=
+MULTIBAAS_API_KEY=
+SEPOLIA_RPC_URL=https://ethereum-sepolia-rpc.publicnode.com
+PLAN_VALUE_CAP_USD=250
+AGENT_EFFORT=high
+```
+
+`AGENT_APP_TOKEN` is a random string the app sends as `Authorization: Bearer`. It is embedded in the app and therefore public; it deters casual abuse only. The real cost control is the per-account rate limit and the value cap.
+
+### Request and response
+
+`POST /agent/propose`
+
+```ts
+type ProposeRequest = {
+  account: Address;
+  intent: string;               // 1..500 chars
+  context: AgentContext;
+  reset?: boolean;              // drop the transcript first
+};
+
+type AgentContext = {
+  chainId: 11155111;
+  now: string;                                          // ISO-8601 from the phone
+  balances: { eth: string; usdc: string };              // decimal strings
+  prices: { ethUsd: string | null };                     // decimal string
+  vaultPosition: { assetsUsdc: string } | null;
+  sponsorship: { remaining: number; limit: number; resetsAt: string } | null;
+  addressBook: { name: string; address: Address }[];    // max 50
+  capabilities: { send_eth: boolean; send_usdc: boolean; swap: boolean; vault_deposit: boolean; vault_withdraw: boolean };
+};
+
+type ProposeResponse =
+  | { kind: 'plan'; summary: string; actions: Action[]; assumptions: string[]; enriched: EnrichedPlanJson }
+  | { kind: 'clarification'; question: string }
+  | { kind: 'rejected'; violations: Violation[]; summary: string | null }
+  | { kind: 'declined'; message: string };              // model refusal
+```
+
+`enriched` is the service's `EnrichedPlan` with bigints as strings. The app re-runs policy anyway; `enriched` is a convenience for rendering and a cross-check.
+
+### Tools (`agent/src/tools.ts`)
+
+All read-only. Each returns a compact JSON string. Each catches its own errors and returns `{ error: string }` so the model can adapt rather than the run failing.
+
+| Tool | Input | Backing call | Notes |
+| --- | --- | --- | --- |
+| `get_activity` | `{ account, limit? }` | Two MultiBaas event queries: USDC Transfer with `input[0]` or `input[1]` equal to account, and `UserOperationEvent` with `input[1]` equal to account, ordered by `triggered_at` desc, limit 20 | Same query shapes as section 1. Return rows with direction, asset, amount, counterparty, timestamp, success. |
+| `resolve_name` | `{ name }` | Address book from the request context first; then ENS on Sepolia via viem `getEnsAddress` with `normalize` from `viem/ens` | Return `{ address, source: 'address_book' \| 'ens' }` or `{ error: 'unknown' }`. |
+| `quote_swap` | `{ direction, amountIn }` | The Uniswap quoter route pinned by PRA-212, read from `agent/src/swap-route.json` | Until PRA-212 publishes a route, return `{ error: 'swaps unavailable' }`. The tool stays declared so the tool list is cache-stable. |
+| `get_eth_price` | `{}` | MultiBaas method call `eth_usd_feed.latestRoundData` with the same staleness rules as `wallet-home-live.ts` (max age 7200 seconds) | Return `{ usd, updatedAt }` or `{ error }`. |
+
+Balances, vault position, and sponsorship come from the context snapshot in the user message. Do not add tools for them.
+
+### The Claude call (`agent/src/propose.ts`)
+
+```ts
+import Anthropic from '@anthropic-ai/sdk';
+import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
+
+const client = new Anthropic({ timeout: 60_000, maxRetries: 2 });
+
+export async function propose({ account, intent, context, transcript }): Promise<AgentOutput | { refused: true }> {
+  const runner = client.beta.messages.toolRunner({
+    model: 'claude-opus-5',
+    max_tokens: 16000,
+    max_iterations: 8,
+    betas: ['server-side-fallback-2026-07-01'],
+    fallbacks: 'default',
+    output_config: { effort: process.env.AGENT_EFFORT ?? 'high', format: zodOutputFormat(AgentOutputSchema) },
+    system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
+    tools: TOOLS,
+    messages: [...transcript, { role: 'user', content: renderUserMessage(intent, context) }],
+  });
+  const message = await runner;
+  if (message.stop_reason === 'refusal') return { refused: true };
+  if (message.stop_reason === 'max_tokens') throw new Error('Agent output was cut off');
+  const text = message.content.find((block) => block.type === 'text');
+  if (!text) throw new Error('Agent returned no text');
+  return AgentOutputSchema.parse(JSON.parse(text.text));
+}
+```
+
+Verification at implementation: confirm that `toolRunner` forwards `output_config.format`. If it does not, use the fallback: declare an additional strict tool `submit_output` whose `inputSchema` is `AgentOutputSchema`, instruct the model in the system prompt to call it exactly once as its final step, capture its input in `run`, and stop the runner. Do not use `tool_choice` forcing; it is not supported on every current model and the instruction plus `strict: true` is sufficient.
+
+Error handling in `server.ts`: `Anthropic.RateLimitError` returns 503 with a retry hint; `Anthropic.AuthenticationError` returns 500 and logs loudly; other `Anthropic.APIError` returns 502; a Zod parse failure of the model output returns `{ kind: 'rejected', violations: [{ code: 'schema', ... }] }`.
+
+`renderUserMessage` produces a short, deterministic block: the sentence, then the context as labelled lines (balances, prices, vault, sponsorship, address book names only, capabilities). Never include the full address book addresses in the prompt; the model refers to names and the service resolves them.
+
+### System prompt (`agent/src/prompts/system.md`)
+
+Write it as plain instructions, roughly 40 lines, covering:
+- Role: you prepare a plan for a testnet wallet; you never execute anything; a human reviews and signs.
+- The catalogue with a one-line meaning for each action and the exact JSON output contract, including that amounts are decimal strings and the asset is implied by the action.
+- When to return a clarification: missing amount, unknown recipient after `resolve_name` fails, unclear asset, or an intent outside the catalogue (say so plainly).
+- Rules the policy will enforce, stated so the model avoids them: four actions maximum, one swap, keep a small ETH reserve, never exceed balances, respect the sponsored operation count.
+- Use `resolve_name` for any recipient that is not a hex address. Use `quote_swap` before proposing a swap so the summary can state the expected output. Use `get_activity` only when the sentence refers to history ("the person I paid yesterday").
+- Tone for `summary`: one or two sentences, plain, states the concrete amounts and recipients, mentions the sponsored-operation cost when known.
+- Follow-up turns: the previous plan is in the transcript; apply the user's change to it rather than starting over.
+- Refuse, via clarification, anything that asks for recovery, passkeys, usernames, or arbitrary contract calls.
+
+Keep the prompt byte-stable across requests so the cache hits. Do not interpolate dates or account data into it.
+
+### Transcript (`agent/src/transcript.ts`)
+
+`Map<Address, MessageParam[]>` with at most five user/assistant pairs. Store the user text and the assistant's final JSON text only. Expire an account's transcript after 30 minutes of inactivity. `reset: true` clears before use. The service is single-instance for the hackathon; document that a second replica breaks follow-ups.
+
+### Server (`agent/src/server.ts`)
+
+- `GET /healthz` returns `{ ok: true }`.
+- `POST /agent/propose` requires `Authorization: Bearer ${AGENT_APP_TOKEN}`, body at most 32 KB, JSON validated by `ProposeRequestSchema`. Rate limit 10 requests per account per minute and 60 per IP per minute in memory. On success: run `propose`, then `evaluatePolicy`, then respond with `plan`, `clarification`, `rejected`, or `declined`.
+- Log one structured line per request: account (shortened), intent length, tool calls made, outcome kind, `usage.input_tokens`, `usage.output_tokens`, `usage.cache_read_input_tokens`, latency. Never log the sentence or the address book.
+- Response header `x-agent-model` with `message.model` so the app can show which model served the plan.
+
+### Tests
+
+- `schema.test.ts`: every vector in `agent-schema-vectors.json`, plus decimal regex edge cases.
+- `policy.test.ts`: every vector in `agent-policy-vectors.json`. Write the vectors to cover each rule at least once in both passing and failing form, including plan-order USDC accounting (send then deposit the remainder) and the ETH reserve.
+- `propose.test.ts`: with the Anthropic client replaced by a fake that returns a canned final message, assert the message construction (system block cached, tools stable, context rendering, transcript included), refusal mapping, max_tokens mapping, and the schema-failure path. One test uses a fake that emits a `get_activity` tool call and asserts the tool result shape.
+- `server.test.ts`: auth, body limits, rate limits, and the four response kinds.
+- `tools.test.ts`: `resolve_name` prefers the address book, falls back to ENS, returns `unknown`; `get_eth_price` applies staleness; `quote_swap` returns unavailable without a route file.
+
+### Deployment (human)
+
+1. Railway service in a `sodera` project from this repository, root directory `/agent`, Dockerfile builder. Set the environment variables. Generate a public domain.
+2. Create an Anthropic API key with a monthly spend limit for the hackathon and record it only in Railway.
+3. Record the service domain and the app token in `app/.env.local` as `EXPO_PUBLIC_AGENT_BASE_URL` and `EXPO_PUBLIC_AGENT_APP_TOKEN`.
+4. Smoke test from `agent/README.md`: `curl` the propose endpoint with a fixture context and confirm a plan, a clarification, and a rejection.
+
+### Acceptance criteria
+
+- The three smoke tests return the expected kinds against the deployed service.
+- Repeated identical requests show non-zero `cache_read_input_tokens` in the logs from the second request on.
+- A request whose intent mentions passkeys or recovery returns a clarification, never a plan.
+- `pnpm test` passes in `agent/`.
+
+## Section 6: Intent bar, plan card, and plan review
+
+### Goal
+
+The launcher home gets an intent field. A sentence becomes a plan card, the plan is re-checked and encoded on the phone, and the existing review-then-passkey path executes it as one operation. An address book supplies names.
+
+### Dependencies
+
+Section 5 deployed. Seams from the table above, stubbed where absent.
+
+### Files
+
+Create:
+- `app/src/agent/schema.ts` — identical to `agent/src/schema.ts`.
+- `app/src/agent/policy.ts` — identical rules; `evaluatePolicy` with the app's `actionEnabled` flags derived from which seams are real.
+- `app/src/agent/agent-client.ts` — `createAgentClient({ baseUrl, token, fetcher })` with `propose(request)`; error mapping to short messages.
+- `app/src/agent/agent-context.ts` — `buildAgentContext({ walletHomeProvider, sponsorship, addressBook, vault })` assembling `AgentContext` from the existing providers.
+- `app/src/agent/plan-encoder.ts` — `encodePlan(plan: EnrichedPlan, seams): Promise<{ calls: KernelExecutionCall[]; lines: ReviewLine[] }>`.
+- `app/src/agent/address-book.ts` — local JSON store via `expo-file-system` like the operation journal in section 1; `list`, `upsert`, `remove`; names are lowercase, unique, 1 to 32 characters.
+- `app/src/components/intent-bar.tsx` — the field, submit button, microphone button when `expo-speech-recognition` is available (optional; text only is acceptable for the hackathon, in which case omit the button rather than stub it).
+- `app/src/components/plan-card.tsx` — renders `EnrichedPlan`, clarification, rejection, or error, with "Edit" and "Review & sign".
+- `app/src/components/plan-review-screen.tsx` — review and execute for a batched plan.
+- `app/src/app/plan.tsx` — route hosting the plan review, receiving the plan via a module-level store (`app/src/agent/pending-plan.ts`) rather than route params, because the plan contains bigints.
+- `app/src/components/address-book-screen.tsx` and `app/src/app/address-book.tsx` — minimal list and add form, linked from settings.
+- Tests for each module and component.
+
+Modify:
+- `app/src/components/launcher-home.tsx` — add `IntentBar` above `MarketCard`, render `PlanCard` beneath it while a plan is pending.
+- `app/src/app/index.tsx` — pass `onOpenPlan` that routes to `/plan`.
+- `app/src/app/_layout.tsx` — register `plan` and `address-book` screens inside the protected group.
+- `app/.env.example`, `app/README.md` — `EXPO_PUBLIC_AGENT_BASE_URL`, `EXPO_PUBLIC_AGENT_APP_TOKEN`.
+- `app/src/components/launcher-settings-screen.tsx` — entry to the address book.
+
+### Design
+
+**Intent bar.** A single-line `TextInput` with placeholder "Ask your wallet", max 500 characters, and a submit button labelled "Plan". While a request is in flight the button shows a spinner and the field is read-only. Submitting an empty field does nothing. The field keeps its text after a response so "Edit" is just focusing it. Accessibility label "Wallet intent".
+
+**Request.** On submit: `buildAgentContext` (balances from `walletHomeLiveProvider.load()`, price from the same snapshot, vault position via the seam or `null`, sponsorship via the seam or `null`, address book from the store, capabilities from `actionEnabled`), then `agentClient.propose`. A 20-second client timeout maps to "The assistant took too long. Try again or use Send."
+
+**Plan card states.**
+- `plan`: summary text, one line per action in the form "1. Send 5.00 USDC to alice (0x1234…abcd)", assumptions in a smaller muted list, the sponsorship line when known, then "Edit" and "Review & sign".
+- `clarification`: the question, and "Edit" only.
+- `rejected`: the first violation message, plus "Open Send" or "Open Swap" as a fallback button when the violation is action-specific, and "Edit".
+- `declined` and network errors: short message, "Edit", and "Open Send".
+- If the app's own `evaluatePolicy` disagrees with the service's `enriched` plan, show the app's violation and log a warning; the app's result wins.
+
+**Encoder (`plan-encoder.ts`).** For each action in order:
+- `send_eth`: `{ to: resolved, value: parseEther(amount), data: '0x' }`; line "Send {amount} ETH to {name or short address}".
+- `send_usdc`: `encodeUsdcTransfer({ to, amountMicro })`; line "Send {amount} USDC to …".
+- `swap`: `quoteSwap` then `encodeSwap(quote, { recipient: account })`; lines "Swap {amountIn} for at least {minimumAmountOut}" and "Quote expires {time}". If the quote expired before execution, the review screen must re-quote and re-prepare; a changed minimum output invalidates the review, matching the fee-change rule in the decisions doc.
+- `vault_deposit` and `vault_withdraw`: the vault seam; lines accordingly.
+Recipient resolution uses the address book first, then `resolveRecipient`; the resolved address is pinned into the encoded call and shown in the review, so the ENS-bound-address rule from PRA-200 holds.
+
+**Plan review screen.** Extract the review and execute stages from `send-screen.tsx` into `PlanReviewScreen({ plan, calls, lines })`:
+1. `createExecutionClient` and assert the account matches the persisted wallet.
+2. `client.prepare(calls)`; assert `review.calls` equals the encoded calls one-for-one (to, valueWei, data), exactly as the send screen asserts its single call.
+3. Render the summary lines, the calls count, chain, sponsorship status from `review.sponsored`, and maximum network fee from `review.maximumNetworkFeeWei` when not sponsored.
+4. "Confirm with passkey" runs `execute(review.userOperationHash)`, then the same success handling as the send screen: `markPersistedWalletIdentityDeployed`, `walletHomeLiveProvider.refresh()`, and for any `send_eth` action append to the operation journal from section 1 so ETH sends keep their amounts in the activity feed.
+5. Success shows the transaction hash with copy and explorer link, and "Done" returns home with the intent field cleared and the plan card dismissed.
+Any thrown error returns to the plan card with the message and keeps the sentence.
+
+**Address book.** Screen with the list and an add form (name, address or ENS name resolved on save via the seam). Names are what the model sees, so keep them short. Entries are shared with the model as names only; the address stays on the phone until the plan is encoded.
+
+### Tests
+
+- `policy.test.ts` in the app asserts the same vectors file as the service.
+- `agent-client.test.ts`: headers, timeout, error mapping, response kinds.
+- `agent-context.test.ts`: assembles the snapshot from mocked providers; `null` for absent seams; capabilities reflect stubs.
+- `plan-encoder.test.ts`: each action to calls and lines with fake seams; recipient resolution order; disabled actions throw before encoding.
+- `address-book.test.ts`: normalisation, uniqueness, persistence round trip.
+- `intent-bar.test.tsx`, `plan-card.test.tsx`: states and buttons; the field keeps its text after a clarification.
+- `plan-review-screen.test.tsx`: mirrors `send-screen.test.tsx` structure with a fake execution client; asserts the call-equality guard, the sponsored line, journal append for ETH sends, and error return to the card.
+- `launcher-home.test.tsx`: the bar renders, submission calls the client, and the card appears.
+
+### Acceptance criteria
+
+- On a device with a funded account and alice in the address book, "send 0.01 eth to alice" produces a plan, review, one passkey ceremony, and a successful operation visible in the activity feed with amount and recipient.
+- "send some eth to alice" produces a clarification and no review.
+- "send 100 eth to alice" produces a rejection naming the balance and offers Send.
+- "make it 0.02 instead" after a plan updates the amount.
+- With the agent variables unset, the intent bar is hidden and the rest of the home is unchanged.
+- `pnpm lint` and `pnpm test --runInBand` pass.
+
+## Section 7: Digest card
+
+### Goal
+
+A card on the launcher home that states what changed since the user last opened it and suggests one action, written by the same service. Tapping the suggestion pre-fills the intent bar and runs the section 6 flow.
+
+### Dependencies
+
+Section 5 for the service. Section 6 for the intent bar and plan flow. Section 1 for activity data.
+
+### Files
+
+Create:
+- `agent/src/digest.ts` — the Claude call.
+- `agent/src/digest.test.ts`
+- `app/src/agent/digest-client.ts` and test — `fetchDigest`.
+- `app/src/components/digest-card.tsx` and test.
+
+Modify:
+- `agent/src/server.ts` — `POST /agent/digest`.
+- `agent/src/schema.ts` and `app/src/agent/schema.ts` — `DigestSchema`.
+- `app/src/components/launcher-home.tsx` — `DigestCard` under the intent bar.
+- `app/src/launcher/*` — persist `lastDigestAt` with the launcher preferences (extend the schema version of `launcher-preferences.ts` to 2 with a nullable `lastDigestAt`, keeping version 1 parsing).
+
+### Design
+
+Request: `{ account, context: AgentContext, since: string | null }`. The service runs `get_activity` itself (no tool loop needed; call the MultiBaas queries directly, filtered to rows after `since`) and asks the model for:
+
+```ts
+export const DigestSchema = z.object({
+  headline: z.string().min(1).max(120),
+  detail: z.string().min(1).max(240),
+  suggestedIntent: z.string().min(1).max(200).nullable(),
+});
+```
+
+Use `client.messages.parse` with `output_config.format = zodOutputFormat(DigestSchema)` and `effort: 'low'`, no tools, a separate cached system prompt (`agent/src/prompts/digest.md`). The suggested intent must be a sentence the section 6 flow can plan, in the catalogue, and only when it makes sense: idle USDC above 10 with the vault available suggests a deposit; nothing suggests nothing. The model may return `null`.
+
+Card: eyebrow "YOUR WALLET · SODERA", headline, detail, and a button with the suggestion text when present. Refresh at most once per 30 minutes and on the first open of the day; store `lastDigestAt`. Loading, error, and retry states mirror `MarketCard`. If the agent variables are unset, the card is hidden.
+
+### Tests
+
+- `digest.test.ts`: message construction, schema parse, `null` suggestion path, refusal mapping.
+- `digest-card.test.tsx`: renders headline and detail, tapping the suggestion fills the intent bar (assert through the `onSuggest` callback), 30-minute throttle honoured.
+- `launcher-preferences.test.ts`: version 2 schema with `lastDigestAt`, and version 1 data still parses.
+
+### Acceptance criteria
+
+- After receiving USDC on a device, reopening the launcher shows a headline mentioning the receipt within the throttle window.
+- Tapping a suggestion runs the intent flow to a plan card without retyping.
+- `pnpm test` passes in `agent/`; `pnpm lint` and `pnpm test --runInBand` pass in `app/`.
+
+## Open verifications
+
+MultiBaas rows are resolved by the section 1 script and recorded in `docs/research/multibaas-sepolia.md`. Agent rows are resolved where stated.
+
+| Question | Resolved by | Consumers |
+| --- | --- | --- |
+| REST prefix is `/api/v0` on the deployment domain | 1.1 step 1 | all |
+| Field name for chain id in chain status | 1.1 step 1 | section 3 |
+| Shape of `latestRoundData` output (array or keyed object) | 1.1 step 4 | section 3 |
+| Whether the address endpoint returns a wei balance, and its field name | 1.1 step 5 | section 3 |
+| Address case sensitivity in `input` filters | 1.1 step 7 | sections 1, 2, 4 |
+| Working value format for `triggered_at` filters | 1.1 step 9 | section 2 |
+| Non-browser requests succeed without CORS registration | 1.1 step 10 | all |
+| USDC indexer keeps up under the free-tier 2 events per second cap | prerequisites step 6 | sections 1, 2, 4 |
+| Where the webhook HMAC secret is shown | section 4 setup step 3 | section 4 (low priority) |
+| Exact `event.emitted` payload layout | section 4 setup step 4 | section 4 (low priority) |
+| `toolRunner` forwards `output_config.format` | Section 5 implementation, first run | Section 5 (fallback documented) |
+| Effort level that keeps proposal latency under 10 seconds with good plans | Section 5 smoke tests, sweep `medium` and `high` | Sections 5 and 6 |
+| Pinned Uniswap route and quoter for `quote_swap` | PRA-212 | Section 5 tool, section 6 encoder |
+| Sponsorship allowance source | PRA-195, PRA-199 | Policy `sponsorship` rule, plan card line |
+| Shared review component from PRA-198 | PRA-198 | Section 6 review screen |
+| Speech input library compatibility with SDK 57 | Section 6, optional | Intent bar microphone button |
+
+## Sources
+
+- MultiBaas overview: https://docs.curvegrid.com/multibaas/
+- Event indexing: https://docs.curvegrid.com/multibaas/event-indexing/
+- Manage contracts (Contract from Address, sync events, starting block): https://docs.curvegrid.com/multibaas/manage-contracts/
+- API keys (bearer header, DApp User keys): https://docs.curvegrid.com/multibaas/api-keys/
+- Webhooks (headers, HMAC construction, event types): https://docs.curvegrid.com/multibaas/webhooks/
+- Build a frontend (DApp User key model, CORS): https://docs.curvegrid.com/multibaas/getting-started/build-a-frontend/
+- Deployment and domain: https://docs.curvegrid.com/multibaas/getting-started/account-and-deployment/
+- Event queries API: https://docs.curvegrid.com/multibaas/api/event-queries
+- SDK type definitions (FieldType, filter operators, aggregators, EventQuery): https://github.com/curvegrid/multibaas-sdk-typescript/blob/main/api.ts
+- SDK method docs (`callContractFunction`, `getAddress` include values, `executeArbitraryEventQuery`): https://github.com/curvegrid/multibaas-sdk-typescript/tree/main/docs
+- Reference app (frontend-only event-query balances): https://github.com/curvegrid/matsuri-stablecoin-sample-app
+- Expo push setup and Android FCM requirement: https://docs.expo.dev/push-notifications/push-notifications-setup/
+- Expo push API: https://docs.expo.dev/push-notifications/sending-notifications/
+- expo-notifications config plugin: https://docs.expo.dev/versions/latest/sdk/notifications/
+- Claude API TypeScript reference from the `claude-api` skill: tool runner, structured outputs, refusal fallbacks, error classes, prompt caching, effort.
+- `docs/sodera.md` sections 16, 17, 21, 26, 45.
+- `docs/hackathon-decisions.md` sponsorship and signing authorization rules.
+- `docs/hackathon-specs.md` ticket table for seam ownership.
+- Curvegrid ETHGlobal Tokyo workshop slides (screenshots supplied by the user): "Separate intent from authority" and the two prize tracks.
