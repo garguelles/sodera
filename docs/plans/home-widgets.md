@@ -400,7 +400,7 @@ A plain reanimated `View` anchored to the bottom, no sheet library: 55 % of the 
 
 ### Implementation notes
 
-Implemented as specified. Not yet checked on a device; the acceptance criteria above are the manual test. Differences and additions:
+Implemented as specified. The sheet was exercised on an Android device during section 5's check (opening with edit mode, collapsing, and adding Market pulse by dragging it); tap to add itself was not tried on the device by the implementer, so the acceptance criteria above remain its manual test. Differences and additions:
 
 - The sheet lists removable widgets only, so Phone is not in it (see 4.1 and Scope decisions).
 - The header hint reads "tap to add" until section 5 adds dragging; section 5 changes it to the mock's "drag onto home".
