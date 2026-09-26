@@ -19,7 +19,7 @@ Open the local URL shown by Vite (normally `http://127.0.0.1:5173/`) in a browse
 
 ## Dedicated issuer account
 
-Create a second Sepolia account distinct from both the `sodera.eth` owner and users' Kernel accounts. You may create it as a new MetaMask account for setup. Copy **only its public address** to `ENS_ISSUER_ADDRESS` in the local `ens/.env.local` file, fund it with enough Sepolia ETH for issuance transactions, then run `pnpm verify:issuer`. The read-only check verifies the mounted official child, reports the address's current root roles and ETH balance, and rejects unexpected permissions. It never reads, generates, or sends a private key.
+The owner designated `0x9eF8EAad2fB225D19ECecC125B0Da54B8BE14CC0` as the second Sepolia issuer account. Its **public address** is in `.env.example`; the signing key is not in this repo. Run `pnpm verify:issuer` to check the pinned child and parent, roles, account type and balance. After an initial zero-balance check, the owner funded it with 0.1 Sepolia ETH; no registrar role was granted. This does not prove possession of the issuer's private key.
 
 The new `agent/` service is deliberately keyless and must remain so. The issuer's signing key will belong only to the **separately deployed ENS entrypoint of `api/`**, with its own environment/secret storage and bounded claim policy, even if it shares Railway infrastructure. Do not place that key in `app/`, `landing/`, `ens/`, the agent planner or Uniswap service environments, git, or chat. We will not grant `ROLE_REGISTRAR` until the isolated issuer service and its authorization, budget, retry and audit checks are implemented and verified.
 

@@ -9,6 +9,8 @@ Two isolated service entrypoints in one Hono project. Deploy them as **separate 
 
 `agent/` remains the separate, keyless AI planning service. The Uniswap entrypoint imports no ENS module and must never receive the issuer wallet's signing key. When registration is implemented, **only the ENS deployment** will receive its private signer configuration. Do not put secrets in `EXPO_PUBLIC_*`, the local `ens/` owner tool, git, or the `agent/` planner environment.
 
+The designated issuer **public address** is `0x9eF8EAad2fB225D19ECecC125B0Da54B8BE14CC0`. It now holds 0.1 Sepolia ETH but has no registrar grant. Its private key is not needed for the current read-only API and must not be placed in this project's `.env` until a separately deployed ENS signer process and claim policy are ready.
+
 ## Development
 
 From `api/`:
@@ -27,4 +29,6 @@ The ENS availability endpoint applies the app's canonical username policy, disti
 
 ## Issuance gate
 
-The mobile wallet's current Primary Passkey adapter signs only 32-byte UserOperation hashes. The future ENS claim API must prove the requester controls the deployed Kernel without trusting a supplied address or the public `agent/` bearer token. A compatible challenge/response proof (for example a WebAuthn assertion verified against the Kernel's on-chain validator key, RP and origin) must be implemented and tested first. After that, issuance still requires durable idempotency, one-name-per-Kernel product policy, abuse limits and a global budget, per-Kernel resolver provisioning, safe retries, and independent on-chain ownership/resolution checks. Granting `ROLE_REGISTRAR` to a service key happens **after** these gates; see [ENS implementation plan](../docs/plans/ens-onboarding-and-renewal.md).
+The mobile wallet's current Primary Passkey signing adapter signs only 32-byte UserOperation hashes; its native ceremony can request a separately supplied challenge. `src/ens/kernel-proof.ts` and `src/ens/webauthn-proof.ts` now verify a deployed Kernel's pinned implementation/root validator and a user-verified WebAuthn assertion against its on-chain P-256 key, Sodera RP ID, approved Android origins, and an exact 32-byte challenge. These helpers have cryptographic tests and a live validator-key read against an existing Sodera Kernel; they are **not** yet a public authentication flow.
+
+The future ENS claim API must issue short-lived, single-use challenges bound to chain/account/label, durably consume them, and prove the requesting installation controls the same Kernel. After that, issuance still requires durable idempotency, one-name-per-Kernel product policy, abuse limits and a global budget, per-Kernel resolver provisioning, safe retries, and independent on-chain ownership/resolution checks. Granting `ROLE_REGISTRAR` to a service key happens **after** these gates; see [ENS implementation plan](../docs/plans/ens-onboarding-and-renewal.md).

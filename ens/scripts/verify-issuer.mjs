@@ -23,8 +23,9 @@ const [ethPointer, parentState, child] = await Promise.all([
 ]);
 assert.equal(ethPointer.toLowerCase(), ENSV2.ethRegistry.toLowerCase(), 'The .eth registry pointer changed');
 assert.equal(parentState.status, 2, 'sodera.eth is not registered');
+assert.equal(parentState.latestOwner.toLowerCase(), ENSV2.owner.toLowerCase(), 'sodera.eth owner changed');
 assert.ok(Number(parentState.expiry) > Date.now() / 1000, 'sodera.eth has expired');
-assert.notEqual(child, zeroAddress, 'sodera.eth has no mounted child registry');
+assert.equal(child.toLowerCase(), ENSV2.childRegistry.toLowerCase(), 'Mounted child registry changed');
 const implementation = await client.readContract({
   address: ENSV2.factory,
   abi: factoryAbi,
@@ -34,7 +35,7 @@ const implementation = await client.readContract({
 });
 assert.equal(implementation.toLowerCase(), ENSV2.userRegistryImpl.toLowerCase(), 'Child implementation changed');
 
-const [roles, balance, canonicalParent, childEmancipated] = await Promise.all([
+const [roles, balance, code, canonicalParent, childEmancipated] = await Promise.all([
   client.readContract({
     address: child,
     abi: registryAbi,
@@ -43,12 +44,14 @@ const [roles, balance, canonicalParent, childEmancipated] = await Promise.all([
     blockNumber,
   }),
   client.getBalance({ address: issuer, blockNumber }),
+  client.getCode({ address: issuer, blockNumber }),
   client.readContract({ address: child, abi: registryAbi, functionName: 'getParent', blockNumber }),
   client.readContract({ address: child, abi: registryAbi, functionName: 'isEmancipated', blockNumber }),
 ]);
 assert.equal(canonicalParent[0].toLowerCase(), ENSV2.ethRegistry.toLowerCase(), 'Child canonical parent changed');
 assert.equal(canonicalParent[1], 'sodera', 'Child canonical label changed');
 assert.equal(childEmancipated, true, 'Child registry is no longer emancipated');
+assert.ok(!code || code === '0x', 'Issuer address must be an externally owned account');
 const registrarRole = 1n;
 console.log(JSON.stringify({
   chainId: sepolia.id,
@@ -57,6 +60,7 @@ console.log(JSON.stringify({
   registry: child,
   rootRoles: `0x${roles.toString(16)}`,
   registrarGranted: (roles & registrarRole) !== 0n,
+  externallyOwnedAccount: true,
   sepoliaEthWei: balance.toString(),
 }, null, 2));
 assert.ok(roles === 0n || roles === registrarRole, 'Issuer has unexpected root roles');
