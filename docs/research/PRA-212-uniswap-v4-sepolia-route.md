@@ -83,7 +83,7 @@ With the SDK (block `11784594`), the golden calldata matched in both directions.
 
 ## Live swaps
 
-Swaps executed by the Sodera app from a passkey-controlled Kernel account ([`0xFbf2213c7F5DE314729293fF1B541F8591637658`](https://sepolia.etherscan.io/address/0xFbf2213c7F5DE314729293fF1B541F8591637658)) through EntryPoint v0.7. Every UserOperation was sponsored by ZeroDev's paymaster (`0x777777777777AeC03fd955926DbF81597e66834C`):
+Swaps executed by the Sodera app from a passkey-controlled Kernel account ([`0xFbf2213c7F5DE314729293fF1B541F8591637658`](https://sepolia.etherscan.io/address/0xFbf2213c7F5DE314729293fF1B541F8591637658)) through EntryPoint v0.7. Every UserOperation was sponsored through ZeroDev, by the `SingletonPaymasterV7` contract (`0x777777777777AeC03fd955926DbF81597e66834C`):
 
 | Direction | Transaction | Result |
 | --- | --- | --- |

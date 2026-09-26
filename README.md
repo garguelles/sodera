@@ -34,7 +34,10 @@ See the application READMEs for verification, native development, Digital Asset 
 
 ## Uniswap Integration
 
-Sodera's wallet swaps ETH ⇄ USDC on Ethereum Sepolia through Uniswap v4. The user's passkey-controlled Kernel smart account (ERC-4337, sponsored gas) calls the Uniswap contracts directly. The Uniswap SDK (`@uniswap/sdk-core`, `@uniswap/v4-sdk`) supplies the currencies, the pool key, the trade math (minimum received, rate and price impact) and the `V4Planner` swap encoding. `viem` makes the V4 Quoter call, encodes the approvals and handles RPC. The Uniswap Trading API is not used. One passkey confirmation executes the whole swap, including the approvals for USDC → ETH.
+Sodera uses Uniswap on Ethereum Sepolia in two ways. Both run from the user's passkey-controlled Kernel smart account (ERC-4337, sponsored gas), and one passkey confirmation executes the whole batch, approvals included.
+
+- **Swap** trades ETH ⇄ USDC in one pinned Uniswap v4 pool. The Uniswap SDK (`@uniswap/sdk-core`, `@uniswap/v4-sdk`) supplies the currencies, the pool key, the trade math (minimum received, rate and price impact) and the `V4Planner` encoding for Universal Router 2.0. `viem` makes the V4 Quoter call, encodes the approvals and handles RPC.
+- **Pay with**, inside Send, pays someone an exact amount of one asset while spending the other. The agent backend asks the Uniswap Trading API for an exact-output route (`/quote`, then `/swap_5792`) with a server-side key, and returns one Universal Router 2.1.2 call. The wallet decodes and checks every command in it (with the v4 SDK's `V4BaseActionsParser`). It then adds its own approvals, capped at the quoted maximum, and its own transfer to the payee, and simulates the batch on Sepolia before the review.
 
 | What | Where |
 | --- | --- |
@@ -47,23 +50,33 @@ Sodera's wallet swaps ETH ⇄ USDC on Ethereum Sepolia through Uniswap v4. The u
 | Route research, contracts, and evidence | [`docs/research/PRA-212-uniswap-v4-sepolia-route.md`](docs/research/PRA-212-uniswap-v4-sepolia-route.md) |
 | Build plan and design decisions | [`docs/plans/uniswap-swaps.md`](docs/plans/uniswap-swaps.md) |
 | Uniswap SDK adoption plan | [`docs/plans/uniswap-sdk-adoption.md`](docs/plans/uniswap-sdk-adoption.md) |
+| Pay with: Trading API client and `POST /pay/quote` | [`agent/src/uniswap-trading.ts`](agent/src/uniswap-trading.ts), [`agent/src/pay-quote.ts`](agent/src/pay-quote.ts) |
+| Pay with: router call checks and the payment batch | [`app/src/wallet/pay-with-swap.ts`](app/src/wallet/pay-with-swap.ts) |
+| Pay with: Sepolia simulation, Send screen, and activity rows | [`app/src/wallet/pay-with-simulation.ts`](app/src/wallet/pay-with-simulation.ts), [`app/src/components/send-screen.tsx`](app/src/components/send-screen.tsx), [`app/src/wallet/pay-with-activity.ts`](app/src/wallet/pay-with-activity.ts) |
+| Pay with: Trading API research and plan | [`docs/research/trading-api-pay-with-sepolia.md`](docs/research/trading-api-pay-with-sepolia.md), [`docs/plans/pay-with-any-token.md`](docs/plans/pay-with-any-token.md) |
 | Developer feedback for Uniswap | [`FEEDBACK.md`](FEEDBACK.md) |
 
 Uniswap contracts used on Sepolia:
 
-- [Universal Router `0x3A9D…F98b`](https://sepolia.etherscan.io/address/0x3A9D48AB9751398BbFa63ad67599Bb04e4BdF98b)
+- [Universal Router 2.0 `0x3A9D…F98b`](https://sepolia.etherscan.io/address/0x3A9D48AB9751398BbFa63ad67599Bb04e4BdF98b), for Swap
+- [Universal Router 2.1.2 `0x7E4f…43f3`](https://sepolia.etherscan.io/address/0x7E4f6c5e954Da5c61B3423D81E2277431Ac043f3), for Pay with (the Trading API's router; its Permit2 allowances are separate)
 - [V4 Quoter `0x61B3…9227`](https://sepolia.etherscan.io/address/0x61B3f2011A92d183C7dbaDBdA940a7555Ccf9227)
 - [PoolManager `0xE03A…3543`](https://sepolia.etherscan.io/address/0xE03A1074c86CFeDd5C142C4F04F1a1536e203543), via [StateView](https://sepolia.etherscan.io/address/0xE1Dd9c3fA50EDB962E442f60DfBc432e24537E4C)
 - [Permit2 `0x0000…8BA3`](https://sepolia.etherscan.io/address/0x000000000022D473030F116dDEE9F6B43aC78BA3)
 
-The pool is native ETH / USDC with a 0.002% fee, tick spacing 1, and no hook. Its pool ID is `0xc743656d27fde4e2d5895e878557aaa56dd48c8656d25e9db35ba10b1fe3d824`.
+Swap's pool is native ETH / USDC with a 0.002% fee, tick spacing 1, and no hook. Its pool ID is `0xc743656d27fde4e2d5895e878557aaa56dd48c8656d25e9db35ba10b1fe3d824`.
 
 Live swaps from a Sodera Kernel account:
 
 - ETH → USDC: [`0x9b75…faf0`](https://sepolia.etherscan.io/tx/0x9b75ba46258116210043604a65f3a30f0684fd4b57cfdcd36839465504e3faf0) swapped 0.1 ETH for 3,179.920816 USDC.
 - USDC → ETH: [`0x80e6…5dbe`](https://sepolia.etherscan.io/tx/0x80e6031700477a5503a900196fd22fb4824f4012df8757e8b400dcf084005dbe) swapped 1 USDC for 0.000031428307909673 ETH. This was the account's first operation, so it also deployed the wallet.
 
-All swaps were sponsored by ZeroDev's paymaster. More are listed in the [route research](docs/research/PRA-212-uniswap-v4-sepolia-route.md#live-swaps).
+Live Pay with payments from the same account:
+
+- 10 USDC paid with ETH: [`0x0b06…70bb`](https://sepolia.etherscan.io/tx/0x0b06e8e799f05f54235a1ac4d0430b9cf919a84ffbe7faa7b5abe14240b670bb). The payee received exactly 10 USDC, and the account spent 0.000282410166306545 ETH after the router refunded the unused slippage buffer.
+- 0.002 ETH paid with USDC: [`0x2c27…1875`](https://sepolia.etherscan.io/tx/0x2c27b215ab7004a9ef6c52b8c04835b8f6f8ec92970e0a96ad1759786a991875). The payee received exactly 0.002 ETH for 45.85871 USDC.
+
+Every operation was sponsored through ZeroDev, whose paymaster on Sepolia is the [`SingletonPaymasterV7` contract `0x7777…834C`](https://sepolia.etherscan.io/address/0x777777777777AeC03fd955926DbF81597e66834C). More swaps are listed in the [route research](docs/research/PRA-212-uniswap-v4-sepolia-route.md#live-swaps).
 
 ## Project Documentation
 

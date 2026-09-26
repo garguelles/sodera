@@ -3,6 +3,8 @@ import { getAddress } from 'viem';
 import { describe, expect, it, vi } from 'vitest';
 
 import { createApp, MAX_BODY_BYTES, type AppDependencies } from './app.ts';
+import { UnexpectedPayCallsError, type PayQuote } from './pay-quote.ts';
+import { TradingApiError } from './uniswap-trading.ts';
 import { createTranscriptStore } from './transcript.ts';
 import { fakeClient, fakeMultiBaas, message } from './test/fakes.ts';
 import { ACCOUNT, ALICE, createContext } from './test/fixtures.ts';
@@ -31,6 +33,7 @@ function setup(reply: () => Anthropic.Beta.BetaMessage[] | Promise<Anthropic.Bet
     multibaas: fakeMultiBaas(),
     resolveEns: vi.fn().mockResolvedValue(null),
     quoteSwap: vi.fn(),
+    payQuoter: null,
     transcripts: createTranscriptStore(),
     log,
     ...overrides,
@@ -179,6 +182,95 @@ describe('agent server', () => {
         throw failure;
       });
       const response = await post(app, request());
+      expect(response.status).toBe(status);
+      expect((await response.json()).error.code).toBe(code);
+    }
+    consoleError.mockRestore();
+  });
+});
+
+describe('pay quote endpoint', () => {
+  const payRequest = { account: ACCOUNT, payAsset: 'ETH', receiveAsset: 'USDC', amountOut: '10000000' };
+  const payQuote: PayQuote = {
+    quoteId: 'quote-1',
+    requestId: 'req-1',
+    quotedAt: '2026-09-26T08:00:00.000Z',
+    deadline: 1790410200,
+    routerVersion: '2.1.2',
+    payAsset: 'ETH',
+    receiveAsset: 'USDC',
+    amountIn: '1000',
+    maxAmountIn: '1005',
+    amountOut: '10000000',
+    route: '[v4] 100.00% = pool',
+    priceImpactPercent: 0.84,
+    swap: { to: '0x7E4f6c5e954Da5c61B3423D81E2277431Ac043f3', value: '1005', data: '0x3593564c' },
+  };
+
+  function payPost(app: ReturnType<typeof createApp>, body: unknown, headers: Record<string, string> = {}) {
+    return app.request('/pay/quote', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json', ...headers },
+      body: JSON.stringify(body),
+    });
+  }
+
+  it('requires the app token and a valid request before quoting', async () => {
+    const payQuoter = vi.fn().mockResolvedValue(payQuote);
+    const { app } = setup(() => [], { payQuoter });
+
+    expect((await payPost(app, payRequest, { authorization: 'Bearer nope' })).status).toBe(401);
+    expect((await payPost(app, { ...payRequest, receiveAsset: 'ETH' })).status).toBe(400);
+    expect((await payPost(app, { ...payRequest, amountOut: '0.5' })).status).toBe(400);
+    expect(payQuoter).not.toHaveBeenCalled();
+  });
+
+  it('answers 503 when the Uniswap key is not configured', async () => {
+    const { app } = setup(() => []);
+    const response = await payPost(app, payRequest);
+    expect(response.status).toBe(503);
+    expect((await response.json()).error.code).toBe('pay_unavailable');
+  });
+
+  it('returns the normalized quote and logs it without amounts or addresses', async () => {
+    const payQuoter = vi.fn().mockResolvedValue(payQuote);
+    const { app, log } = setup(() => [], { payQuoter });
+
+    const response = await payPost(app, payRequest);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual(payQuote);
+    expect(payQuoter).toHaveBeenCalledWith(payRequest);
+    const line = log.mock.calls.map(([entry]) => entry).find((entry) => entry.event === 'pay_quote');
+    expect(line).toMatchObject({ outcome: 'quoted', pair: 'ETH->USDC', requestId: 'req-1' });
+    expect(JSON.stringify(line)).not.toContain(ACCOUNT);
+  });
+
+  it('caps quotes across all users to stay under the Uniswap key quota', async () => {
+    const payQuoter = vi.fn().mockResolvedValue(payQuote);
+    const { app } = setup(() => [], { payQuoter, now: () => 1_000 });
+
+    const statuses: number[] = [];
+    for (let index = 0; index < 4; index += 1) {
+      const account = `0x${(index + 16).toString(16).padStart(40, '0')}`;
+      statuses.push((await payPost(app, { ...payRequest, account })).status);
+    }
+    expect(statuses).toEqual([200, 200, 200, 429]);
+  });
+
+  it('maps Uniswap failures to service errors', async () => {
+    const cases: [Error, number, string][] = [
+      [new TradingApiError(404, 'NoRouteFoundError', 'no route'), 422, 'no_route'],
+      [new TradingApiError(429, 'Throttled', 'busy'), 503, 'busy'],
+      [new TradingApiError(0, 'Timeout', 'slow'), 504, 'upstream_timeout'],
+      [new TradingApiError(401, 'Unauthorized', 'bad key'), 500, 'misconfigured'],
+      [new TradingApiError(500, 'InternalServerError', 'boom'), 502, 'upstream_error'],
+      [new UnexpectedPayCallsError('two router calls'), 502, 'unexpected_quote'],
+    ];
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    for (const [failure, status, code] of cases) {
+      const { app } = setup(() => [], { payQuoter: vi.fn().mockRejectedValue(failure) });
+      const response = await payPost(app, payRequest);
       expect(response.status).toBe(status);
       expect((await response.json()).error.code).toBe(code);
     }

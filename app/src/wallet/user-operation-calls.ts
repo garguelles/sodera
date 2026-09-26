@@ -13,6 +13,7 @@ import {
 import { entryPoint07Abi } from 'viem/account-abstraction';
 
 export type UserOperationEthTransfer = { to: Address; valueWei: string };
+export type UserOperationCall = { to: Address; valueWei: string; data: Hex };
 
 export type UserOperationTransactionReader = {
   getTransaction(args: { hash: Hash }): Promise<{ input: Hex }>;
@@ -26,7 +27,20 @@ const KERNEL_CALL_TYPE_BATCH = '0x01';
  * Reads the native ETH transfers a Kernel user operation made, straight from the bundle
  * transaction that carried it. Returns null when the transaction cannot be decoded.
  */
-export function decodeUserOperationEthTransfers({
+export function decodeUserOperationEthTransfers(operation: {
+  input: Hex;
+  sender: Address;
+  nonce: bigint;
+}): UserOperationEthTransfer[] | null {
+  return ethTransfersOf(decodeUserOperationCalls(operation));
+}
+
+export function ethTransfersOf(calls: readonly UserOperationCall[] | null): UserOperationEthTransfer[] | null {
+  return calls?.filter((call) => BigInt(call.valueWei) > 0n).map(({ to, valueWei }) => ({ to, valueWei })) ?? null;
+}
+
+/** Every call of a Kernel user operation, in order. Returns null when it cannot be decoded. */
+export function decodeUserOperationCalls({
   input,
   sender,
   nonce,
@@ -34,7 +48,7 @@ export function decodeUserOperationEthTransfers({
   input: Hex;
   sender: Address;
   nonce: bigint;
-}): UserOperationEthTransfer[] | null {
+}): UserOperationCall[] | null {
   try {
     const bundle = decodeFunctionData({ abi: entryPoint07Abi, data: input });
     if (bundle.functionName !== 'handleOps') return null;
@@ -45,8 +59,7 @@ export function decodeUserOperationEthTransfers({
     );
     if (!operation) return null;
     return decodeKernelCalls(operation.callData)
-      ?.filter((call) => call.value > 0n)
-      .map((call) => ({ to: getAddress(call.target), valueWei: call.value.toString() })) ?? null;
+      ?.map((call) => ({ to: getAddress(call.target), valueWei: call.value.toString(), data: call.data })) ?? null;
   } catch {
     return null;
   }
@@ -62,6 +75,7 @@ function decodeKernelCalls(callData: Hex) {
       {
         target: sliceHex(executionCalldata, 0, 20) as Address,
         value: hexToBigInt(sliceHex(executionCalldata, 20, 52)),
+        data: size(executionCalldata) > 52 ? sliceHex(executionCalldata, 52) : ('0x' as Hex),
       },
     ];
   }
@@ -79,17 +93,17 @@ function decodeKernelCalls(callData: Hex) {
       ],
       executionCalldata,
     );
-    return calls.map((call) => ({ target: call.target, value: call.value }));
+    return calls.map((call) => ({ target: call.target, value: call.value, data: call.callData }));
   }
   return null;
 }
 
-export async function readUserOperationEthTransfers(
+export async function readUserOperationCalls(
   reader: UserOperationTransactionReader,
   operation: { transactionHash: Hash; sender: Address; nonce: bigint },
 ) {
   const transaction = await reader.getTransaction({ hash: operation.transactionHash });
-  return decodeUserOperationEthTransfers({
+  return decodeUserOperationCalls({
     input: transaction.input,
     sender: operation.sender,
     nonce: operation.nonce,
