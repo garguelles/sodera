@@ -118,7 +118,7 @@ All work lands on one branch, `feat/pay-with-any-token`, as separate commits, wi
     - Acceptance:
         - Jest covers the pay-with flow, expiry, no-route fallback and simulation rejection.
         - A live check (fresh agent quotes, then the guard, `buildPayWithCalls` and the simulation against Sepolia from the deployed Kernel) passes in both directions.
-        - A device payment in each direction is still to be done.
+        - Device payments passed in both directions: [`0x0b06…70bb`](https://sepolia.etherscan.io/tx/0x0b06e8e799f05f54235a1ac4d0430b9cf919a84ffbe7faa7b5abe14240b670bb) (10 USDC paid with ETH) and [`0x2c27…1875`](https://sepolia.etherscan.io/tx/0x2c27b215ab7004a9ef6c52b8c04835b8f6f8ec92970e0a96ad1759786a991875) (0.002 ETH paid with USDC). The activity grouping recognises both from their on-chain calls.
 5. **Frontend: activity grouping.**
     - Files: `app/src/wallet/pay-with-activity.ts`, `transaction-activity.ts` (a `payment` item kind), `transaction-activity-multibaas.ts`, `user-operation-calls.ts` (every Kernel call, with its data), `pending-sends.ts` and `app/src/components/transactions-screen.tsx`.
     - Without grouping, a payment shows up as several rows: the ETH sent to the router, its refund, the pool leg, and the transfer to the payee.

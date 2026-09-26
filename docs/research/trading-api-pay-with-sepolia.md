@@ -62,6 +62,13 @@ Observations common to the passing variants:
     - v3, paying ETH: commands `0x0b010c` (`WRAP_ETH` into the router, `V3_SWAP_EXACT_OUT` to the account, `UNWRAP_WETH` of the leftover to the account).
 - **Deadline.** `/swap_5792` ignores a requested deadline and encodes one 30 minutes after quoting, so the backend decodes it from the calldata and the app checks it matches.
 
+## Live payments
+
+After implementation, device payments from the Kernel confirmed the flow end to end. Both were sponsored by `SingletonPaymasterV7` (`0x7777…834C`):
+
+- 10 USDC paid with ETH, [`0x0b06…70bb`](https://sepolia.etherscan.io/tx/0x0b06e8e799f05f54235a1ac4d0430b9cf919a84ffbe7faa7b5abe14240b670bb). The router call carried 0.000283822217138077 ETH and refunded 0.000001412050831532 ETH, so the net spend was the quoted 0.000282410166306545 ETH.
+- 0.002 ETH paid with USDC, [`0x2c27…1875`](https://sepolia.etherscan.io/tx/0x2c27b215ab7004a9ef6c52b8c04835b8f6f8ec92970e0a96ad1759786a991875), for 45.85871 USDC.
+
 ## Sources
 
 - [Supported chains](https://developers.uniswap.org/docs/trading/swapping-api/supported-chains): Sepolia `11155111` and Universal Router 2.1.2 `0x7E4f…43f3`.

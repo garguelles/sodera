@@ -7,6 +7,7 @@ Sodera is a seedless, passkey-controlled smart-account wallet and Android launch
 - **Native ETH pools in v4.** Swapping against a pool whose `currency0` is native ETH removed the `WRAP_ETH` / `UNWRAP_WETH` steps entirely. ETH → USDC is a single Universal Router call sent with the input ETH.
 - **Permit2 AllowanceTransfer suits smart accounts.** `Permit2.approve(token, spender, amount, expiration)` is an ordinary on-chain call. We batch it with the ERC-20 approval and the swap in one UserOperation, with no ERC-1271 typed-data signing. Using exact amounts and the swap deadline as expiry leaves no standing allowance after the swap.
 - **The slippage failure is clear.** `V4TooLittleReceived(minAmountOutReceived, amountReceived)` made it easy to prove that the minimum-received guard works, and to explain failures to users.
+- **The Trading API routes on Sepolia and is fast.** Exact-output quotes across v2/v3/v4 took about 0.6–1.1 s, and `/swap_5792` about 0.2–0.3 s. Routes regularly beat our pinned pool, and the v4 SDK's `V4BaseActionsParser` decoded every command we needed to verify.
 - **The V4 Quoter plus `eth_simulateV1` gave us strong pre-flight checks.** We quote with `quoteExactInputSingle` and simulate the exact batch our wallet will send, including allowances returning to zero, before anyone signs.
 
 ## Friction and suggestions
@@ -21,11 +22,15 @@ Sodera is a seedless, passkey-controlled smart-account wallet and Android launch
    - *Suggestion:* a testnet pool explorer, or a documented API or subgraph for v4 pools on Sepolia.
 3. **The web app's testnet "market price" steers LPs to the wrong price.**
    - When we created a position at the real ETH price, the app pre-filled about 29,589 USDC per ETH. It then warned that our price was "91% less than market price", because it derives the market price from the same mispriced testnet pools.
-4. **The Trading API does not fit smart-account wallets.**
-   - `/swap` returns a single transaction for the swapper to send. For token input it typically returns a Permit2 message to sign.
-   - An ERC-4337 wallet wants a list of calls (approvals plus swap) to batch into one UserOperation. It may not support off-chain typed-data signing at all.
-   - Keeping the API key out of a mobile app bundle also requires a backend proxy.
-   - *Suggestion:* a "calls" output mode (EIP-5792-style `calls[]`) that uses on-chain Permit2 approvals instead of signatures.
+4. **The Trading API fits smart-account wallets through `/swap_5792`, but its defaults are loose and several behaviours are undocumented.**
+   - We first concluded the API did not fit an ERC-4337 wallet, because `/swap` returns one transaction and a Permit2 message to sign. That was wrong: `/swap_5792` returns EIP-5792 `calls[]` that batch straight into one UserOperation with no typed-data signing. Our "Pay with" feature uses it on Sepolia behind our backend, which keeps the key out of the app. Details: [`docs/research/trading-api-pay-with-sepolia.md`](docs/research/trading-api-pay-with-sepolia.md).
+   - **The approvals are unlimited.** For USDC input the calls include `USDC.approve(Permit2, 2^256−1)` and `Permit2.approve(USDC, router, 2^160−1, +30 days)`. `permitAmount: EXACT` approves the *quoted* input rather than the slippage maximum, so any unfavourable move within slippage reverts. We keep only the router call and build approvals capped at `maxAmountIn` that expire at the deadline.
+   - **The requested deadline is ignored.** The calldata always carried quote time + 30 minutes, whatever deadline we sent.
+   - **Refunds go to `recipient`.** In an exact-output swap the leftover-input `SWEEP` pays the recipient, so paying a third party with `recipient` set would hand them the refund. We pass no recipient, swap into the account, and append our own transfer.
+   - **Decoding needs the router version.** The calldata targets Universal Router 2.1.2 (`0x7E4f…43f3` on Sepolia), and `V4BaseActionsParser` must be told `URVersion.V2_1_2`; parsed as 2.0, the exact-output amounts come out garbled.
+   - **`x-permit2-disabled` pointed at an undocumented proxy.** For USDC input it targeted `0x02E5…b2a9`, not the documented Sepolia proxy `0x0000…ffad`, again with an unlimited approval.
+   - **Transient upstream timeouts return 404** (`UpstreamTimeoutError`), which looks like "no route" unless you read the error code. One retry cleared it.
+   - *Suggestions:* an approval mode bounded to the maximum input and the deadline; honour the requested deadline; document the approval, refund and proxy behaviour of `/swap_5792`; return a 5xx for upstream timeouts.
 5. **The SDKs read well, but they are heavy for a viem-first mobile app.**
    - We adopted `@uniswap/sdk-core` 7.19.4 and `@uniswap/v4-sdk` 2.4.1 to make the code easier to read.
    - **What worked well:**
