@@ -24,6 +24,7 @@ const rootRegistry = getAddress('0x9703dbd26dab89504490994138cf2c575251a9ce');
 const ethRegistry = getAddress('0x657ea849311d3d5823348dded7c2aaafb3ede09e');
 const factory = getAddress('0x9e726eb570beb6bceb495ab8cda7df517d4e841c');
 const implementation = getAddress('0xa80338aaa8d23831cea25e858d1774534abb0263');
+const issuer = getAddress('0x9eF8EAad2fB225D19ECecC125B0Da54B8BE14CC0');
 const ownerRoles = (1n << 8n) | (1n << 128n) | (1n << 144n);
 const labelhash = BigInt(keccak256(stringToHex('sodera')));
 const registryAbi = parseAbi([
@@ -35,6 +36,7 @@ const registryAbi = parseAbi([
   'function isEmancipated() view returns (bool)',
   'function setParent(address parent, string label)',
   'function setSubregistry(uint256 anyId, address registry)',
+  'function grantRootRoles(uint256 roleBitmap, address account) returns (bool)',
 ]);
 const factoryAbi = parseAbi([
   'function proxyLogic() view returns (address)',
@@ -101,18 +103,24 @@ async function inspect(injected: EIP1193Provider): Promise<Setup> {
   const code = await client.getCode({ address: child, blockNumber });
   const deployed = Boolean(code && code !== '0x');
   let parentSet = false;
+  let issuerGranted = false;
   if (deployed) {
-    const [verified, roles, counts, emancipated, parent] = await Promise.all([
+    const [verified, roles, counts, emancipated, parent, issuerRoles, issuerCode] = await Promise.all([
       client.readContract({ address: factory, abi: factoryAbi, functionName: 'verifyContract', args: [child], blockNumber }),
       client.readContract({ ...readOptions, address: child, functionName: 'roles', args: [0n, owner] }),
       client.readContract({ ...readOptions, address: child, functionName: 'roleCount', args: [0n] }),
       client.readContract({ ...readOptions, address: child, functionName: 'isEmancipated' }),
       client.readContract({ ...readOptions, address: child, functionName: 'getParent' }),
+      client.readContract({ ...readOptions, address: child, functionName: 'roles', args: [0n, issuer] }),
+      client.getCode({ address: issuer, blockNumber }),
     ]);
     if (verified.toLowerCase() !== implementation.toLowerCase() ||
-        roles !== ownerRoles || counts !== ownerRoles || !emancipated) {
+        roles !== ownerRoles || (issuerRoles !== 0n && issuerRoles !== 1n) ||
+        counts !== (ownerRoles | issuerRoles) || !emancipated ||
+        (issuerCode && issuerCode !== '0x')) {
       throw new Error('The child implementation or root grants differ from the reviewed configuration.');
     }
+    issuerGranted = issuerRoles === 1n;
     if (parent[0] !== zeroAddress &&
         (parent[0].toLowerCase() !== ethRegistry.toLowerCase() || parent[1] !== 'sodera')) {
       throw new Error('The child already has a different canonical parent.');
@@ -141,6 +149,12 @@ async function inspect(injected: EIP1193Provider): Promise<Setup> {
         data: encodeFunctionData({ abi: registryAbi, functionName: 'setSubregistry', args: [labelhash, child] }),
         expected: `getSubregistry(sodera) = ${child}`, complete: mounted !== zeroAddress,
       },
+      {
+        title: 'Authorize the separate ENS issuer', to: child,
+        data: encodeFunctionData({ abi: registryAbi, functionName: 'grantRootRoles', args: [1n, issuer] }),
+        expected: `Grant only root ROLE_REGISTRAR to ${issuer}; no resolver, upgrade or renewal authority`,
+        complete: issuerGranted,
+      },
     ],
   };
 }
@@ -150,6 +164,7 @@ export function EnsOwnerSetup() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [hash, setHash] = useState<Hex | null>(null);
+  const [grantAcknowledgement, setGrantAcknowledgement] = useState('');
 
   const connect = async () => {
     setBusy(true);
@@ -176,6 +191,15 @@ export function EnsOwnerSetup() {
       if (fresh.steps[index].complete || fresh.steps.slice(0, index).some((step) => !step.complete)) {
         throw new Error('This step is already complete or an earlier step is unverified.');
       }
+      if (index === 3) {
+        if (grantAcknowledgement !== 'GRANT REGISTRAR') {
+          throw new Error('Confirm the issuer grant before opening MetaMask.');
+        }
+        const simulation = await createPublicClient({ chain: sepolia, transport: custom(injected) })
+          .simulateContract({ account: owner, address: fresh.child, abi: registryAbi,
+            functionName: 'grantRootRoles', args: [1n, issuer] });
+        if (!simulation.result) throw new Error('Issuer role grant simulation failed.');
+      }
       const client = createWalletClient({ chain: sepolia, transport: custom(injected) });
       const step = fresh.steps[index];
       const submitted = await client.sendTransaction({ account: owner, to: step.to, data: step.data, value: 0n });
@@ -198,7 +222,7 @@ export function EnsOwnerSetup() {
       <div className="ens-owner-panel">
         <p className="ens-eyebrow">SODERA / OWNER SETUP · SEPOLIA</p>
         <h1>Configure the namespace.</h1>
-        <p>This local development page prepares three separate MetaMask transactions. Each requires your approval and a verified receipt. Nothing is submitted on connection.</p>
+        <p>Review each MetaMask transaction separately. The namespace setup is complete; granting issuance authority is an additional owner action. Nothing is submitted on connection.</p>
         <div className="ens-summary">
           <span>Expected owner <code>{owner}</code></span>
           {setup && <><span>Parent expires <code>{setup.expires}</code></span><span>Predicted child <code>{setup.child}</code></span></>}
@@ -209,12 +233,19 @@ export function EnsOwnerSetup() {
             <div className="ens-step-heading"><strong>{step.title}</strong><span>{step.complete ? 'VERIFIED' : 'PENDING'}</span></div>
             <p>{step.expected}</p>
             <details><summary>Review destination and calldata</summary><p>To <code>{step.to}</code></p><p>Value: 0 ETH</p><code className="ens-calldata">{step.data}</code></details>
-            {!step.complete && <button disabled={busy || setup.steps.slice(0, index).some((prior) => !prior.complete)} onClick={() => void submit(index)}>Review step {index + 1} in MetaMask</button>}
+            {!step.complete && index === 3 && setup.steps.slice(0, index).every((prior) => prior.complete) ? (
+              <div className="ens-grant-confirmation">
+                <p>First confirm that the private issuer worker has the approved signer key and that the controlled registration flow is ready. Type <code>GRANT REGISTRAR</code> to unlock the MetaMask review.</p>
+                <input aria-label="Confirm issuer grant" autoComplete="off" value={grantAcknowledgement} onChange={(event) => setGrantAcknowledgement(event.target.value)} />
+              </div>
+            ) : null}
+            {!step.complete && <button disabled={busy || setup.steps.slice(0, index).some((prior) => !prior.complete) ||
+              (index === 3 && grantAcknowledgement !== 'GRANT REGISTRAR')} onClick={() => void submit(index)}>Review step {index + 1} in MetaMask</button>}
           </li>
         ))}</ol>}
         {hash && <p>Transaction: <a href={`https://eth-sepolia.blockscout.com/tx/${hash}`} rel="noreferrer" target="_blank">{hash}</a></p>}
         {error && <p role="alert" className="ens-error">{error}</p>}
-        <p className="ens-note">This mounts an empty registry. It does not issue names, authorize an issuer or renewer, or lock the parent pointer. Do not use the generic ENS Explorer Deploy button as an additional step.</p>
+        <p className="ens-note">The issuer grant allows a separate service to register available labels; it does not mint a name by itself, authorize renewals, or lock the parent pointer. Do not use the generic ENS Explorer Deploy button as an additional step.</p>
       </div>
     </main>
   );

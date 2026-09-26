@@ -27,10 +27,11 @@ const addressAbi = parseAbi(['function addr(bytes32 node) view returns (address)
 const ONE_YEAR = 365n * 24n * 60n * 60n;
 
 export function createIssuerChain(rpcUrl: string, secret: string) {
-  if (!/^0x[0-9a-fA-F]{64}$/.test(secret) || !isHex(secret)) {
+  const key = /^[0-9a-fA-F]{64}$/.test(secret) ? `0x${secret}` : secret;
+  if (!/^0x[0-9a-fA-F]{64}$/.test(key) || !isHex(key)) {
     throw new Error('ENS_ISSUER_PRIVATE_KEY must be a 32-byte hex key');
   }
-  const issuer = privateKeyToAccount(secret as Hex);
+  const issuer = privateKeyToAccount(key as Hex);
   if (issuer.address.toLowerCase() !== ENSV2.issuer.toLowerCase()) {
     throw new Error('ENS issuer key does not match the approved public address');
   }

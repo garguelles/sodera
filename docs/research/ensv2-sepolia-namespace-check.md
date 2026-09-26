@@ -78,4 +78,23 @@ A separate `eth_call` of `UserRegistry.register()` from the proposed issuer retu
 
 After the challenge protocol was tightened to hash chain, registry, wallet, label, expiry and nonce, a further **synthetic-only**, read-only local API check returned challenge HTTP `201`, verification HTTP `200`, and replay HTTP `401`. The database stored the nonce and verified assertion; `ens_claims` stayed empty. This is not evidence that the changed challenge version has been accepted on the physical Android device, and the synthetic publicly known test Kernel is barred from actual issuance.
 
-`pnpm prepare:issuer-grant` from `ens/` simulated `grantRootRoles(ROLE_REGISTRAR, issuer)` as the real parent owner at block `11787441`. The simulation succeeded and printed unsigned calldata targeting child registry `0xfBb4ef18Db7F8044a0A19fD1Db7B192327811EC7`; **no transaction was sent**, and on-chain verification still reports zero issuer root roles. Owner review and a separate signature remain required.
+The owner subsequently repeated Step 5 on the connected physical Android device with the nonce-bound challenge for the test label `gargslocalone`. A read-only local database check found its challenge for Kernel `0xc4512445ce71ed3f6d4803223c505334b7666906` had a nonce and was consumed and verified; `ens_claims` still contained **zero** rows. The phone displayed a successful [EntryPoint v0.7 UserOperation transaction](https://eth-sepolia.blockscout.com/tx/0x22b899f948b867c1dd2705b6d4b262e7bfea5048a1af644df4ab347127bd1de4), independently confirmed successful at block `11787767`; the Kernel has deployed code. That transaction is **wallet execution**, not an ENS registration. No passkey assertion, proof token, or issuer private key is recorded here.
+
+`pnpm prepare:issuer-grant` from `ens/` simulated `grantRootRoles(ROLE_REGISTRAR, issuer)` as the real parent owner at block `11787441`. At that point the simulation printed unsigned calldata targeting child registry `0xfBb4ef18Db7F8044a0A19fD1Db7B192327811EC7`; **no transaction was sent during this preflight**, and the issuer then held zero root roles. The owner subsequently signed the grant below.
+
+## Registrar authorization
+
+The owner signed [transaction `0x433cf5…c37e6`](https://eth-sepolia.blockscout.com/tx/0x433cf5ee9a88d4d30f023e5057ba9a6cb4b27c29eaf06a6625ccf0ec057c37e6) at block `11787797`. An independent receipt read confirmed success, `from = 0x7Ed0…3915`, `to = 0xfBb4…1EC7`, and decoded calldata `grantRootRoles(1, 0x9eF8…4CC0)`. Subsequent direct registry reads returned root issuer roles `0x1` (`ROLE_REGISTRAR` only); no resolver, unregister, upgrade or renewal role was granted to the issuer. The private local worker is running with its key supplied through the gitignored local environment, while the public API holds no issuer key. This authorization alone is **not** an issued name or confirmed resolver record.
+
+## Controlled user claim
+
+The owner used the connected Android device to submit a fresh passkey-authorized claim for `gargslocalone.sodera.eth`. The local API atomically redeemed the proof and created claim ID `41e4403d-cb87-42c9-a8d9-f85048f46321`; PostgreSQL subsequently reported `confirmed` with expiry `2027-09-26 18:03:40 UTC` and no error code. No proof token, WebAuthn assertion or private key was recorded in this report.
+
+| Operation | Sepolia evidence |
+| --- | --- |
+| Official resolver proxy deployed by issuer | [Factory transaction `0x50eda4…21f1a`](https://eth-sepolia.blockscout.com/tx/0x50eda4421ab7647724eb8bd651dd524bdf9a827a6f6cb3f8623dc1a1d4121f1a), success at block `11787837` |
+| Name registered by issuer | [Registry transaction `0xa67ab7…bbad`](https://eth-sepolia.blockscout.com/tx/0xa67ab7424d6b107cf9a3a5159eb8bfcfd4ab7162abb3421b0f077b16a6c8bbad), success at block `11787841` |
+
+Direct reads of the pinned child registry returned `REGISTERED` (`2`), ERC-1155 token owner `0xc4512445Ce71Ed3f6d4803223C505334b7666906`, expiry `2027-09-26T18:03:40Z`, name-scoped role bitmap `0x1110000000000000000000000000000001100000`, resolver `0x9d133Fc023Fb968D8ddBFB1556Df451FEa20Dc2c`, and zero child subregistry pointer. The ENS Verifiable Factory identified that resolver's implementation as the official `PermissionedResolverImpl` `0x14F09Fd05d4585759e54844DC9B00147131Cf243`. The Kernel alone held its resolver root roles; the issuer's resolver roles were zero. A separate viem Universal Resolver lookup of `gargslocalone.sodera.eth` returned the same Kernel address. The parent owner still retains the ancestor subregistry-pointer role and renewal remains unimplemented; neither this name nor the hierarchy is claimed to be permanently locked.
+
+Renewal remains a **post-hackathon follow-up**. This issued name expires on `2027-09-26T18:03:40Z`; the current testnet demo has no renewal contract, role grant or guaranteed grace period.

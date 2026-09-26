@@ -18,6 +18,7 @@ const allowedAccount = readIssuerMode({
   controlledKernel: process.env.ENS_CONTROLLED_KERNEL,
 });
 const pool = new Pool({ connectionString: databaseUrl, max: 3 });
+pool.on('error', () => console.error('ENS issuer database connection interrupted; retrying.'));
 const chain = createIssuerChain(required('SEPOLIA_RPC_URL'), required('ENS_ISSUER_PRIVATE_KEY'));
 const queue = createPostgresWorkQueue(pool);
 let running = true;

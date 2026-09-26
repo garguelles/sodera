@@ -36,5 +36,20 @@ services:
       timeout: 2s
       retries: 15
 
+  issuer-worker:
+    profiles: [issuer]
+    build: .
+    command: ["node", "dist/issuer/worker.js"]
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgres://sodera:sodera_local_only@postgres:5432/sodera
+      SEPOLIA_RPC_URL: https://ethereum-sepolia-rpc.publicnode.com
+      ENS_ISSUER_MODE: hackathon
+    depends_on:
+      postgres:
+        condition: service_healthy
+
 volumes:
   ens_postgres_data:

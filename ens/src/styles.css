@@ -40,6 +40,7 @@ html, body, #root { min-height: 100%; margin: 0; }
 .ens-steps details { margin: 1rem 0; color: var(--text-muted); }
 .ens-steps summary { cursor: pointer; }
 .ens-calldata { display: block; padding: 1rem; background: var(--surface-low); max-height: 9rem; overflow: auto; }
+.ens-grant-confirmation input { width: 100%; padding: 0.9rem; margin: 0.5rem 0; background: var(--surface-low); border: 1px solid var(--border); border-radius: 0.6rem; color: var(--platinum); font: 0.85rem var(--font-data); }
 .ens-owner-panel a { color: var(--cyan); overflow-wrap: anywhere; }
 .ens-error { color: #ff9f9f !important; }
 .ens-note { border-top: 1px solid var(--border); padding-top: 1rem; }

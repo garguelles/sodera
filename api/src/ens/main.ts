@@ -20,6 +20,7 @@ export async function createEnsService() {
   const ipHashKey = process.env.ENS_CHALLENGE_IP_KEY;
   if (!ipHashKey) throw new Error('ENS_CHALLENGE_IP_KEY is required with DATABASE_URL');
   const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 5 });
+  pool.on('error', () => console.error('API database connection interrupted; queries will reconnect.'));
   try {
     const store = await createPostgresChallengeStore(pool);
     const auth = createClaimAuth({
