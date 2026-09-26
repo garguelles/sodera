@@ -29,11 +29,11 @@ export const populatedWalletHomeFixture = {
       ],
       positions: [
         {
-          id: 'morpho-curated-usdc',
-          protocol: 'Morpho',
-          name: 'Curated USDC vault',
-          symbol: 'USDC',
-          amount: '750.00 USDC',
+          id: 'aqua-usdc-weth',
+          protocol: '1inch Aqua',
+          name: 'USDC/WETH liquidity',
+          symbol: 'USDC/WETH',
+          amount: '375.00 USDC + 0.139 WETH',
           valueUsdCents: 75_000,
         },
       ],
