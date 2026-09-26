@@ -63,4 +63,18 @@ describe('LauncherSettingsScreen', () => {
       apps.slice(1).map((app) => app.packageName),
     );
   });
+
+  it('shows an Edit home row only when it has somewhere to go', async () => {
+    const onEditHome = jest.fn();
+    const view = await render(
+      <LauncherSettingsScreen client={client} preferencesStorage={createPreferencesStorage(null)} onEditHome={onEditHome} />,
+    );
+
+    await fireEvent.press(await screen.findByRole('button', { name: 'Edit home' }));
+    expect(onEditHome).toHaveBeenCalledTimes(1);
+
+    await view.rerender(<LauncherSettingsScreen client={client} preferencesStorage={createPreferencesStorage(null)} />);
+    expect(screen.queryByRole('button', { name: 'Edit home' })).not.toBeOnTheScreen();
+    await view.unmount();
+  });
 });

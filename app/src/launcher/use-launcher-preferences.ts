@@ -9,7 +9,8 @@ import {
 
 /**
  * Loads launcher preferences once, reloads whenever storage reports a change, and saves partial updates.
- * `preferences` is `null` until the first load finishes. `save` applies the patch locally before persisting it.
+ * `preferences` is `null` until the first load finishes. `save` applies the patch locally before persisting it,
+ * and reloads the stored preferences if persisting fails.
  */
 export function useLauncherPreferences(storage: LauncherPreferencesStorage) {
   const [repository] = useState(() => createLauncherPreferencesRepository(storage));
@@ -37,7 +38,11 @@ export function useLauncherPreferences(storage: LauncherPreferencesStorage) {
   const save = useCallback(
     (patch: LauncherPreferencesPatch) => {
       setPreferences((current) => (current ? { ...current, ...patch } : current));
-      return repository.save(patch);
+      return repository.save(patch).catch((error: unknown) => {
+        // Drop the optimistic change: show what is actually stored.
+        void repository.load().then(setPreferences).catch(() => undefined);
+        throw error;
+      });
     },
     [repository],
   );

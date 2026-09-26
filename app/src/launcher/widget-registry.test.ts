@@ -3,6 +3,8 @@ import {
   defaultHomeLayout,
   getWidgetDefinition,
   isWidgetId,
+  nearestSupportedSize,
+  sizesAfter,
   supportsSize,
   WIDGET_REGISTRY,
 } from './widget-registry';
@@ -54,5 +56,23 @@ describe('widget registry', () => {
     expectValid(layout);
     expect(layout.items[0]).toEqual({ id: 'identity', x: 0, y: 0, w: 4, h: 2 });
     expect(rowCount(layout)).toBe(8);
+  });
+
+  it('snaps a handle target to the nearest supported size on that axis', () => {
+    const pulse = getWidgetDefinition('market-pulse');
+    expect(nearestSupportedSize(pulse, { w: 4, h: 2 }, 'w', 2)).toEqual({ w: 2, h: 2 });
+    expect(nearestSupportedSize(pulse, { w: 4, h: 2 }, 'w', 3)).toEqual({ w: 4, h: 2 });
+    const wallet = getWidgetDefinition('wallet');
+    expect(nearestSupportedSize(wallet, { w: 2, h: 2 }, 'w', 4)).toEqual({ w: 4, h: 1 });
+    const swapEarn = getWidgetDefinition('swap-earn');
+    expect(nearestSupportedSize(swapEarn, { w: 2, h: 2 }, 'h', 1)).toEqual({ w: 2, h: 1 });
+  });
+
+  it('lists the sizes after the current one, wrapping around', () => {
+    expect(sizesAfter(getWidgetDefinition('swap-earn'), { w: 2, h: 2 })).toEqual([
+      { w: 2, h: 1 },
+      { w: 4, h: 1 },
+    ]);
+    expect(sizesAfter(getWidgetDefinition('activity'), { w: 4, h: 1 })).toEqual([]);
   });
 });

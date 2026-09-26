@@ -106,6 +106,27 @@ export function widgetHeight(definition: WidgetDefinition, size: WidgetSize): nu
   return definition.heights[`${size.w}x${size.h}`] ?? size.h * HOME_GRID.rowHeight + (size.h - 1) * HOME_GRID.gap;
 }
 
+/**
+ * The supported size nearest to `target` on one axis, used when a resize handle is released.
+ * Ties prefer the size that keeps the other axis unchanged.
+ */
+export function nearestSupportedSize(
+  definition: WidgetDefinition,
+  current: WidgetSize,
+  axis: 'w' | 'h',
+  target: number,
+): WidgetSize {
+  const other = axis === 'w' ? 'h' : 'w';
+  const score = (size: WidgetSize) => Math.abs(size[axis] - target) * 2 + (size[other] === current[other] ? 0 : 1);
+  return definition.sizes.reduce((best, size) => (score(size) < score(best) ? size : best), definition.sizes[0]);
+}
+
+/** Supported sizes after `current`, in registry order and wrapping around, for cycling from the size tag. */
+export function sizesAfter(definition: WidgetDefinition, current: WidgetSize): WidgetSize[] {
+  const index = definition.sizes.findIndex((size) => size.w === current.w && size.h === current.h);
+  return [...definition.sizes.slice(index + 1), ...definition.sizes.slice(0, Math.max(index, 0))];
+}
+
 export function supportsSize(definition: WidgetDefinition, size: WidgetSize): boolean {
   return definition.sizes.some((supported) => supported.w === size.w && supported.h === size.h);
 }

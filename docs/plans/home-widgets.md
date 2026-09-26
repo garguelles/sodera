@@ -1,6 +1,6 @@
 # Home widgets plan
 
-Status: approved scope. Sections 1 and 2 implemented; sections 3 to 5 not yet implemented. Branch: `feat/home-widgets`. No Linear ticket; commits use `{type}: {description}`.
+Status: approved scope. Sections 1 to 3 implemented; sections 4 and 5 not yet implemented. Branch: `feat/home-widgets`. No Linear ticket; commits use `{type}: {description}`.
 
 This document is one large ticket split into sub-tickets numbered 1 to 5. Each section is written so that a fresh model can implement it without the conversation that produced this plan. Read "Scope decisions" and "Shared context" before any section. Section 2 depends on section 1. Section 3 depends on section 2. Section 4 depends on section 3. Section 5 depends on sections 3 and 4.
 
@@ -30,7 +30,7 @@ Reference: the "Edit mode (redesign)" Claude Design mock, section 4a, supplied a
 - No auto-compaction. Empty cells stay empty, as on Android's home. Row count is derived from the lowest item, so trailing empty rows disappear on their own.
 - Layout is persisted in the existing launcher preferences JSON. No Kotlin change. `homeLayout: null` means "use the default layout for the current widget availability"; the layout is persisted only after the first edit.
 - The balance-visibility toggle moves from `WalletHome` local state into the same preferences, so the home widget and the wallet screen agree.
-- Entering edit mode uses `Pressable.onLongPress`, not a gesture-handler long press, so tile taps keep working without gesture composition. Settings gets an "Edit home" row because long-press is undiscoverable.
+- Entering edit mode uses one gesture-handler long-press on the whole grid, hit-tested against the cells. A `Pressable.onLongPress` per cell never fires, because each widget's own buttons take the touch first; when the grid long-press activates, gesture handler cancels the widget's touch, so the tile does not also open. Settings gets an "Edit home" row because long-press is undiscoverable.
 - Adding a widget is tap-to-add in section 4; dragging from the sheet is section 5.
 - Out of scope: Android app widgets (`AppWidgetHost`), duplicates, folders, wallpaper, per-widget settings, and animations beyond drag follow and the fade.
 
@@ -314,7 +314,7 @@ Modify:
 - Header: left `EDIT HOME` in `typography.label`, `letterSpacing: 3`, `colors.platinum`; right a `Done` pill (`colors.platinum` background, `colors.onPlatinum` text, `radius.full`, 44 tall). Brand, Dera, and settings buttons are hidden while editing.
 - Selected cell: a 2 px `colors.cyan` outline drawn as a sibling `View` 4 px outside the cell with `radius.xl + 4`. Size tag: `w×h` in `typography.labelSmall`, `colors.onPlatinum` on `colors.cyan`, `radius.sm`, anchored top-right and overlapping the outline. Remove button: 36 dp `colors.platinum` circle with a dark ×, anchored top-left, hidden when `removable` is false. Handles: a 6×28 `colors.cyan` pill centred on the right edge and a 28×6 pill centred on the bottom edge, each with a 44 dp hit slop.
 - Unselected widgets: `opacity: 0.5`. Empty cells (including the extra row): 1 px dashed `colors.borderLit` border, `radius.xl`, a `+` in `colors.mutedText`; tapping one calls `onAddAt(cell)` (section 4 opens the sheet; until then it is a no-op).
-- Every cell is a `Pressable`: `onLongPress` enters edit mode with that widget selected; in edit mode `onPress` selects. Long-pressing the grid background enters edit mode with nothing selected.
+- A long-press anywhere on the grid enters edit mode with the widget under the finger selected, or nothing selected on empty space. In edit mode each cell is a `Pressable` whose `onPress` selects.
 
 ### Steps
 
@@ -339,6 +339,20 @@ Modify:
 - × on Market pulse removes it; relaunch: still gone.
 - Phone shows no ×.
 - Done and the back button exit; the "Edit home" row in Settings enters.
+
+### Implementation notes
+
+Implemented and checked on an Android device: long-press on Wallet enters edit mode with the outline, `2×2` tag, ×, and both handles, and the tile does not open; Market pulse's right handle resizes it to 2×2, showing dashed `+` cells in the freed space, and back to 4×2; Wallet's right handle snaps back because 4×1 would overlap Phone; Phone has no ×; the back button and Done exit; the Settings row enters. Removing a widget was not tried on the device, because nothing can put it back until section 4; it is covered by unit tests. Differences and additions:
+
+- Long-press: one `Gesture.LongPress()` (450 ms) on the grid, hit-tested with `cellRect`, replaces the per-cell `Pressable.onLongPress` (see Scope decisions). It is disabled while editing.
+- Faded siblings: widgets fade only while one is selected. Entering from Settings selects nothing, and fading everything made the whole home look disabled.
+- Handles: shown only on an axis where the widget has more than one supported size. Market pulse gets a right handle only; Activity gets none. Snapping uses `nearestSupportedSize` and the size tag uses `sizesAfter`, both in `widget-registry.ts`.
+- Header: the Done pill is 38 tall like the header buttons, with a hit slop to 44, so the header does not change height on entering edit mode. The swipe-up area dims to 0.3 and ignores swipes while editing.
+- Edit mode adds 16 dp of top padding to the scroll content so the × and size tag of a top-row widget are not clipped.
+- Editing waits for preferences to load, so the first save merges into what is stored. `useLauncherPreferences.save` now reloads the stored preferences if a write fails, so a failed change does not stay on screen.
+- Settings: `LauncherSettingsScreen` takes an optional `onEditHome`; `settings.tsx` calls `router.dismissTo({ pathname: '/', params: { edit: '1' } })`, and `index.tsx` clears the param after entering edit mode.
+- `onAddAt` on the `+` cells is a no-op until section 4.
+- Jest: `app/jest.setup.js` (added to `setupFiles`) loads the gesture-handler jest setup and the reanimated and worklets mocks. The worklets mock runs `scheduleOnRN` callbacks in a microtask, so tests `await Promise.resolve()` after `fireGestureHandler`. Handle drags and the grid long-press are unit-tested with `fireGestureHandler` in addition to the device check.
 
 ## Section 4: Sodera widgets sheet with tap to add
 
@@ -427,8 +441,8 @@ Device only. `react-native-gesture-handler/jest-utils` (`fireGestureHandler`) ma
 | Question | Resolved by | Consumers |
 | --- | --- | --- |
 | Declared widget heights match the pre-widget home | Section 2 device check: resolved, all widgets match `main` | all |
-| `Pressable.onLongPress` on cells does not conflict with `GestureDetector` pans in edit mode | Section 3 device check | sections 3, 5 |
-| `pointerEvents="none"` on widgets in edit mode still lets the cell `Pressable` receive taps on Android | Section 3 device check | sections 3, 4 |
+| The grid long-press does not conflict with tile taps or with the resize pans | Section 3 device check: resolved; long-press is disabled while editing | sections 3, 5 |
+| `pointerEvents="none"` on widgets in edit mode still lets the cell `Pressable` receive taps on Android | Section 3 device check: resolved | sections 3, 4 |
 | `measureInWindow` plus scroll offset gives correct drop slots on web | Section 5 | section 5 |
 
 ## Sources

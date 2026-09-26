@@ -1,5 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
 import { StyleSheet, Text } from 'react-native';
+import { State } from 'react-native-gesture-handler';
+import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
 
 import { HomeGrid } from './home-grid';
 import { cellRect, columnWidth, HOME_GRID, rowHeights, type HomeLayout } from '@/launcher/home-layout';
@@ -7,8 +9,8 @@ import { defaultHomeLayout, getWidgetDefinition, widgetHeight } from '@/launcher
 
 const heightOf = (item: HomeLayout['items'][number]) => widgetHeight(getWidgetDefinition(item.id), item);
 
-async function renderGrid(layout: HomeLayout) {
-  const view = await render(<HomeGrid layout={layout} renderWidget={(item) => <Text>{item.id}</Text>} />);
+async function renderGrid(layout: HomeLayout, props: Partial<Parameters<typeof HomeGrid>[0]> = {}) {
+  const view = await render(<HomeGrid layout={layout} renderWidget={(item) => <Text>{item.id}</Text>} {...props} />);
   await fireEvent(screen.getByTestId('home-grid'), 'layout', { nativeEvent: { layout: { width: 360, height: 0, x: 0, y: 0 } } });
   return view;
 }
@@ -51,5 +53,88 @@ describe('HomeGrid', () => {
     );
 
     expect(screen.queryByText('wallet')).not.toBeOnTheScreen();
+  });
+
+  describe('edit mode', () => {
+    it('selects a cell on press, fades the others, and blocks taps inside widgets', async () => {
+      const onSelect = jest.fn();
+      await renderGrid(defaultHomeLayout(), { editing: true, selectedId: 'wallet', onSelect });
+
+      await fireEvent.press(screen.getByRole('button', { name: 'Select Phone' }));
+      expect(onSelect).toHaveBeenCalledWith('phone');
+      expect(StyleSheet.flatten(screen.getByTestId('home-cell-phone').props.style).opacity).toBe(0.5);
+      expect(StyleSheet.flatten(screen.getByTestId('home-cell-wallet').props.style).opacity).toBeUndefined();
+      expect(screen.getByTestId('home-widget-wallet').props.pointerEvents).toBe('none');
+    });
+
+    it('fades nothing when nothing is selected', async () => {
+      await renderGrid(defaultHomeLayout(), { editing: true });
+
+      expect(StyleSheet.flatten(screen.getByTestId('home-cell-phone').props.style).opacity).toBeUndefined();
+    });
+
+    it('adds an extra row of four empty cells that report their position', async () => {
+      const onAddAt = jest.fn();
+      await renderGrid(defaultHomeLayout(), { editing: true, onAddAt });
+
+      const cells = screen.getAllByRole('button', { name: 'Add widget here' });
+      expect(cells).toHaveLength(4);
+      await fireEvent.press(cells[2]);
+      expect(onAddAt).toHaveBeenCalledWith({ x: 2, y: 8 });
+    });
+
+    it('shows the selection chrome for the selected widget only', async () => {
+      await renderGrid(defaultHomeLayout(), { editing: true, selectedId: 'market-pulse' });
+
+      expect(screen.getByText('4×2')).toBeOnTheScreen();
+      expect(screen.getByRole('button', { name: 'Remove Market pulse' })).toBeOnTheScreen();
+      expect(screen.getByTestId('resize-handle-right')).toBeOnTheScreen();
+      expect(screen.queryByTestId('resize-handle-bottom')).not.toBeOnTheScreen();
+    });
+
+    it('snaps a right-handle drag to the nearest supported size', async () => {
+      const onResize = jest.fn();
+      await renderGrid(defaultHomeLayout(), { editing: true, selectedId: 'market-pulse', onResize });
+
+      fireGestureHandler(getByGestureTestId('resize-right'), [
+        { state: State.BEGAN, translationX: 0 },
+        { state: State.ACTIVE, translationX: -150 },
+        { state: State.END, translationX: -150 },
+      ]);
+      await Promise.resolve(); // scheduleOnRN runs the callback in a microtask
+      expect(onResize).toHaveBeenCalledWith('market-pulse', { w: 2, h: 2 });
+    });
+
+    it('ignores a drag that stays at the current size', async () => {
+      const onResize = jest.fn();
+      await renderGrid(defaultHomeLayout(), { editing: true, selectedId: 'market-pulse', onResize });
+
+      fireGestureHandler(getByGestureTestId('resize-right'), [
+        { state: State.BEGAN, translationX: 0 },
+        { state: State.ACTIVE, translationX: -20 },
+        { state: State.END, translationX: -20 },
+      ]);
+      await Promise.resolve();
+      expect(onResize).not.toHaveBeenCalled();
+    });
+  });
+
+  it('long-press reports the widget under the finger, or null for empty space', async () => {
+    const onLongPress = jest.fn();
+    await renderGrid(defaultHomeLayout(), { onLongPress });
+
+    fireGestureHandler(getByGestureTestId('home-grid-long-press'), [
+      { state: State.BEGAN, x: 300, y: 130 },
+      { state: State.ACTIVE, x: 300, y: 130 },
+      { state: State.END, x: 300, y: 130 },
+    ]);
+    expect(onLongPress).toHaveBeenLastCalledWith('phone');
+
+    fireGestureHandler(getByGestureTestId('home-grid-long-press'), [
+      { state: State.BEGAN, x: 10, y: 5000 },
+      { state: State.ACTIVE, x: 10, y: 5000 },
+      { state: State.END, x: 10, y: 5000 },
+    ]);
+    expect(onLongPress).toHaveBeenLastCalledWith(null);
   });
 });

@@ -41,4 +41,24 @@ describe('LauncherScreen', () => {
     expect(onOpenPhone).toHaveBeenCalledTimes(1);
     await home.unmount();
   });
+
+  it('shows EDIT HOME with Done while editing and ignores swipe-up', async () => {
+    const onDone = jest.fn();
+    const onOpenPhone = jest.fn();
+    const home = await render(
+      <LauncherScreen editing onDone={onDone} homeContent={null} onOpenAssistant={jest.fn()} onOpenPhone={onOpenPhone} onOpenSettings={jest.fn()} />,
+    );
+
+    expect(home.getByText('EDIT HOME')).toBeOnTheScreen();
+    expect(home.queryByRole('button', { name: 'Open launcher settings' })).not.toBeOnTheScreen();
+    expect(home.queryByRole('button', { name: 'Open Dera' })).not.toBeOnTheScreen();
+    await fireEvent.press(home.getByRole('button', { name: 'Done editing home' }));
+    expect(onDone).toHaveBeenCalledTimes(1);
+
+    const affordance = home.getByText('SWIPE UP FOR PHONE').parent!;
+    await fireEvent(affordance, 'touchStart', { nativeEvent: { pageX: 100, pageY: 200 } });
+    await fireEvent(affordance, 'touchEnd', { nativeEvent: { pageX: 102, pageY: 120 } });
+    expect(onOpenPhone).not.toHaveBeenCalled();
+    await home.unmount();
+  });
 });

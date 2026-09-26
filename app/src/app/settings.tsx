@@ -1,3 +1,4 @@
+import { router } from 'expo-router';
 import { Stack } from 'expo-router/stack';
 
 import { LauncherSettingsScreen } from '@/components/launcher-settings-screen';
@@ -17,7 +18,11 @@ export default function SettingsRoute() {
           title: 'Settings',
         }}
       />
-      <LauncherSettingsScreen client={launcherClient} preferencesStorage={launcherPreferencesNativeStorage} />
+      <LauncherSettingsScreen
+        client={launcherClient}
+        preferencesStorage={launcherPreferencesNativeStorage}
+        onEditHome={() => router.dismissTo({ pathname: '/', params: { edit: '1' } })}
+      />
     </>
   );
 }
