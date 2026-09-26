@@ -84,6 +84,43 @@ const derivedPoolId = keccak256(
 );
 assert.equal(derivedPoolId, SWAP_POOL_ID, 'Pool key does not hash to the pinned pool ID');
 
+// Captured from the hand-encoded builder used for the first live swaps; refactors must reproduce it byte for byte.
+const GOLDEN_DEADLINE = 1_790_400_000n;
+const GOLDEN_SWAP_CALLS = {
+  'eth-to-usdc': {
+    amountIn: 1_000_000_000_000_000n,
+    minAmountOut: 31_000_000n,
+    calls: [
+      [
+        SEPOLIA_UNISWAP_UNIVERSAL_ROUTER_ADDRESS,
+        1_000_000_000_000_000n,
+        '0x6d882bf9c0eaf4eb7c290b0eaa71b7a86a5f5ed40a6f1c1f7ca2b78ae7a09490',
+      ],
+    ],
+  },
+  'usdc-to-eth': {
+    amountIn: 1_000_000n,
+    minAmountOut: 31_000_000_000_000n,
+    calls: [
+      [SEPOLIA_USDC_ADDRESS, 0n, '0x4c30657a233b56f2373066dd8805303dafd8450b0fc5afa5256eafd5ca5add94'],
+      [SEPOLIA_PERMIT2_ADDRESS, 0n, '0x48752cba2c25ca83ce35b9020ff2ac7145422fe712a762824ea4f3db9e6173ba'],
+      [
+        SEPOLIA_UNISWAP_UNIVERSAL_ROUTER_ADDRESS,
+        0n,
+        '0xa88181a1fb023fe7f3a65d6c58e9b325716b40822357f8a6fc5bc97cd6705e6d',
+      ],
+    ],
+  },
+};
+for (const [direction, { amountIn, minAmountOut, calls }] of Object.entries(GOLDEN_SWAP_CALLS)) {
+  const built = buildSwapCalls({ direction, amountIn, minAmountOut, deadline: GOLDEN_DEADLINE });
+  assert.deepEqual(
+    built.map((call) => [call.to, call.value, keccak256(call.data)]),
+    calls,
+    `${direction} calldata differs from the golden encoding`,
+  );
+}
+
 const [liquidity, [sqrtPriceX96]] = await Promise.all([
   client.readContract({
     address: SEPOLIA_UNISWAP_V4_STATE_VIEW_ADDRESS,
@@ -208,6 +245,7 @@ console.log(
       chainId: sepolia.id,
       blockNumber: blockNumber.toString(),
       poolId: SWAP_POOL_ID,
+      goldenCalldata: 'matches the hand-encoded builder in both directions',
       activeLiquidity: liquidity.toString(),
       poolPriceUsdcPerEth: usdcPerEth.toFixed(2),
       ethToUsdc: {
