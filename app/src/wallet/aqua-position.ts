@@ -127,8 +127,10 @@ export async function readWethBalance(client: AquaReadClient, account: Address) 
 
 /** USDC at a fixed USD 1 plus WETH at the Chainlink price, in cents. WETH counts as 0 without a price. */
 export function valueUsdCents({ usdc, weth }: { usdc: bigint; weth: bigint }, price: EthUsdPrice | null) {
-  const usdcCents = usdc / MICRO_USDC_PER_CENT;
-  const wethCents = price ? (weth * price.answer * 100n) / (WEI_PER_ETH * 10n ** BigInt(price.decimals)) : 0n;
+  // Round to the nearest cent, as the home screen's balance values do.
+  const usdcCents = (usdc + MICRO_USDC_PER_CENT / 2n) / MICRO_USDC_PER_CENT;
+  const wethDivisor = price ? WEI_PER_ETH * 10n ** BigInt(price.decimals) : 1n;
+  const wethCents = price ? (weth * price.answer * 100n + wethDivisor / 2n) / wethDivisor : 0n;
   return Number(usdcCents + wethCents);
 }
 
