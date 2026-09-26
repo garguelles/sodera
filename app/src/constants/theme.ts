@@ -8,6 +8,7 @@ export const platinum = {
     surfaceLow: '#1a1b21',
     surfaceHigh: '#292a2f',
     platinum: '#f4f5f7',
+    qrBackground: '#ffffff',
     platinumSoft: '#e1e2e4',
     onPlatinum: '#191c1e',
     text: '#e3e1e9',

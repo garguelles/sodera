@@ -14,6 +14,7 @@ import QRCode from 'react-native-qrcode-svg';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { Address } from 'viem';
 
+import { platinum } from '@/constants/theme';
 import { readPersistedWalletIdentity, type WalletIdentityStorage } from '@/wallet/wallet-identity';
 import { walletIdentityNativeStorage } from '@/wallet/wallet-identity-native-storage';
 
@@ -108,7 +109,7 @@ export function ReceiveScreen({
 
         {state.status === 'loading' ? (
           <View accessibilityLabel="Loading wallet address" style={styles.stateCard}>
-            <ActivityIndicator color="#d4f06a" />
+            <ActivityIndicator color={platinum.colors.emerald} />
             <Text style={styles.stateText}>Loading address...</Text>
           </View>
         ) : null}
@@ -139,8 +140,8 @@ export function ReceiveScreen({
               style={styles.qrFrame}
             >
               <QRCode
-                backgroundColor="#ffffff"
-                color="#171713"
+                backgroundColor={platinum.colors.qrBackground}
+                color={platinum.colors.onPlatinum}
                 ecl="M"
                 quietZone={12}
                 size={qrSize}
@@ -191,52 +192,52 @@ function CopyIcon() {
   );
 }
 
+const { colors, spacing, radius, typography } = platinum;
+
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#171713' },
-  content: { flexGrow: 1, paddingHorizontal: 24, paddingVertical: 20, gap: 28 },
+  screen: { flex: 1, backgroundColor: colors.canvas },
+  content: { flexGrow: 1, paddingHorizontal: spacing.lg, paddingVertical: spacing.xl, gap: spacing.xl },
   header: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  backButton: { minHeight: 44, justifyContent: 'center', paddingRight: 20 },
-  backText: { color: '#f3f0e8', fontSize: 16, fontWeight: '700' },
+  backButton: { minHeight: 44, justifyContent: 'center', paddingRight: spacing.xl },
+  backText: { ...typography.bodySmall, color: colors.secondaryText },
   networkPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 7,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 18,
-    backgroundColor: '#292923',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.full,
+    backgroundColor: colors.emeraldWash,
   },
-  networkDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#d4f06a' },
-  networkText: { color: '#c5c2b9', fontSize: 12, fontWeight: '700' },
-  heading: { gap: 10 },
-  eyebrow: { color: '#d4f06a', fontSize: 12, fontWeight: '800', letterSpacing: 1.4 },
-  title: { color: '#f3f0e8', fontSize: 38, lineHeight: 42, fontWeight: '800', letterSpacing: -1.2 },
-  description: { color: '#aaa89f', fontSize: 16, lineHeight: 24 },
-  stateCard: { minHeight: 300, alignItems: 'center', justifyContent: 'center', gap: 14 },
-  stateText: { color: '#929188', fontSize: 15 },
+  networkDot: { width: 7, height: 7, borderRadius: radius.full, backgroundColor: colors.emerald },
+  networkText: { ...typography.labelSmall, color: colors.emerald },
+  heading: { gap: spacing.md },
+  eyebrow: { ...typography.labelSmall, color: colors.emerald },
+  title: { ...typography.display, color: colors.platinum },
+  description: { ...typography.body, color: colors.mutedText },
+  stateCard: { minHeight: 300, alignItems: 'center', justifyContent: 'center', gap: spacing.md },
+  stateText: { ...typography.bodySmall, color: colors.mutedText },
   receiveCard: {
     alignItems: 'center',
-    gap: 22,
-    padding: 20,
-    borderRadius: 28,
+    gap: spacing.xl,
+    padding: spacing.lg,
+    borderRadius: radius.xl,
     borderCurve: 'continuous',
-    backgroundColor: '#24241f',
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: '#34342d',
+    borderColor: colors.border,
   },
   qrFrame: {
-    padding: 8,
-    borderRadius: 22,
+    padding: spacing.sm,
+    borderRadius: radius.xl,
     borderCurve: 'continuous',
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.qrBackground,
   },
-  addressBlock: { alignSelf: 'stretch', gap: 8 },
-  addressLabel: { color: '#77766f', fontSize: 11, fontWeight: '800', letterSpacing: 1.3 },
+  addressBlock: { alignSelf: 'stretch', gap: spacing.sm },
+  addressLabel: { ...typography.labelSmall, color: colors.mutedText },
   address: {
-    color: '#f3f0e8',
-    fontSize: 14,
-    lineHeight: 22,
-    fontFamily: 'monospace',
+    ...typography.label,
+    color: colors.platinum,
   },
   copyButton: {
     minHeight: 52,
@@ -244,12 +245,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 11,
-    borderRadius: 17,
+    gap: spacing.md,
+    borderRadius: radius.lg,
     borderCurve: 'continuous',
-    backgroundColor: '#d4f06a',
+    backgroundColor: colors.platinum,
   },
-  copyText: { color: '#171713', fontSize: 16, fontWeight: '800' },
+  copyText: { ...typography.body, color: colors.onPlatinum },
   copyIcon: { width: 20, height: 20 },
   copyIconBack: {
     position: 'absolute',
@@ -258,8 +259,8 @@ const styles = StyleSheet.create({
     width: 12,
     height: 13,
     borderWidth: 2,
-    borderColor: '#171713',
-    borderRadius: 3,
+    borderColor: colors.onPlatinum,
+    borderRadius: radius.sm,
   },
   copyIconFront: {
     position: 'absolute',
@@ -268,28 +269,28 @@ const styles = StyleSheet.create({
     width: 12,
     height: 13,
     borderWidth: 2,
-    borderColor: '#171713',
-    borderRadius: 3,
-    backgroundColor: '#d4f06a',
+    borderColor: colors.onPlatinum,
+    borderRadius: radius.sm,
+    backgroundColor: colors.platinum,
   },
-  copyError: { color: '#ffd9d4', fontSize: 13, lineHeight: 19 },
-  warning: { color: '#77766f', fontSize: 13, lineHeight: 19, paddingHorizontal: 4 },
+  copyError: { ...typography.bodySmall, color: colors.negative },
+  warning: { ...typography.bodySmall, color: colors.mutedText, paddingHorizontal: spacing.xs },
   errorCard: {
-    gap: 12,
-    padding: 20,
-    borderRadius: 20,
+    gap: spacing.md,
+    padding: spacing.xl,
+    borderRadius: radius.xl,
     borderCurve: 'continuous',
-    backgroundColor: '#4b2724',
+    backgroundColor: colors.negativeWash,
   },
-  errorTitle: { color: '#fff2ef', fontSize: 18, fontWeight: '700' },
-  errorText: { color: '#ffd9d4', fontSize: 14, lineHeight: 20 },
+  errorTitle: { ...typography.subheading, color: colors.platinum },
+  errorText: { ...typography.bodySmall, color: colors.negative },
   retryButton: {
     minHeight: 48,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 15,
-    backgroundColor: '#ffd9d4',
+    borderRadius: radius.lg,
+    backgroundColor: colors.platinum,
   },
-  retryText: { color: '#4b2724', fontSize: 15, fontWeight: '800' },
+  retryText: { ...typography.bodySmall, color: colors.onPlatinum },
   pressed: { opacity: 0.65 },
 });
