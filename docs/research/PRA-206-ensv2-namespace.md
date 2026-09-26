@@ -4,6 +4,8 @@ Research date: 2026-09-12
 
 Scope decision (2026-09-13): ENSv2 child-registry deployment and per-user subname issuance are deferred to the next hackathon. The current wallet UI uses `anon.sodera.eth` as an explicitly non-resolving fixture label. The evidence and proposed architecture below are preserved for the deferred implementation; no namespace writes should be performed for the current build.
 
+> **Historical deployment research.** The ETHOnline 2026 ENSv2 deployment described below is separate from the [current canonical Sepolia ENSv2 deployment](https://docs.ens.domains/learn/deployments/#sepolia-ensv2-beta). Its addresses, `sodera.eth` registration, resolver override, and live observations do not establish ownership or resolution on the current deployment. [ADR-0011](../adr/0011-ensv2-user-subnames.md) records the selected approach for future subnames; recheck the namespace, interfaces, and deployment configuration before implementation. For current tooling, see the [ENS App](https://app.ens.dev/) and [ENS Explorer](https://explorer.ens.dev/).
+
 ## Executive answer
 
 **The ETHOnline 2026 ENSv2 deployment is suitable for a Sodera namespace in principle, but PRA-206 is not yet safe to pass and username issuance must remain stopped.** The official hackathon deployment provides the required hierarchical registry, factory-deployed `UserRegistry` and `PermissionedResolver` proxies, owner-controlled records, transfers, expiry, reservation, and Universal Resolver V2 traversal. Sodera does not need a custom resolver implementation.
@@ -49,7 +51,7 @@ This table corrects an earlier ambiguous reading of the addresses: `0x658c...` i
 
 **PASS, deployment identity.** The dedicated deployment page, Deployment Manager, and Deployment Portal all identify this environment as the ETHOnline 2026 Sepolia deployment. These addresses must be pinned together as one deployment set; addresses from `contracts-v2`'s 2026-06-29 or 2026-07-30 standard Sepolia artifacts are different deployments and cannot be mixed in.
 
-**PASS, protocol shape.** The corrected [ETHOnline ENSv2 docs build](https://feature-permres-inode-refact.docs-bao.pages.dev/ensv2/overview/), Portal ABI, and `contracts-v2` source around [`c6956ce`](https://github.com/ensdomains/contracts-v2/tree/c6956ce52c3e2ba48ceb166d404bcb4bba1aa932) agree on the relevant registry state model, factory initializer grants, DNS-name resolver setters, EAC, record linking, and UUPS authorization. The source is a compatibility anchor, not proven byte-for-byte provenance for the listed hackathon addresses.
+**PASS, protocol shape.** The corrected ETHOnline ENSv2 docs build, Portal ABI, and `contracts-v2` source around [`c6956ce`](https://github.com/ensdomains/contracts-v2/tree/c6956ce52c3e2ba48ceb166d404bcb4bba1aa932) agreed on the relevant registry state model, factory initializer grants, DNS-name resolver setters, EAC, record linking, and UUPS authorization. The source is a historical compatibility anchor, not proven byte-for-byte provenance for the listed hackathon addresses or the current Sepolia deployment.
 
 **FAIL, exact version/provenance.** The official deployment table does not publish a release tag, source commit, compiler settings, runtime hashes, or deployment transaction beside the hackathon addresses. The public `contracts-v2` deployment artifacts inspected in commits [`48b3e2d`](https://github.com/ensdomains/contracts-v2/tree/48b3e2d39513b9dd32ef1850877a29009bc807b9) and [`f21e4b4`](https://github.com/ensdomains/contracts-v2/tree/f21e4b4a38c949a6fc5c7d3bdd1b418292c880f1) contain different standard-Sepolia address sets. Exact source/runtime provenance therefore remains a live verification gate.
 
@@ -291,18 +293,15 @@ Until those choices and the live evidence are attached, dependent PRA-207 config
 
 ## Primary sources
 
-- [Corrected ETHOnline 2026 ENSv2 overview](https://feature-permres-inode-refact.docs-bao.pages.dev/ensv2/overview/): entry point for the permissioned-resolver inode-refactor documentation build.
-- [ETHOnline 2026 Sepolia deployment table](https://feature-permres-inode-refact.docs-bao.pages.dev/learn/deployments/#sepolia-ensv2-beta): dedicated environment, complete address set, and required Universal Resolver override.
-- [Hackathon Deployment Manager](https://hackathon-deployment-manager-app-v4.ens-cf.workers.dev/): exclusive registration/configuration application.
-- [Hackathon Deployment Portal](https://hackathon-deployment-portal-app.ens-cf.workers.dev/): exclusive explorer and deployed-app ABI surface.
-- [Registry Hierarchy](https://feature-permres-inode-refact.docs-bao.pages.dev/ensv2/registry-hierarchy/): forward/backward pointers, longest-suffix resolution, subtree replacement, and canonical hierarchy.
-- [Permissioned Registry](https://feature-permres-inode-refact.docs-bao.pages.dev/ensv2/permissioned-registry/): lifecycle, roles, operators, transfer, parent pointer, and formal emancipation checks.
-- [Permissioned Resolver](https://feature-permres-inode-refact.docs-bao.pages.dev/ensv2/permissioned-resolver/): per-account proxy, DNS-name setters, linked records, record roles, initializer calls, and local upgrades.
-- [Enhanced Access Control](https://feature-permres-inode-refact.docs-bao.pages.dev/ensv2/enhanced-access-control/): root fallback, admin escalation, role counts, and grant/revoke semantics.
-- [Verifiable Factory](https://feature-permres-inode-refact.docs-bao.pages.dev/ensv2/verifiable-factory/): CREATE2 proxy deployment, provenance verification, exact registry/resolver initializer examples, implementation roles, and salts.
-- [Universal Resolver V2](https://feature-permres-inode-refact.docs-bao.pages.dev/ensv2/universal-resolver-v2/): traversal, canonical registry checks, ownership, forward resolution, and reverse verification.
-- [Mutable Token IDs](https://feature-permres-inode-refact.docs-bao.pages.dev/ensv2/mutable-token-ids/): token/resource versioning and stable application identifiers.
-- [Registry Template](https://feature-permres-inode-refact.docs-bao.pages.dev/ensv2/registry-template/) and [Contract Developer tutorial](https://feature-permres-inode-refact.docs-bao.pages.dev/ensv2/tutorial-contract-developers/): standard UserRegistry topology, registrar boundary, registration bitmap, and expiry choices.
+- [ENSv2 overview](https://docs.ens.domains/ensv2/overview/) and [canonical Sepolia deployment table](https://docs.ens.domains/learn/deployments/#sepolia-ensv2-beta): current protocol documentation, addresses, and ABIs; not the deployment observed in this report.
+- [Registry Hierarchy](https://docs.ens.domains/ensv2/registry-hierarchy/): forward/backward pointers, longest-suffix resolution, subtree replacement, and canonical hierarchy.
+- [Permissioned Registry](https://docs.ens.domains/ensv2/permissioned-registry/): lifecycle, roles, operators, transfer, parent pointer, and emancipation checks.
+- [Permissioned Resolver](https://docs.ens.domains/ensv2/permissioned-resolver/): per-account proxy, records, roles, and upgrades.
+- [Enhanced Access Control](https://docs.ens.domains/ensv2/enhanced-access-control/): root fallback, admin escalation, role counts, and grant/revoke semantics.
+- [Verifiable Factory](https://docs.ens.domains/ensv2/verifiable-factory/): proxy deployment, provenance verification, and implementation roles.
+- [Universal Resolver V2](https://docs.ens.domains/ensv2/universal-resolver-v2/): traversal, canonical registry checks, ownership, and resolution.
+- [Mutable Token IDs](https://docs.ens.domains/ensv2/mutable-token-ids/): token/resource versioning and stable application identifiers.
+- [Registry Template](https://docs.ens.domains/ensv2/registry-template/) and [Contract Developer tutorial](https://docs.ens.domains/ensv2/tutorial-contract-developers/): registry topology, registrar boundary, and expiry choices.
 - [`contracts-v2` resolver refactor commit `c6956ce`](https://github.com/ensdomains/contracts-v2/tree/c6956ce52c3e2ba48ceb166d404bcb4bba1aa932): closest public source compatibility anchor for the Portal's linked-record resolver and grants-based proxy initialization; not claimed as exact deployed-bytecode provenance.
 - [`verifiable-factory` commit `5ef7b1a`](https://github.com/ensdomains/verifiable-factory/tree/5ef7b1a88fd9062bae580ed4048ca369f18450c4): factory/proxy source inspected for deterministic deployment and verification behavior.
 - [Temporary Durin on Sepolia ENSv2 guide](https://gist.github.com/gskril/997a95d6dc8493d3ffe82531382b0924): adapter configuration for the separate standard Sepolia ENSv2 registry.

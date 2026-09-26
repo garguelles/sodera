@@ -1,6 +1,6 @@
 # Sodera — Web3-First Android Launcher
 
-> **Historical architecture reference, not the current hackathon baseline.** This v0.5 source is retained for architectural context. The [current hackathon decisions](hackathon-decisions.md), [hackathon specs index](hackathon-specs.md), and [ADR-0010](adr/0010-direct-kernel-passkey.md) override conflicting requirements here, including the old Base/mainnet rollout, raw Android Keystore root, mandatory Google-free support, Arc priorities, wallpaper support, and feature priorities. The current build is testnet-only with Ethereum Sepolia as its single required network, a direct platform passkey using ZeroDev's released WebAuthn validator, Google-free GrapheneOS support deferred, Base deferred, Arc stretch, and wallpaper out of scope; production rollout remains unresolved. Apart from this notice and the section 2 ADR extraction, the original source is preserved below and must not be read as newly approved implementation scope.
+> **Historical architecture reference, not the current hackathon baseline.** This v0.5 source is retained for architectural context. The [current hackathon decisions](hackathon-decisions.md), [hackathon specs index](hackathon-specs.md), and [ADR-0010](adr/0010-direct-kernel-passkey.md) override conflicting requirements here, including the old Base/mainnet rollout, raw Android Keystore root, mandatory Google-free support, Arc priorities, wallpaper support, and feature priorities. The current build is testnet-only with Ethereum Sepolia as its single required network, a direct platform passkey using ZeroDev's released WebAuthn validator, Google-free GrapheneOS support deferred, Base deferred, Arc stretch, and wallpaper out of scope; production rollout remains unresolved. The ETHOnline-specific ENS links in section 52.1 have been replaced with canonical Sepolia resources; the old namespace registration is not evidence of ownership on the current deployment. Apart from this notice, the section 2 ADR extraction, and that link cleanup, the original source is preserved below and must not be read as newly approved implementation scope.
 
 **Product & Technical Specification**  
 **Version:** 0.5  
@@ -2202,7 +2202,7 @@ Launcher     → persistent operating surface
 
 ## 52.1 ENSv2 — `sodera.eth` Identity Namespace (Deferred)
 
-> **Current hackathon scope:** The wallet displays the fixed fixture identity `anon.sodera.eth`. It does not deploy a child registry, provision per-account resolvers, claim user subnames, or present the fixture as an on-chain ownership or resolution result. The architecture below is retained for the next hackathon.
+> **Current hackathon scope:** The wallet displays the fixed fixture identity `anon.sodera.eth`. It does not deploy a child registry, provision per-account resolvers, claim user subnames, or present the fixture as an on-chain ownership or resolution result. [ADR-0011](adr/0011-ensv2-user-subnames.md) selects the implementation for future subnames; this historical section is not the current deployment plan.
 
 ### Goal
 
@@ -2214,7 +2214,7 @@ The product name is **Sodera** and the ENSv2 parent namespace is:
 sodera.eth
 ```
 
-`sodera.eth` has been registered on the ENSv2 Sepolia beta deployment for the ETHOnline 2026 build. It is the canonical parent namespace for Sodera user identities. The parent `.eth` registration is already complete; the remaining ENSv2 work for the product is to attach/configure the child registry and issue user identities under `sodera.eth`.
+For the ETHOnline 2026 build, `sodera.eth` was registered on a dedicated ENSv2 Sepolia deployment. That registration does not establish ownership on the current canonical Sepolia deployment. Verify the parent name there before attaching a child registry or issuing user identities under `sodera.eth`.
 
 Every user can receive a subname under that namespace:
 
@@ -2226,15 +2226,16 @@ bob.sodera.eth
 
 This gives the product a native identity namespace without requiring every user to purchase a separate second-level `.eth` name.
 
-### ETHOnline 2026 ENSv2 resources
+### ENSv2 Sepolia resources
 
-The hackathon implementation MUST use the ENS-provided ETHOnline / ENSv2 beta tooling and deployment references below. These URLs are intentionally documented here because they are hackathon-specific and may differ from the eventual ENSv2 production interfaces:
+The dedicated ETHOnline ENSv2 deployment and its tooling are deprecated. Use ENS's current Sepolia ENSv2 resources for future implementation:
 
-- **Hackathon-specific ENS app / Deployment Manager:** https://hackathon-deployment-manager-app-v4.ens-cf.workers.dev/
-- **Hackathon-specific ENS explorer / Deployment Portal:** https://hackathon-deployment-portal-app.ens-cf.workers.dev/
-- **Hackathon ENSv2 deployment docs — Sepolia ENSv2 beta:** https://feature-permres-inode-refact.docs-bao.pages.dev/learn/deployments/#sepolia-ensv2-beta
+- [ENS App (Sepolia)](https://app.ens.dev/)
+- [ENS Explorer (Sepolia)](https://explorer.ens.dev/)
+- [ENSv2 overview](https://docs.ens.domains/ensv2/overview/)
+- [Canonical Sepolia ENSv2 deployment addresses and ABIs](https://docs.ens.domains/learn/deployments/#sepolia-ensv2-beta)
 
-The application SHOULD pin the Sepolia contract addresses, ABIs, and interfaces actually used during the hackathon and record them in an implementation-specific deployment configuration or ADR. Do not infer production ENSv2 addresses from the hackathon deployment.
+The historical `sodera.eth` registration and contract addresses in [PRA-206 research](research/PRA-206-ensv2-namespace.md) belong to the separate ETHOnline deployment. Verify ownership and resolution against the canonical Sepolia hierarchy before configuring or issuing names. Pin the current addresses, ABIs, and interfaces in an implementation-specific deployment configuration or ADR; do not reuse the hackathon address set.
 
 ### ENSv2 architecture assumptions
 
