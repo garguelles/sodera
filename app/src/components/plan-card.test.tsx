@@ -52,7 +52,7 @@ describe('PlanCard', () => {
     expect(screen.getByLabelText('Checked on device')).toBeOnTheScreen();
     expect(screen.getByText('Send 0.01 ETH to alice.')).toBeOnTheScreen();
     expect(screen.getByText('Send 0.01 ETH to alice')).toBeOnTheScreen();
-    expect(screen.getByText('address book · 0x2222...2222')).toBeOnTheScreen();
+    expect(screen.getByText('ENS · 0x2222...2222')).toBeOnTheScreen();
     expect(screen.getByText('· Network: Ethereum')).toBeOnTheScreen();
     expect(screen.getByText('shown at review')).toBeOnTheScreen();
 

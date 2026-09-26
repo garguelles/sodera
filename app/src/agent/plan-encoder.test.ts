@@ -52,7 +52,7 @@ describe('encodePlan', () => {
       args: [getAddress('0x3333333333333333333333333333333333333333'), 2_500_000n],
     });
     expect(lines).toEqual([
-      { title: 'Send 0.01 ETH to alice', detail: 'address book · 0x2222...2222' },
+      { title: 'Send 0.01 ETH to alice', detail: 'ENS · 0x2222...2222' },
       { title: 'Send 2.5 USDC to 0x3333...3333', detail: '0x3333...3333' },
     ]);
     expect(expiresAt).toBeNull();

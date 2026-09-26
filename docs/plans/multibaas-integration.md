@@ -480,7 +480,7 @@ Each seam is a TypeScript module path and signature the agent code imports. If t
 | Seam | Path and signature | Owning ticket | Stub behaviour |
 | --- | --- | --- | --- |
 | USDC transfer encoder | `app/src/wallet/usdc-transfer.ts`: `encodeUsdcTransfer({ to: Address; amountMicro: bigint }): KernelExecutionCall` | PRA-198, PRA-196 | Implementable now: `viem.encodeFunctionData` for ERC-20 `transfer(address,uint256)` against the pinned USDC address. Build it if absent. |
-| ENS resolution | `app/src/identity/resolve-recipient.ts`: `resolveRecipient(input: string): Promise<{ address: Address; name: string \| null }>` | PRA-200, PRA-209 | Accept checksummed or lowercase addresses; throw for names. Names then come only from the address book. |
+| ENS resolution | `app/src/identity/resolve-recipient.ts`: `resolveRecipient(input: string): Promise<{ address: Address; name: string \| null }>` | PRA-200, PRA-209 | Accept checksummed or lowercase addresses; throw for names. Names then come only from the address book. Superseded by section 9: Dera resolves names with `resolveSepoliaRecipient` in `app/src/wallet/send-transfer.ts`. |
 | Swap quote and encoder (landed as `app/src/wallet/uniswap-quote.ts` `quoteSwap` and `uniswap-swap-calls.ts` `buildSwapCalls`) | `app/src/swap/uniswap.ts`: `quoteSwap({ direction: 'eth_to_usdc' \| 'usdc_to_eth'; amountIn: bigint }): Promise<SwapQuote>` and `encodeSwap(quote: SwapQuote, { recipient: Address }): KernelExecutionCall[]` where `SwapQuote = { direction; amountIn: bigint; amountOut: bigint; minimumAmountOut: bigint; slippageBps: number; expiresAt: string; route: unknown }` | PRA-212, PRA-213 | Throw. `swap` action disabled. |
 | Vault encoders and position | `app/src/earn/morpho-vault.ts`: `encodeVaultDeposit({ amountMicro: bigint; owner: Address }): KernelExecutionCall[]`, `encodeVaultWithdraw({ amountMicro: bigint \| 'all'; owner: Address }): KernelExecutionCall[]`, `readVaultPosition(account: Address): Promise<{ assetsMicro: bigint; sharesRaw: bigint }>` | PRA-216, PRA-217, PRA-218, PRA-222 | Throw. Vault actions disabled. Position reads return `null` in the context snapshot. |
 | Sponsorship allowance | `app/src/wallet/sponsorship.ts`: `readSponsorshipAllowance(account: Address): Promise<{ remaining: number; limit: number; resetsAt: string } \| null>` | PRA-195, PRA-199 | Return `null`. The plan card omits the allowance line and the policy skips the allowance check. |
@@ -540,7 +540,7 @@ Implemented identically in `agent/src/policy.ts` and `app/src/agent/policy.ts` a
 | `schema` | Output parses with `AgentOutputSchema` | output | "The assistant returned something the wallet cannot read." |
 | `action_disabled` | `actionEnabled[type]` is true (seams that are stubbed set it false) | app capability flags | "Swaps are not available yet." (per action) |
 | `too_many_actions` | `actions.length <= 4` (schema) and at most one `swap` per plan | output | "Plans are limited to four steps and one swap." |
-| `recipient_unresolved` | `kind: 'address'` passes `isAddress`; `kind: 'name'` is present in the address book or resolves via ENS (app side only; the service checks address book membership only) | address book, resolver | "I don't know who {name} is." |
+| `recipient_unresolved` | `kind: 'address'` passes `isAddress`; `kind: 'name'` resolves through ENS, with a bare label read as `<label>.sodera.eth` (section 9). The service uses the names `resolve_name` resolved; the phone resolves them again itself | resolver | "I don't know who {name} is." |
 | `recipient_self` | Resolved recipient is not the account | context.account | "That would send to yourself." |
 | `amount_precision` | Decimals do not exceed 18 for ETH or 6 for USDC | output | "USDC amounts can have at most 6 decimals." |
 | `amount_zero` | Amount parses to a positive integer in base units | output | "Amounts must be greater than zero." |
@@ -639,7 +639,7 @@ All read-only. Each returns a compact JSON string. Each catches its own errors a
 | Tool | Input | Backing call | Notes |
 | --- | --- | --- | --- |
 | `get_activity` | `{ account, limit? }` | Two MultiBaas event queries: USDC Transfer with `input[0]` or `input[1]` equal to account, and `UserOperationEvent` with `input[1]` equal to account, ordered by `triggered_at` desc, limit 20 | Same query shapes as section 1. Return rows with direction, asset, amount, counterparty, timestamp, success. |
-| `resolve_name` | `{ name }` | Address book from the request context first; then ENS on Sepolia via viem `getEnsAddress` with `normalize` from `viem/ens` | Return `{ address, source: 'address_book' \| 'ens' }` or `{ error: 'unknown' }`. |
+| `resolve_name` | `{ name }` | ENS on Sepolia via viem `getEnsAddress` with `normalize` from `viem/ens`; a name without a dot is read as `<name>.sodera.eth` (section 9) | Return `{ address, name }` with the full ENS name, or `{ error: 'unknown' }`. |
 | `quote_swap` | `{ direction, amountIn }` | `quoteExactInputSingle` on the Uniswap v4 Quoter for the pool pinned by PRA-212 (`agent/src/uniswap.ts`, mirroring the app's `uniswap-sdk.ts`) | Returns `{ amountIn, expectedOut, minimumOut, slippage, venue }`; the minimum uses the app's 0.5% slippage as `amountOut / 1.005`. Returns `{ error: 'swaps unavailable' }` when the request's capabilities disable swaps. The phone quotes again at review. |
 | `get_eth_price` | `{}` | MultiBaas method call `eth_usd_feed.latestRoundData` with the same staleness rules as `wallet-home-live.ts` (max age 7200 seconds) | Return `{ usd, updatedAt }` or `{ error }`. |
 
@@ -731,7 +731,7 @@ Status: implemented on 2026-09-26. Supersedes the earlier home-widget design (Cl
 
 ### Goal
 
-A sparkle button on the launcher header opens the assistant page. The assistant is called Dera, from So**dera**. The user chats with the planner: each sentence becomes a plan card, a question, or a notice. A plan is re-checked and encoded on the phone, and the review-then-passkey path executes it as one operation. A placeholder address book supplies names until a real one or ENS lands.
+A sparkle button on the launcher header opens the assistant page. The assistant is called Dera, from So**dera**. The user chats with the planner: each sentence becomes a plan card, a question, or a notice. A plan is re-checked and encoded on the phone, and the review-then-passkey path executes it as one operation. A placeholder address book supplied names until section 9 replaced it with ENS resolution.
 
 ### Dependencies
 
@@ -745,7 +745,7 @@ Create:
 - `app/src/agent/agent-client.ts` — `readAgentConfigFromEnv()` and `createAgentClient({ config, fetcher, timeoutMs })` with `propose(request)`. Failures throw `AgentUnavailableError` with `reason` `timeout`, `unreachable`, or `error`.
 - `app/src/agent/agent-context.ts` — `loadAgentContext({ account, balanceClient, addressBook, now })` reads balances and the ETH price through the MultiBaas balance client; `AGENT_CAPABILITIES` lists the encodable actions: sends and swaps, with the vault off until PRA-216.
 - `app/src/agent/plan-encoder.ts` — `encodePlan(plan, { quoteSwap, now })` returns `{ calls, lines, expiresAt }` for sends and swaps and throws `Not implemented` for the vault.
-- `app/src/agent/address-book.ts` — placeholder: a fixed list parsed from `EXPO_PUBLIC_AGENT_CONTACTS` (`alice=0x…,bob=0x…`). Nothing is stored on the phone and there is no screen. Names are lowercase, unique, 1 to 32 characters; malformed pairs are skipped.
+- `app/src/agent/address-book.ts` — placeholder: a fixed list parsed from `EXPO_PUBLIC_AGENT_CONTACTS` (`alice=0x…,bob=0x…`). Nothing is stored on the phone and there is no screen. Names are lowercase, unique, 1 to 32 characters; malformed pairs are skipped. Removed in section 9.
 - `app/src/agent/use-agent-planner.ts` — the conversation: a list of turns (sentence plus answer), `submit`, `reset`, and `markSigned`.
 - `app/src/agent/pending-plan.ts` — hands the plan and its turn id to the review route, because the plan carries bigints, and reports which turn was signed.
 - `app/src/wallet/usdc-transfer.ts` — the USDC transfer seam (built).
@@ -813,7 +813,7 @@ Platinum Fluid tokens from `app/src/constants/theme.ts`. The assistant accent (s
 4. "Confirm with passkey" first checks the swap deadline: within 30 seconds of `expiresAt`, it quotes and prepares again and shows "The swap quote expired, so it was refreshed. Check the amounts again." instead of signing. Otherwise it runs `execute(review.userOperationHash)`, marks the identity deployed, refreshes the wallet home, and marks the plan complete. ETH sends then appear in the activity feed with their amounts because section 1 decodes them from the chain.
 5. Success shows the transaction hash with Copy and "View on explorer"; "Done" returns to the assistant, where the plan shows as signed. Any failure shows the error and "Back to plan".
 
-**Address book (placeholder).** No screen and no storage for the hackathon: contacts come from `EXPO_PUBLIC_AGENT_CONTACTS`. ENS is not implemented in the app (the `resolveRecipient` seam accepts addresses only), so the phone's check blocks a plan addressed to an ENS name even though the service can resolve it. Names go to the model; addresses stay on the phone until the plan is encoded. A real address book or ENS replaces the module without changing its `list()` signature.
+**Address book (placeholder, removed in section 9).** No screen and no storage for the hackathon: contacts come from `EXPO_PUBLIC_AGENT_CONTACTS`. ENS is not implemented in the app (the `resolveRecipient` seam accepts addresses only), so the phone's check blocks a plan addressed to an ENS name even though the service can resolve it. Names go to the model; addresses stay on the phone until the plan is encoded. A real address book or ENS replaces the module without changing its `list()` signature.
 
 ### Tests
 
@@ -965,7 +965,7 @@ z.object({
 })
 ```
 
-Ranges are whole UTC days because the deployment's `triggered_at` filter accepts only `YYYY-MM-DD` (confirmed 2026-09-27: ISO timestamps, Postgres timestamps, and epoch strings return HTTP 400 or do not filter). Reject a malformed date, a range where `from >= to`, or one longer than 366 days with `{ error }`. Resolve `counterparty` with the existing `resolveName` logic (address book, then ENS); return `{ error: 'unknown counterparty' }` if it fails.
+Ranges are whole UTC days because the deployment's `triggered_at` filter accepts only `YYYY-MM-DD` (confirmed 2026-09-27: ISO timestamps, Postgres timestamps, and epoch strings return HTTP 400 or do not filter). Reject a malformed date, a range where `from >= to`, or one longer than 366 days with `{ error }`. Resolve `counterparty` with the existing `resolveName` logic (ENS, with a bare label read as `<label>.sodera.eth` since section 9); return `{ error: 'unknown counterparty' }` if it fails.
 
 It runs five MultiBaas event queries in parallel, each filtered by a `triggered_at` range (`greaterthanorequal` from, `lessthan` to) in addition to the filters below:
 
@@ -1079,6 +1079,62 @@ All six were re-run on the device after the fixes and now match the card.
 - "send 5 usdc to alice" still returns a plan and review flow unchanged.
 - "what is my eth worth in usd?" answers with the snapshot's dollar value.
 - "how much usdc do I have, and send 1 usdc to alice" shows the balance in the plan card's summary.
+- `pnpm test`, `pnpm typecheck` pass in `agent/`; `pnpm lint` and `pnpm test --runInBand` pass in `app/`.
+
+## Section 9: Dera resolves ENS recipients
+
+### Goal
+
+Now that users hold real `<label>.sodera.eth` names (see `ens-onboarding-and-renewal.md`), Dera resolves recipients through ENS instead of the placeholder address book. A user can type a bare Sodera label ("send 5 usdc to john"), a full ENS name ("john.sodera.eth", "vitalik.eth"), or a hex address. There is no address book or phonebook for now.
+
+### What was wrong
+
+- `resolve_name` in `agent/src/tools.ts` checked the address book and returned `unknown` for any name without a dot, so "john" never reached ENS.
+- The phone's policy check in `app/src/agent/use-agent-planner.ts` resolved names from the address book only. Any plan the service resolved through ENS was blocked on the phone with "I don't know who {name} is.", so ENS recipients never worked in Dera.
+
+### Resolution rule
+
+The service and the phone apply the same rule to every recipient:
+
+1. A hex address (`kind: 'address'`) is used as is after `isAddress`.
+2. A name containing a dot is lowercased, passed through `normalize` from `viem/ens`, and resolved with `getEnsAddress` on Sepolia.
+3. A name without a dot is treated as a Sodera label: append `.sodera.eth` (`john` → `john.sodera.eth`) and resolve it as in step 2.
+
+A name that fails to normalize, has no address record, or cannot be read because the RPC failed is unresolved. The service returns `{ error: 'unknown' }` and the model asks who the user means. The phone blocks the plan with `recipient_unresolved`. Nobody guesses another spelling or TLD.
+
+### Design
+
+- **Service tool.** `resolve_name` implements the rule and returns `{ address, name }`, where `name` is the full ENS name it resolved, such as `john.sodera.eth`. It records both the typed key and the full name in `resolvedNames` for the service's policy check. `summarize_activity` resolves its `counterparty` with the same function.
+- **Plan recipient.** The system prompt tells the model to put the returned full name in the plan (`{ kind: 'name', value: 'john.sodera.eth' }`) and to use it in the summary. The user then sees the exact name the money goes to, not the shorthand they typed.
+- **Phone check.** Before `evaluatePolicy`, the planner hook resolves every `kind: 'name'` recipient with its own Sepolia RPC, using the same rule. It passes the results to the synchronous `resolveName` option as a map. The phone never trusts an address from the service. `EnrichedAction.recipient.name` holds the full ENS name, the action title names it, and the muted line under it reads "ENS · 0x1234…abcd" (it read "address book" before).
+- **Shared helper.** The phone expands names with a helper next to `resolveSepoliaRecipient` in `app/src/wallet/send-transfer.ts` and reuses that function for the lookup. The service keeps its own copy in `agent/src/tools.ts`, because the service does not import app code.
+- **Address book removed.** `app/src/agent/address-book.ts` and `EXPO_PUBLIC_AGENT_CONTACTS` are deleted. The shared context schema keeps `addressBook` for a future phonebook, the app sends `[]`, and `renderUserMessage` omits the address book line when the list is empty. Activity answers label counterparties with shortened addresses; reverse ENS lookup for those labels is out of scope.
+
+### Files
+
+- `agent/src/tools.ts`: the resolution rule, the `resolve_name` result and description, and the `summarize_activity` counterparty.
+- `agent/src/prompts/system.md`: recipients can be a Sodera label, a full ENS name, or an address; call `resolve_name` and use the returned name.
+- `agent/src/propose.ts`: omit the empty address book line.
+- `agent/src/policy.ts` and `app/src/agent/policy.ts`: update the `resolveName` comment to match what each side actually does.
+- `app/src/wallet/send-transfer.ts`: export the name-expansion helper.
+- `app/src/agent/use-agent-planner.ts`: resolve name recipients before the phone's policy check; drop the address book.
+- `app/src/agent/agent-context.ts`, `app/src/components/assistant-screen.tsx`: stop reading the address book; the chips use a fixed example name.
+- Delete `app/src/agent/address-book.ts` and its test; drop `EXPO_PUBLIC_AGENT_CONTACTS` from `app/.env.example` and `app/README.md`.
+- `agent/README.md`: the smoke test sends to a Sodera label with an empty address book.
+
+### Tests
+
+- `tools.test.ts`: a bare label resolves as `<label>.sodera.eth`; a dotted name is resolved as typed; uppercase input is lowercased; a name that fails `normalize` and an ENS miss both return `unknown`; `resolvedNames` holds the typed key and the full name; a `summarize_activity` counterparty given as a bare label.
+- `app.test.ts`: a plan to a bare label passes the service's policy check with the full name.
+- App planner test: a plan addressed to `john.sodera.eth` passes the phone's check after its own lookup; an ENS miss and an RPC failure block it with `recipient_unresolved`; an address from the service is ignored when the phone resolves a different one.
+- `send-transfer` test: expanding a bare label, and leaving dotted names and addresses unchanged.
+
+### Acceptance criteria
+
+- On a device, "send 1 usdc to {label}" for a claimed Sodera name produces a plan card showing `{label}.sodera.eth` with the name's address, and the review shows the same address.
+- "send 1 usdc to {label}.sodera.eth" and "send 1 usdc to 0x…" behave the same way.
+- "send 1 usdc to nobodyhere" produces a question asking who the user means, with no plan.
+- "how much did I send {label} this month?" answers for that name's address.
 - `pnpm test`, `pnpm typecheck` pass in `agent/`; `pnpm lint` and `pnpm test --runInBand` pass in `app/`.
 
 ## Open verifications

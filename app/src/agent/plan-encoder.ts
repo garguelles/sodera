@@ -83,5 +83,5 @@ export async function encodePlan(
 }
 
 export function recipientDetail(recipient: { address: Address; name: string | null }) {
-  return recipient.name ? `address book · ${shortenAddress(recipient.address)}` : shortenAddress(recipient.address);
+  return recipient.name ? `ENS · ${shortenAddress(recipient.address)}` : shortenAddress(recipient.address);
 }

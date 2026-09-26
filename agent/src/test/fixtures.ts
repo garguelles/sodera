@@ -5,6 +5,9 @@ import type { AgentContext } from '../schema.ts';
 export const ACCOUNT = '0x1111111111111111111111111111111111111111';
 export const ALICE = '0x2222222222222222222222222222222222222222';
 
+/** ENS as the tests see it: only alice.sodera.eth has an address. */
+export const resolveAliceEns = async (name: string) => (name === 'alice.sodera.eth' ? ALICE : null);
+
 export function readVectors<T>(name: string): T {
   return JSON.parse(readFileSync(new URL(`../../../docs/plans/${name}`, import.meta.url), 'utf8')) as T;
 }

@@ -1,7 +1,7 @@
 import { createPublicClient, decodeFunctionData } from 'viem';
 import { sepolia } from 'viem/chains';
 
-import { parseSendTransfer, resolveSepoliaRecipient } from './send-transfer';
+import { expandSoderaName, parseSendTransfer, resolveSepoliaRecipient } from './send-transfer';
 import { SEPOLIA_USDC_ADDRESS } from './sepolia';
 
 jest.mock('viem', () => ({
@@ -20,6 +20,12 @@ beforeEach(() => {
 });
 
 describe('Sepolia recipients', () => {
+  it('reads a bare label as a Sodera name and leaves names and addresses alone', () => {
+    expect(expandSoderaName(' John ')).toBe('john.sodera.eth');
+    expect(expandSoderaName('gargs.eth')).toBe('gargs.eth');
+    expect(expandSoderaName(recipient)).toBe(recipient);
+  });
+
   it.each(['gargs.eth', 'gargs.sodera.eth'])('resolves the complete name %s on Sepolia', async (name) => {
     getEnsAddress.mockResolvedValue(recipient);
     expect(await resolveSepoliaRecipient(name)).toEqual({ address: recipient, name });

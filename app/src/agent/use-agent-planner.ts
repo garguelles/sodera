@@ -1,12 +1,13 @@
 import { useCallback, useRef, useState } from 'react';
 import type { Address } from 'viem';
 
+import { expandSoderaName, resolveSepoliaRecipient } from '@/wallet/send-transfer';
 import type { SepoliaBalanceClient } from '@/wallet/wallet-home-live';
 
-import type { AddressBook } from './address-book';
 import { loadAgentContext } from './agent-context';
 import { AgentUnavailableError, type AgentClient } from './agent-client';
 import { evaluatePolicy, type EnrichedPlan, type Violation } from './policy';
+import type { Action } from './schema';
 
 /** Must match the service's PLAN_VALUE_CAP_USD; the phone's check is the one that counts. */
 export const PLAN_VALUE_CAP_USD = 250;
@@ -35,13 +36,13 @@ export function useAgentPlanner({
   account,
   client,
   balanceClient,
-  addressBook,
+  resolveRecipient = resolveSepoliaRecipient,
   now = Date.now,
 }: {
   account: Address;
   client: AgentClient;
   balanceClient: () => SepoliaBalanceClient;
-  addressBook: AddressBook;
+  resolveRecipient?: typeof resolveSepoliaRecipient;
   now?: () => number;
 }) {
   const [turns, setTurns] = useState<PlannerTurn[]>([]);
@@ -64,7 +65,6 @@ export function useAgentPlanner({
         const context = await loadAgentContext({
           account,
           balanceClient: balanceClient(),
-          addressBook: addressBook.list(),
           now,
         });
         const response = await client.propose({
@@ -86,14 +86,18 @@ export function useAgentPlanner({
         } else if (response.kind === 'rejected') {
           setState({ phase: 'blocked', intent, violations: response.violations as Violation[] }, current);
         } else {
-          // The phone re-checks the plan itself; its result wins over the service's.
+          // The phone re-checks the plan itself; its result wins over the service's. It resolves
+          // every named recipient on its own RPC and never uses an address from the service.
+          const names = await resolveRecipientNames(response.actions, resolveRecipient);
+          if (current !== request.current) return;
+          const actions = response.actions.map((action) => withFullName(action, names));
           const checked = evaluatePolicy(
-            { kind: 'plan', summary: response.summary, actions: response.actions, assumptions: response.assumptions },
+            { kind: 'plan', summary: response.summary, actions, assumptions: response.assumptions },
             context,
             {
               account,
               valueCapUsd: PLAN_VALUE_CAP_USD,
-              resolveName: (name) => addressBook.find(name)?.address ?? null,
+              resolveName: (name) => names.get(name.trim().toLowerCase())?.address ?? null,
             },
           );
           if (checked.ok) {
@@ -110,7 +114,7 @@ export function useAgentPlanner({
         setState({ phase: 'offline', intent, reason: timedOut ? 'timeout' : 'unavailable' }, current);
       }
     },
-    [account, addressBook, balanceClient, client, now, setState],
+    [account, balanceClient, client, now, resolveRecipient, setState],
   );
 
   const reset = useCallback(() => {
@@ -125,4 +129,42 @@ export function useAgentPlanner({
   }, []);
 
   return { state, turns, submit, reset, markSigned };
+}
+
+type ResolvedName = { address: Address; name: string };
+
+function recipientName(action: Action) {
+  if ((action.type !== 'send_eth' && action.type !== 'send_usdc') || action.recipient.kind !== 'name') return null;
+  return action.recipient.value.trim().toLowerCase();
+}
+
+/**
+ * Resolves each named recipient through ENS, with a bare label read as a Sodera name. Keys are
+ * both the name the plan used and the full ENS name; a name that fails to resolve is left out.
+ */
+async function resolveRecipientNames(actions: Action[], resolve: typeof resolveSepoliaRecipient) {
+  const names = new Map<string, ResolvedName>();
+  await Promise.all(
+    actions.map(async (action) => {
+      const key = recipientName(action);
+      if (!key) return;
+      try {
+        const { address, name } = await resolve(expandSoderaName(key));
+        const resolved = { address, name: name ?? key };
+        names.set(key, resolved);
+        names.set(resolved.name, resolved);
+      } catch {
+        // Unresolved names are blocked by the policy check.
+      }
+    }),
+  );
+  return names;
+}
+
+/** Shows the full ENS name the phone resolved, so the card names exactly who is paid. */
+function withFullName(action: Action, names: Map<string, ResolvedName>): Action {
+  const key = recipientName(action);
+  const resolved = key ? names.get(key) : undefined;
+  if (!resolved || (action.type !== 'send_eth' && action.type !== 'send_usdc')) return action;
+  return { ...action, recipient: { kind: 'name', value: resolved.name } };
 }

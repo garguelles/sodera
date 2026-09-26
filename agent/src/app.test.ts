@@ -8,7 +8,7 @@ import { UnexpectedPayCallsError, type PayQuote } from './pay-quote.ts';
 import { TradingApiError } from './uniswap-trading.ts';
 import { createTranscriptStore } from './transcript.ts';
 import { fakeClient, fakeMultiBaas, message } from './test/fakes.ts';
-import { ACCOUNT, ALICE, createContext } from './test/fixtures.ts';
+import { ACCOUNT, ALICE, createContext, resolveAliceEns } from './test/fixtures.ts';
 
 const TOKEN = 'test-app-token';
 
@@ -32,7 +32,7 @@ function setup(reply: () => Anthropic.Beta.BetaMessage[] | Promise<Anthropic.Bet
     systemPrompt: 'SYSTEM',
     valueCapUsd: 250,
     multibaas: fakeMultiBaas(),
-    resolveEns: vi.fn().mockResolvedValue(null),
+    resolveEns: vi.fn(resolveAliceEns),
     quoteSwap: vi.fn(),
     payQuoter: null,
     transcripts: createTranscriptStore(),
@@ -40,6 +40,17 @@ function setup(reply: () => Anthropic.Beta.BetaMessage[] | Promise<Anthropic.Bet
     ...overrides,
   });
   return { app, toolRunner, log };
+}
+
+/** A model that resolves the recipient with `resolve_name`, as the prompt requires, before replying. */
+function resolvingClient(reply: () => Anthropic.Beta.BetaMessage[]) {
+  return fakeClient(async (params) => {
+    const tool = params.tools.find((item) => 'name' in item && item.name === 'resolve_name') as unknown as {
+      run: (input: unknown) => Promise<string>;
+    };
+    await tool.run({ name: 'alice' });
+    return reply();
+  }).client;
 }
 
 function post(app: ReturnType<typeof createApp>, body: unknown, headers: Record<string, string> = {}) {
@@ -82,7 +93,7 @@ describe('agent server', () => {
   });
 
   it('returns a policy-checked plan with the serving model', async () => {
-    const { app, log } = setup(() => [message(plan())]);
+    const { app, log } = setup(() => [], { client: resolvingClient(() => [message(plan())]) });
 
     const response = await post(app, request());
 
@@ -154,12 +165,19 @@ describe('agent server', () => {
   });
 
   it('rejects plans that break the policy', async () => {
-    const { app } = setup(() => [message(plan('100'))]);
+    const { app } = setup(() => [], { client: resolvingClient(() => [message(plan('100'))]) });
     const body = await (await post(app, request('send 100 eth to alice'))).json();
 
     expect(body.kind).toBe('rejected');
     expect(body.summary).toBe('Send 100 ETH to alice.');
     expect(body.violations.map((violation: { code: string }) => violation.code)).toEqual(['insufficient_eth', 'value_cap']);
+  });
+
+  it('rejects a named recipient that resolve_name never resolved', async () => {
+    const { app } = setup(() => [message(plan())]);
+    const body = await (await post(app, request())).json();
+
+    expect(body.violations.map((violation: { code: string }) => violation.code)).toEqual(['recipient_unresolved']);
   });
 
   it('declines refusals and rejects unreadable output', async () => {
