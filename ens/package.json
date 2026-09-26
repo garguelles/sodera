@@ -1,0 +1,28 @@
+{
+  "name": "@sodera/ens",
+  "packageManager": "pnpm@12.3.4",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "verify:namespace": "node --env-file-if-exists=.env.local ./scripts/verify-namespace.mjs",
+    "prepare:registry": "node --env-file-if-exists=.env.local ./scripts/prepare-registry.mjs"
+  },
+  "dependencies": {
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "viem": "2.35.0"
+  },
+  "devDependencies": {
+    "@types/react": "~19.2.2",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "6.1.1",
+    "typescript": "~6.0.3",
+    "vite": "8.2.2"
+  }
+}

@@ -70,6 +70,7 @@ This record captures clarifications to `sodera.md`. Epic specifications and impl
 - Display the hardcoded identity `anon.sodera.eth` in the hackathon wallet UI. It is a fixture label, not a claim that the name has been issued, resolved, or bound to the user's smart account.
 - Defer ENSv2 child-registry deployment, per-user resolver provisioning, and `<username>.sodera.eth` claiming to the next hackathon. Preserve the verified architecture and evidence for that future work.
 - [ADR-0011](adr/0011-ensv2-user-subnames.md) selects the tokenized, user-owned ENSv2 subname architecture for that deferred work on the current Sepolia deployment. The ETHOnline deployment research is historical and does not establish ownership on the current hierarchy.
+- **Subsequent scope update (2026-09-26):** The owner elected to proceed with real ENS onboarding and free, one-year renewable user subnames. The implementation decisions and deployment gates are in [the ENS onboarding plan](plans/ens-onboarding-and-renewal.md). The fixture description above records the existing app behavior, not the target behavior.
 - Independent passkey recovery is a required implemented feature, but users may skip recovery enrollment.
 - Warn users that losing the device before configuring recovery can permanently lose wallet access. Keep recovery enrollment available afterward.
 - Proton Pass is the required independent recovery-provider target, with similar third-party providers supported where verified compatible. It is distinct from the primary platform passkey.
