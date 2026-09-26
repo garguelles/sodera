@@ -115,6 +115,43 @@ describe('TransactionsScreen', () => {
     expect(screen.getByText('Sponsored · gas 0.000012 ETH')).toBeOnTheScreen();
   });
 
+  it('shows a Pay with payment as one row with what was swapped', async () => {
+    await act(async () => {
+      render(
+        <TransactionsScreen
+          provider={createProvider({
+            status: 'ready',
+            account,
+            items: [
+              {
+                kind: 'payment',
+                id: 'pay-1',
+                transactionHash,
+                asset: 'USDC',
+                amount: '10',
+                counterparty,
+                paidAsset: 'ETH',
+                paidAmount: '0.00028241',
+                paidAmountIsMaximum: false,
+                timestamp: '2026-09-12T20:54:24.000Z',
+                blockNumber: 10,
+                operation: { userOperationHash, success: true, sponsored: true, actualGasCostWei: '12000000000000' },
+              },
+            ],
+          })}
+        />,
+      );
+    });
+
+    expect(
+      await screen.findByRole('link', {
+        name: 'Paid 10 USDC, To 0x2222...2222, Swapped from 0.00028241 ETH, Sponsored, gas 0.000012 ETH',
+      }),
+    ).toBeOnTheScreen();
+    expect(screen.getByText('Paid USDC')).toBeOnTheScreen();
+    expect(screen.getByText('-10')).toBeOnTheScreen();
+  });
+
   it('renders a standalone account operation without an amount', async () => {
     const openTransaction = jest.fn().mockResolvedValue(undefined);
     await act(async () => {

@@ -120,9 +120,11 @@ All work lands on one branch, `feat/pay-with-any-token`, as separate commits, wi
         - A live check (fresh agent quotes, then the guard, `buildPayWithCalls` and the simulation against Sepolia from the deployed Kernel) passes in both directions.
         - A device payment in each direction is still to be done.
 5. **Frontend: activity grouping.**
-    - Files: `app/src/wallet/transaction-activity*.ts`, `user-operation-calls.ts` and `pending-sends.ts`.
-    - Today a pay-with transaction would show up as several rows (swap legs through the router and pool, plus the transfer). Group rows by UserOperation hash when the operation calls the Trading Universal Router, and show one row: "Paid X to <payee> (swapped from Y)".
-    - Pending sends store `payAsset` and `maxAmountIn` so the pending row renders the same way.
+    - Files: `app/src/wallet/pay-with-activity.ts`, `transaction-activity.ts` (a `payment` item kind), `transaction-activity-multibaas.ts`, `user-operation-calls.ts` (every Kernel call, with its data), `pending-sends.ts` and `app/src/components/transactions-screen.tsx`.
+    - Without grouping, a payment shows up as several rows: the ETH sent to the router, its refund, the pool leg, and the transfer to the payee.
+    - An operation is a payment when its last two calls are the Trading Universal Router and a transfer to the payee, which is how Send builds it. Its rows in that transaction become one row, "Paid X <asset>" to the payee, with "Swapped from Y <asset>".
+    - What was paid is the net outflow of the pay asset in the transaction. When paying with ETH, the refund comes from Blockscout's internal transactions; if Blockscout fails, the row shows "up to" the ETH sent to the router. A failed payment keeps one row, marked failed, with no paid amount.
+    - Pending sends store `payAsset` and `maxPayAmount`, so a payment not yet indexed shows "Swapped from up to Y". It is deduplicated against the indexed payment row.
 6. **Docs.**
     - `docs/plans/uniswap-swaps.md`: correct "Why not the Uniswap API or SDKs" (`/swap_5792` and permit-as-transaction exist).
     - `FEEDBACK.md`: rewrite item 4 with the spike's findings.

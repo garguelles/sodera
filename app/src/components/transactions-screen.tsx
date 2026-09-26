@@ -16,6 +16,7 @@ import { platinum } from '@/constants/theme';
 import type {
   TransactionActivityItem,
   TransactionActivityOperationSummary,
+  TransactionActivityPayment,
   TransactionActivityProvider,
   TransactionActivityResult,
 } from '@/wallet/transaction-activity';
@@ -96,7 +97,7 @@ export function TransactionsScreen({
       <View style={styles.heading}>
         <Text style={styles.eyebrow}>ETHEREUM SEPOLIA</Text>
         <Text accessibilityRole="header" style={styles.title}>Transactions</Text>
-        <Text style={styles.subtitle}>Your sends, ETH and USDC transfers, and smart account operations.</Text>
+        <Text style={styles.subtitle}>Your sends and payments, ETH and USDC transfers, and smart account operations.</Text>
       </View>
     </View>
   );
@@ -189,12 +190,14 @@ function TransactionRow({ item, onPress }: { item: TransactionActivityItem; onPr
     );
   }
 
-  const sent = item.direction === 'sent';
+  const payment = item.kind === 'payment';
+  const sent = payment || item.direction === 'sent';
   const counterparty = `${sent ? 'To' : 'From'} ${shortenAddress(item.counterparty)}`;
   const operationLabel = item.operation ? `, ${describeOperation(item.operation).label}` : '';
+  const swappedFrom = payment ? describeSwappedFrom(item) : null;
   return (
     <Pressable
-      accessibilityLabel={`${sent ? 'Sent' : 'Received'} ${item.amount} ${item.asset}, ${counterparty}${operationLabel}${item.status ? `, ${item.status}` : ''}`}
+      accessibilityLabel={`${payment ? 'Paid' : sent ? 'Sent' : 'Received'} ${item.amount} ${item.asset}, ${counterparty}${swappedFrom ? `, ${swappedFrom}` : ''}${operationLabel}${item.status ? `, ${item.status}` : ''}`}
       accessibilityRole={item.transactionHash ? 'link' : undefined}
       onPress={item.transactionHash ? onPress : undefined}
       style={({ pressed }) => [styles.row, pressed && styles.pressed]}>
@@ -202,8 +205,9 @@ function TransactionRow({ item, onPress }: { item: TransactionActivityItem; onPr
         <Text importantForAccessibility="no" style={[styles.directionIconText, !sent && styles.receivedIconText]}>{sent ? '↗' : '↙'}</Text>
       </View>
       <View style={styles.rowCopy}>
-        <Text style={styles.rowTitle}>{sent ? 'Sent' : 'Received'} {item.asset}</Text>
+        <Text style={styles.rowTitle}>{payment ? 'Paid' : sent ? 'Sent' : 'Received'} {item.asset}</Text>
         <Text selectable style={styles.counterparty}>{counterparty}</Text>
+        {swappedFrom ? <Text selectable style={styles.operationDetail}>{swappedFrom}</Text> : null}
         {item.operation ? <OperationDetail operation={item.operation} /> : null}
         <Text style={styles.timestamp}>{formatTimestamp(item.timestamp)}</Text>
         {item.status ? <Text style={[styles.timestamp, item.status === 'failed' && styles.failed]}>{item.status === 'submitted' ? 'Submitted · awaiting confirmation' : item.status === 'failed' ? 'Failed' : 'Confirmed · awaiting indexing'}</Text> : null}
@@ -217,6 +221,11 @@ function TransactionRow({ item, onPress }: { item: TransactionActivityItem; onPr
       </View>
     </Pressable>
   );
+}
+
+function describeSwappedFrom(item: TransactionActivityPayment) {
+  if (!item.paidAmount) return `Swapped from ${item.paidAsset}`;
+  return `Swapped from ${item.paidAmountIsMaximum ? 'up to ' : ''}${item.paidAmount} ${item.paidAsset}`;
 }
 
 function OperationDetail({ operation }: { operation: TransactionActivityOperationSummary }) {

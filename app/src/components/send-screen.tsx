@@ -321,6 +321,12 @@ export function SendScreen({
         amount: formatAssetAmount(value, asset),
         timestamp: new Date().toISOString(),
         status: 'submitted',
+        ...(payWithReview
+          ? {
+              payAsset: payWithReview.request.payAsset,
+              maxPayAmount: formatAssetAmount(BigInt(payWithReview.quote.maxAmountIn), payWithReview.request.payAsset),
+            }
+          : {}),
       };
       try {
         await recordSend(send);

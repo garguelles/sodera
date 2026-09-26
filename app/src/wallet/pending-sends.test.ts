@@ -71,3 +71,14 @@ it('surfaces a failed Bundler receipt rather than calling it a confirmed transfe
   if (result.status !== 'ready') throw new Error('Expected activity');
   expect(result.items[0]).toMatchObject({ kind: 'transfer', status: 'failed' });
 });
+
+it('shows a local Pay with send as a payment of at most the quoted maximum', async () => {
+  const dependencies = setup();
+  const sends = createPendingSends(dependencies);
+  await sends.update({ ...send, payAsset: 'ETH', maxPayAmount: '0.0004' });
+  const result = await sends.provider.load();
+  if (result.status !== 'ready') throw new Error('Expected activity');
+  expect(result.items[0]).toMatchObject({
+    kind: 'payment', asset: 'USDC', amount: '1.25', paidAsset: 'ETH', paidAmount: '0.0004', paidAmountIsMaximum: true,
+  });
+});

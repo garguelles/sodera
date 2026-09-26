@@ -30,8 +30,11 @@ import type {
   TransactionActivityTransfer,
 } from './transaction-activity';
 import { createBlockscoutReceivedEthReader, type ReceivedEthReader } from './received-eth-blockscout';
+import { groupPayWithActivity } from './pay-with-activity';
 import {
-  readUserOperationEthTransfers,
+  ethTransfersOf,
+  readUserOperationCalls,
+  type UserOperationCall,
   type UserOperationEthTransfer,
   type UserOperationTransactionReader,
 } from './user-operation-calls';
@@ -155,10 +158,15 @@ export function createMultiBaasTransactionActivityProvider({
         multiBaas.executeEventQuery(buildUsdcTransferQuery(account, 'received'), { limit }),
         multiBaas.executeEventQuery(buildUserOperationQuery(account), { limit }),
       ]);
-      const ethTransfers = await readEthTransfers({
+      const operationCalls = await readOperationCalls({
         account,
         reader: getReader(),
         operationRows: operations,
+      });
+      const ethTransfers = new Map<string, UserOperationEthTransfer[]>();
+      operationCalls.forEach((calls, hash) => {
+        const sends = ethTransfersOf(calls);
+        if (sends && sends.length > 0) ethTransfers.set(hash, sends);
       });
       const indexed = normalizeMultiBaasActivity({
         account,
@@ -168,10 +176,13 @@ export function createMultiBaasTransactionActivityProvider({
         ethTransfers,
       });
       const received = await receivedEthLoad;
-      const items = sortActivity([
-        ...indexed.items,
-        ...(received.ok ? received.value.items : []),
-      ]);
+      const items = sortActivity(
+        groupPayWithActivity({
+          items: [...indexed.items, ...(received.ok ? received.value.items : [])],
+          operationCalls,
+          receivedEthLoaded: received.ok,
+        }),
+      );
       const skippedCount = indexed.skippedCount + (received.ok ? received.value.skippedCount : 0);
       const messages = [
         ...(skippedCount > 0
@@ -210,12 +221,13 @@ function createSepoliaTransactionReader(): UserOperationTransactionReader {
 }
 
 /**
- * Native ETH transfers emit no events, so MultiBaas only sees the user operation. Read the ETH
- * calls of every operation from its bundle transaction: a batched operation can move USDC and
- * send ETH at once, such as a swap followed by a send. A failed lookup leaves the operation's
- * ETH sends out, and the row still shows its USDC transfers or a plain account operation.
+ * Native ETH transfers emit no events, so MultiBaas only sees the user operation. Read the calls
+ * of every operation from its bundle transaction: a batched operation can move USDC and send ETH
+ * at once, such as a swap followed by a send, and the calls also identify Pay with operations.
+ * A failed lookup leaves the operation's ETH sends out, and the row still shows its USDC
+ * transfers or a plain account operation.
  */
-export async function readEthTransfers({
+export async function readOperationCalls({
   account,
   reader,
   operationRows,
@@ -224,7 +236,7 @@ export async function readEthTransfers({
   reader: UserOperationTransactionReader;
   operationRows: readonly EventRow[];
 }) {
-  const result = new Map<string, UserOperationEthTransfer[]>();
+  const result = new Map<string, UserOperationCall[]>();
   await Promise.all(
     operationRows.map(async (row) => {
       const transactionHash = parseHash(row.txHash);
@@ -232,12 +244,12 @@ export async function readEthTransfers({
       const nonce = parseUint(row.nonce);
       if (!transactionHash || !userOperationHash || nonce === null) return;
       try {
-        const transfers = await readUserOperationEthTransfers(reader, {
+        const calls = await readUserOperationCalls(reader, {
           transactionHash,
           sender: account,
           nonce,
         });
-        if (transfers && transfers.length > 0) result.set(userOperationHash.toLowerCase(), transfers);
+        if (calls && calls.length > 0) result.set(userOperationHash.toLowerCase(), calls);
       } catch {
         // The operation row still shows success, sponsorship, and gas.
       }

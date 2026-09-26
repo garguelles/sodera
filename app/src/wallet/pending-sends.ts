@@ -4,7 +4,7 @@ import { isHash, type Address, type Hash } from 'viem';
 import { readPersistedWalletIdentity, type WalletIdentityStorage } from './wallet-identity';
 import { walletIdentityNativeStorage } from './wallet-identity-native-storage';
 import { multiBaasTransactionActivityProvider } from './transaction-activity-multibaas';
-import type { TransactionActivityProvider } from './transaction-activity';
+import type { TransactionActivityItem, TransactionActivityProvider } from './transaction-activity';
 import type { SendAsset } from './send-transfer';
 
 const STORAGE_KEY = 'sodera:pending-sends:v1';
@@ -18,7 +18,35 @@ export type PendingSend = {
   amount: string;
   timestamp: string;
   status: 'submitted' | 'confirmed' | 'failed';
+  /** Set for Pay with: the asset swapped from, and at most how much of it (decimal string). */
+  payAsset?: SendAsset;
+  maxPayAmount?: string;
 };
+
+/** A local row for a send the indexer may not have seen yet. */
+function localItem(entry: PendingSend): TransactionActivityItem {
+  const base = {
+    id: `pending:${entry.userOperationHash}`,
+    transactionHash: entry.transactionHash,
+    userOperationHash: entry.userOperationHash,
+    status: entry.status,
+    asset: entry.asset,
+    amount: entry.amount,
+    counterparty: entry.recipient,
+    timestamp: entry.timestamp,
+    blockNumber: 0,
+    operation: null,
+  };
+  return entry.payAsset && entry.payAsset !== entry.asset
+    ? {
+        ...base,
+        kind: 'payment',
+        paidAsset: entry.payAsset,
+        paidAmount: entry.maxPayAmount ?? null,
+        paidAmountIsMaximum: true,
+      }
+    : { ...base, kind: 'transfer', direction: 'sent' };
+}
 
 type PendingSendStorage = { getItem(key: string): Promise<string | null>; setItem(key: string, value: string): Promise<void> };
 
@@ -69,24 +97,11 @@ export function createPendingSends({ storage = Storage, identityStorage = wallet
         const result = await activity.load();
         const indexed = result.status === 'empty' ? [] : result.items;
         const local = entries.filter((entry) => !entry.transactionHash || !indexed.some(
-          (item) => item.kind === 'transfer' &&
+          (item) => (item.kind === 'transfer' || item.kind === 'payment') &&
             item.transactionHash?.toLowerCase() === entry.transactionHash?.toLowerCase() &&
             item.asset === entry.asset && item.counterparty.toLowerCase() === entry.recipient.toLowerCase(),
         ));
-        const items = [...local.map((entry) => ({
-            kind: 'transfer' as const,
-            id: `pending:${entry.userOperationHash}`,
-            transactionHash: entry.transactionHash,
-            userOperationHash: entry.userOperationHash,
-            status: entry.status,
-            direction: 'sent' as const,
-            asset: entry.asset,
-            amount: entry.amount,
-            counterparty: entry.recipient,
-            timestamp: entry.timestamp,
-            blockNumber: 0,
-            operation: null,
-          })), ...indexed].sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp));
+        const items = [...local.map(localItem), ...indexed].sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp));
         return result.status === 'partial'
           ? { status: 'partial', account, message: result.message, items }
           : { status: 'ready', account, items };
@@ -96,20 +111,7 @@ export function createPendingSends({ storage = Storage, identityStorage = wallet
           status: 'partial' as const,
           account,
           message: 'Indexed activity is unavailable. Recent sends are shown from this device.',
-          items: entries.map((entry) => ({
-            kind: 'transfer' as const,
-            id: `pending:${entry.userOperationHash}`,
-            transactionHash: entry.transactionHash,
-            userOperationHash: entry.userOperationHash,
-            status: entry.status,
-            direction: 'sent' as const,
-            asset: entry.asset,
-            amount: entry.amount,
-            counterparty: entry.recipient,
-            timestamp: entry.timestamp,
-            blockNumber: 0,
-            operation: null,
-          })),
+          items: entries.map(localItem),
         };
       }
     },

@@ -24,6 +24,28 @@ export type TransactionActivityTransfer = {
   operation: TransactionActivityOperationSummary | null;
 };
 
+/** A Pay with operation: the swap legs folded into the one transfer the payee received. */
+export type TransactionActivityPayment = {
+  kind: 'payment';
+  id: string;
+  transactionHash: Hash | null;
+  userOperationHash?: Hash;
+  status?: 'submitted' | 'confirmed' | 'failed';
+  /** What the payee received. */
+  asset: 'ETH' | 'USDC';
+  /** Decimal string without a unit. */
+  amount: string;
+  counterparty: Address;
+  paidAsset: 'ETH' | 'USDC';
+  /** Decimal string without a unit; null when unknown. */
+  paidAmount: string | null;
+  /** True when `paidAmount` is the quoted maximum rather than what the swap actually took. */
+  paidAmountIsMaximum: boolean;
+  timestamp: string;
+  blockNumber: number;
+  operation: TransactionActivityOperationSummary | null;
+};
+
 export type TransactionActivityOperation = {
   kind: 'operation';
   id: string;
@@ -36,7 +58,10 @@ export type TransactionActivityOperation = {
   blockNumber: number;
 };
 
-export type TransactionActivityItem = TransactionActivityTransfer | TransactionActivityOperation;
+export type TransactionActivityItem =
+  | TransactionActivityTransfer
+  | TransactionActivityPayment
+  | TransactionActivityOperation;
 
 export type TransactionActivityResult =
   | { status: 'ready'; account: Address; items: readonly TransactionActivityItem[] }
