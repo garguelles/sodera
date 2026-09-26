@@ -3,6 +3,7 @@ import { StyleSheet } from 'react-native';
 import type { Address, Hash } from 'viem';
 
 import { TransactionsScreen } from './transactions-screen';
+import { platinum } from '@/constants/theme';
 import { sepoliaTransactionUrl } from '@/wallet/sepolia';
 import type { TransactionActivityProvider } from '@/wallet/transaction-activity';
 
@@ -22,7 +23,7 @@ describe('TransactionsScreen', () => {
 
     const loadingList = screen.getByTestId('transactions-list');
     expect(StyleSheet.flatten(loadingList.props.contentContainerStyle)).toMatchObject({
-      paddingHorizontal: 22,
+      paddingHorizontal: platinum.spacing.lg,
     });
 
     await act(async () => {
@@ -31,7 +32,7 @@ describe('TransactionsScreen', () => {
 
     expect(await screen.findByText('No transactions yet')).toBeOnTheScreen();
     expect(StyleSheet.flatten(screen.getByTestId('transactions-list').props.contentContainerStyle))
-      .toMatchObject({ paddingHorizontal: 22 });
+      .toMatchObject({ paddingHorizontal: platinum.spacing.lg });
   });
 
   it('renders real normalized activity and opens its explorer transaction', async () => {
