@@ -2,7 +2,9 @@ import type { Address, Hash } from 'viem';
 
 export type TransactionActivityItem = {
   id: string;
-  transactionHash: Hash;
+  transactionHash: Hash | null;
+  userOperationHash?: Hash;
+  status?: 'submitted' | 'confirmed' | 'failed';
   direction: 'sent' | 'received';
   asset: 'ETH' | 'USDC';
   amount: string;

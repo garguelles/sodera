@@ -5,8 +5,13 @@ const { getDefaultConfig } = require('expo/metro-config');
 const config = getDefaultConfig(__dirname);
 const isowsNativePath = path.join(path.dirname(require.resolve('isows/package.json')), '_esm/native.js');
 const zeroDevSdkUtilsPath = path.join(path.dirname(require.resolve('@zerodev/sdk')), '../_esm/utils.js');
+const viemPath = path.dirname(require.resolve('viem'));
 
 config.resolver.resolveRequest = (context, moduleName, platform) => {
+  if (moduleName.startsWith('ox/')) {
+    // Metro otherwise selects ox's TypeScript source, whose relative .js imports are not published there.
+    return { filePath: require.resolve(moduleName, { paths: [viemPath] }), type: 'sourceFile' };
+  }
   if (moduleName === 'isows' && platform !== 'web') {
     return { filePath: isowsNativePath, type: 'sourceFile' };
   }

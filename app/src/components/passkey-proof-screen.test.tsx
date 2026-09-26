@@ -214,6 +214,8 @@ function createExecutionClient(
     deployed: false,
     prepare: jest.fn().mockResolvedValue(review),
     execute: jest.fn().mockResolvedValue(executionEvidence()),
+    submit: jest.fn(),
+    waitForConfirmation: jest.fn(),
     ...overrides,
   };
 }
@@ -236,7 +238,7 @@ function executionEvidence(): KernelOperationEvidence {
       zeroDevSdkVersion: '5.5.10',
       zeroDevPasskeyValidatorPackageVersion: '5.6.0',
       zeroDevWebAuthnKeyPackageVersion: '5.5.0',
-      viemVersion: '2.28.0',
+      viemVersion: '2.35.0',
     },
     receipt: { success: true, actualGasCostWei: '1', actualGasUsed: '1' },
     resultingState: {

@@ -258,6 +258,8 @@ function kernelExecutionClient(): KernelPasskeyExecutionClient {
     deployed: false,
     prepare: jest.fn(),
     execute: jest.fn(),
+    submit: jest.fn(),
+    waitForConfirmation: jest.fn(),
   };
 }
 
