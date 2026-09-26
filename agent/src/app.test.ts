@@ -173,9 +173,19 @@ describe('agent server', () => {
     expect(body.violations.map((violation: { code: string }) => violation.code)).toEqual(['insufficient_eth', 'value_cap']);
   });
 
-  it('rejects a named recipient that resolve_name never resolved', async () => {
-    const { app } = setup(() => [message(plan())]);
-    const body = await (await post(app, request())).json();
+  it('resolves a name the model reused without calling resolve_name, as follow-ups do', async () => {
+    const { app } = setup(() => [message(plan('0.01', 'alice.sodera.eth'))]);
+    const body = await (await post(app, request('make it 0.01 instead'))).json();
+
+    expect(body).toMatchObject({
+      kind: 'plan',
+      enriched: { actions: [{ recipient: { address: getAddress(ALICE), name: 'alice.sodera.eth' } }] },
+    });
+  });
+
+  it('rejects a named recipient ENS cannot resolve', async () => {
+    const { app } = setup(() => [message(plan('0.01', 'nobodyhere'))]);
+    const body = await (await post(app, request('send 0.01 eth to nobodyhere'))).json();
 
     expect(body.violations.map((violation: { code: string }) => violation.code)).toEqual(['recipient_unresolved']);
   });
