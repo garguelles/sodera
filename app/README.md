@@ -39,6 +39,20 @@ pnpm test --runInBand
 pnpm verify:kernel-webauthn
 pnpm verify:webauthn-provenance
 pnpm verify:webauthn-vectors
+pnpm verify:multibaas
 ```
 
-Copy `.env.example` to the ignored `.env.local` before running verification commands that require Sepolia or ZeroDev configuration.
+Copy `.env.example` to the ignored `.env.local` before running verification commands that require Sepolia, ZeroDev, or MultiBaas configuration.
+
+## MultiBaas
+
+The Transactions screen reads USDC transfers and smart account operations from a Curvegrid MultiBaas deployment on Ethereum Sepolia. Set these variables in `.env.local`:
+
+| Variable | Used by | Value |
+| --- | --- | --- |
+| `MULTIBAAS_BASE_URL` | `pnpm verify:multibaas` | Deployment domain, without a trailing slash or `/api/v0` |
+| `MULTIBAAS_API_KEY` | `pnpm verify:multibaas` | DApp User API key |
+| `EXPO_PUBLIC_MULTIBAAS_BASE_URL` | App | Same domain as above |
+| `EXPO_PUBLIC_MULTIBAAS_API_KEY` | App | Same DApp User key; it is embedded in the app and is public |
+
+`pnpm verify:multibaas` checks the deployment against the pinned Sepolia contracts and prints the response shapes the app depends on. Set `VERIFY_ACCOUNT` to check a specific account balance.

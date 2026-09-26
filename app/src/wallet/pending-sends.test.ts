@@ -53,8 +53,8 @@ it('reconciles a receipt and deduplicates the indexed transfer', async () => {
   expect(result.items[0]).toMatchObject({ status: 'confirmed', transactionHash });
 
   jest.mocked(dependencies.activity.load).mockResolvedValue({ status: 'ready', account, items: [{
-    id: 'indexed', transactionHash, direction: 'sent', asset: 'USDC', amount: '1.25',
-    counterparty: recipient, timestamp: send.timestamp, blockNumber: 10,
+    kind: 'transfer', id: 'indexed', transactionHash, direction: 'sent', asset: 'USDC', amount: '1.25',
+    counterparty: recipient, timestamp: send.timestamp, blockNumber: 10, operation: null,
   }] });
   const indexed = await sends.provider.load();
   if (indexed.status !== 'ready') throw new Error('Expected activity');
@@ -69,5 +69,5 @@ it('surfaces a failed Bundler receipt rather than calling it a confirmed transfe
   dependencies.lookup.mockResolvedValue({ success: false, transactionHash });
   const result = await sends.provider.load();
   if (result.status !== 'ready') throw new Error('Expected activity');
-  expect(result.items[0].status).toBe('failed');
+  expect(result.items[0]).toMatchObject({ kind: 'transfer', status: 'failed' });
 });

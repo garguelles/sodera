@@ -10,10 +10,12 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { formatEther } from 'viem';
 
 import { platinum } from '@/constants/theme';
 import type {
   TransactionActivityItem,
+  TransactionActivityOperationSummary,
   TransactionActivityProvider,
   TransactionActivityResult,
 } from '@/wallet/transaction-activity';
@@ -33,7 +35,9 @@ type ViewState =
 export function TransactionsScreen({
   provider,
   onDone = () => router.back(),
-  openTransaction = Linking.openURL,
+  openTransaction = async (url) => {
+    await Linking.openURL(url);
+  },
 }: TransactionsScreenProps) {
   const [viewState, setViewState] = useState<ViewState>({ status: 'loading' });
   const [request, setRequest] = useState(0);
@@ -92,7 +96,7 @@ export function TransactionsScreen({
       <View style={styles.heading}>
         <Text style={styles.eyebrow}>ETHEREUM SEPOLIA</Text>
         <Text accessibilityRole="header" style={styles.title}>Transactions</Text>
-        <Text style={styles.subtitle}>Your Sepolia sends and indexed ETH and USDC transfers.</Text>
+        <Text style={styles.subtitle}>Your sends, ETH and USDC transfers, and smart account operations.</Text>
       </View>
     </View>
   );
@@ -133,7 +137,7 @@ export function TransactionsScreen({
           ) : (
             <View style={styles.emptyState}>
               <Text style={styles.stateTitle}>No transactions yet</Text>
-              <Text style={styles.stateCopy}>ETH and USDC transfers will appear here after the explorer indexes them.</Text>
+              <Text style={styles.stateCopy}>Transfers and operations will appear here once they are indexed.</Text>
             </View>
           )
         }
@@ -165,11 +169,32 @@ export function TransactionsScreen({
 }
 
 function TransactionRow({ item, onPress }: { item: TransactionActivityItem; onPress: () => void }) {
+  if (item.kind === 'operation') {
+    const detail = describeOperation(item);
+    return (
+      <Pressable
+        accessibilityLabel={`Account operation, ${detail.label}`}
+        accessibilityRole="link"
+        onPress={onPress}
+        style={({ pressed }) => [styles.row, pressed && styles.pressed]}>
+        <View style={[styles.directionIcon, styles.operationIcon]}>
+          <Text importantForAccessibility="no" style={styles.directionIconText}>⚙</Text>
+        </View>
+        <View style={styles.rowCopy}>
+          <Text style={styles.rowTitle}>Account operation</Text>
+          <OperationDetail operation={item} />
+          <Text style={styles.timestamp}>{formatTimestamp(item.timestamp)}</Text>
+        </View>
+      </Pressable>
+    );
+  }
+
   const sent = item.direction === 'sent';
   const counterparty = `${sent ? 'To' : 'From'} ${shortenAddress(item.counterparty)}`;
+  const operationLabel = item.operation ? `, ${describeOperation(item.operation).label}` : '';
   return (
     <Pressable
-      accessibilityLabel={`${sent ? 'Sent' : 'Received'} ${item.amount} ${item.asset}, ${counterparty}${item.status ? `, ${item.status}` : ''}`}
+      accessibilityLabel={`${sent ? 'Sent' : 'Received'} ${item.amount} ${item.asset}, ${counterparty}${operationLabel}${item.status ? `, ${item.status}` : ''}`}
       accessibilityRole={item.transactionHash ? 'link' : undefined}
       onPress={item.transactionHash ? onPress : undefined}
       style={({ pressed }) => [styles.row, pressed && styles.pressed]}>
@@ -179,6 +204,7 @@ function TransactionRow({ item, onPress }: { item: TransactionActivityItem; onPr
       <View style={styles.rowCopy}>
         <Text style={styles.rowTitle}>{sent ? 'Sent' : 'Received'} {item.asset}</Text>
         <Text selectable style={styles.counterparty}>{counterparty}</Text>
+        {item.operation ? <OperationDetail operation={item.operation} /> : null}
         <Text style={styles.timestamp}>{formatTimestamp(item.timestamp)}</Text>
         {item.status ? <Text style={[styles.timestamp, item.status === 'failed' && styles.failed]}>{item.status === 'submitted' ? 'Submitted · awaiting confirmation' : item.status === 'failed' ? 'Failed' : 'Confirmed · awaiting indexing'}</Text> : null}
         {item.userOperationHash && !item.transactionHash ? <Text selectable style={styles.timestamp}>Operation: {shortenAddress(item.userOperationHash)}</Text> : null}
@@ -191,6 +217,33 @@ function TransactionRow({ item, onPress }: { item: TransactionActivityItem; onPr
       </View>
     </Pressable>
   );
+}
+
+function OperationDetail({ operation }: { operation: TransactionActivityOperationSummary }) {
+  const { funding } = describeOperation(operation);
+  return (
+    <Text style={styles.operationDetail}>
+      {operation.success ? null : <Text style={styles.failed}>Failed · </Text>}
+      {funding}
+    </Text>
+  );
+}
+
+function describeOperation(operation: TransactionActivityOperationSummary) {
+  const funding = `${operation.sponsored ? 'Sponsored' : 'Self-funded'} · gas ${formatGasCost(operation.actualGasCostWei)} ETH`;
+  return {
+    funding,
+    label: `${operation.success ? '' : 'Failed, '}${funding.replace(' · ', ', ')}`,
+  };
+}
+
+function formatGasCost(wei: string) {
+  const value = BigInt(wei);
+  if (value === 0n) return '0';
+  const [whole, fraction = ''] = formatEther(value).split('.');
+  const trimmed = fraction.slice(0, 6).replace(/0+$/, '');
+  if (whole === '0' && !trimmed) return '<0.000001';
+  return trimmed ? `${whole}.${trimmed}` : whole;
 }
 
 function formatTimestamp(timestamp: string) {
@@ -229,12 +282,14 @@ const styles = StyleSheet.create({
   },
   sentIcon: { backgroundColor: colors.surfaceHigh },
   receivedIcon: { backgroundColor: colors.emeraldWash },
+  operationIcon: { backgroundColor: colors.glassRaised },
   directionIconText: { ...typography.heading, color: colors.platinum },
   receivedIconText: { color: colors.emerald },
   rowCopy: { flex: 1, minWidth: 0, gap: spacing.xs },
   rowTitle: { ...typography.bodySmall, fontFamily: typography.subheading.fontFamily, color: colors.platinum },
   counterparty: { ...typography.caption, color: colors.mutedText, fontVariant: ['tabular-nums'] },
   timestamp: { ...typography.labelSmall, color: colors.faintText },
+  operationDetail: { ...typography.labelSmall, color: colors.mutedText, fontVariant: ['tabular-nums'] },
   amountCopy: { maxWidth: '38%', alignItems: 'flex-end', gap: spacing.xs },
   amount: { ...typography.label, color: colors.platinum, fontVariant: ['tabular-nums'] },
   receivedAmount: { color: colors.emerald },

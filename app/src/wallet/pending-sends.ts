@@ -3,7 +3,7 @@ import { isHash, type Address, type Hash } from 'viem';
 
 import { readPersistedWalletIdentity, type WalletIdentityStorage } from './wallet-identity';
 import { walletIdentityNativeStorage } from './wallet-identity-native-storage';
-import { blockscoutTransactionActivityProvider } from './transaction-activity-blockscout';
+import { multiBaasTransactionActivityProvider } from './transaction-activity-multibaas';
 import type { TransactionActivityProvider } from './transaction-activity';
 import type { SendAsset } from './send-transfer';
 
@@ -22,7 +22,7 @@ export type PendingSend = {
 
 type PendingSendStorage = { getItem(key: string): Promise<string | null>; setItem(key: string, value: string): Promise<void> };
 
-export function createPendingSends({ storage = Storage, identityStorage = walletIdentityNativeStorage, activity = blockscoutTransactionActivityProvider, lookup = lookupUserOperation }: {
+export function createPendingSends({ storage = Storage, identityStorage = walletIdentityNativeStorage, activity = multiBaasTransactionActivityProvider, lookup = lookupUserOperation }: {
   storage?: PendingSendStorage;
   identityStorage?: WalletIdentityStorage;
   activity?: TransactionActivityProvider;
@@ -69,10 +69,12 @@ export function createPendingSends({ storage = Storage, identityStorage = wallet
         const result = await activity.load();
         const indexed = result.status === 'empty' ? [] : result.items;
         const local = entries.filter((entry) => !entry.transactionHash || !indexed.some(
-          (item) => item.transactionHash?.toLowerCase() === entry.transactionHash?.toLowerCase() &&
+          (item) => item.kind === 'transfer' &&
+            item.transactionHash?.toLowerCase() === entry.transactionHash?.toLowerCase() &&
             item.asset === entry.asset && item.counterparty.toLowerCase() === entry.recipient.toLowerCase(),
         ));
         const items = [...local.map((entry) => ({
+            kind: 'transfer' as const,
             id: `pending:${entry.userOperationHash}`,
             transactionHash: entry.transactionHash,
             userOperationHash: entry.userOperationHash,
@@ -83,6 +85,7 @@ export function createPendingSends({ storage = Storage, identityStorage = wallet
             counterparty: entry.recipient,
             timestamp: entry.timestamp,
             blockNumber: 0,
+            operation: null,
           })), ...indexed].sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp));
         return result.status === 'partial'
           ? { status: 'partial', account, message: result.message, items }
@@ -92,8 +95,9 @@ export function createPendingSends({ storage = Storage, identityStorage = wallet
         return {
           status: 'partial' as const,
           account,
-          message: 'Explorer activity is unavailable. Recent sends are shown from this device.',
+          message: 'Indexed activity is unavailable. Recent sends are shown from this device.',
           items: entries.map((entry) => ({
+            kind: 'transfer' as const,
             id: `pending:${entry.userOperationHash}`,
             transactionHash: entry.transactionHash,
             userOperationHash: entry.userOperationHash,
@@ -104,6 +108,7 @@ export function createPendingSends({ storage = Storage, identityStorage = wallet
             counterparty: entry.recipient,
             timestamp: entry.timestamp,
             blockNumber: 0,
+            operation: null,
           })),
         };
       }

@@ -8,7 +8,7 @@ Priority: sections 1, 2, and 3 are the MultiBaas deliverable and are frontend-on
 
 ## Scope decisions
 
-- MultiBaas replaces Blockscout as the activity source. Blockscout code is deleted, not kept as a fallback.
+- MultiBaas replaces Blockscout as the activity source for USDC and account operations. Blockscout remains only for ETH received from other wallets (`app/src/wallet/received-eth-blockscout.ts`), because a native transfer into an account emits no event on a contract MultiBaas watches. Kernel v3.3 does emit `Received(sender, amount)`, but indexing it needs every wallet address linked in MultiBaas.
 - MultiBaas becomes the source for USDC balance and the Chainlink ETH/USD price. The ETH native balance moves to MultiBaas only if the address endpoint proves to return it; otherwise it stays on the public RPC.
 - The Graph is no longer the planned portfolio and activity source. `docs/hackathon-decisions.md` still says otherwise; editing that document is out of scope for this plan and will be handled separately.
 - Morpho vault data is out of scope.
@@ -16,7 +16,7 @@ Priority: sections 1, 2, and 3 are the MultiBaas deliverable and are frontend-on
 - One backend only. Section 5 creates `agent/`; section 4, if built, adds its webhook and device endpoints to that same service rather than a separate app.
 - Cloud Wallets, Transaction Manager, Safe Accounts, signer selector, and the Hardhat and Foundry plugins are not used. They assume EOAs or Safe multisigs. The passkey must remain Kernel's direct authority (ADR-0010).
 - Market Watch is unchanged. MultiBaas has no price data.
-- Outbound ETH sends made from this phone get their amount and recipient from a local journal written by the send flow. Inbound ETH from external wallets shows only as a balance change, because native transfers emit no events.
+- Outbound ETH sends get their amount and recipient from the chain: the app fetches the bundle transaction named by the `UserOperationEvent` and decodes the Kernel calls. Nothing about activity is stored on the phone. Inbound ETH from other wallets comes from Blockscout's incoming transactions and internal transactions; if Blockscout fails, the feed shows MultiBaas rows with a partial-result notice.
 
 ## Shared context
 
@@ -28,8 +28,8 @@ Priority: sections 1, 2, and 3 are the MultiBaas deliverable and are frontend-on
 - Environment: `app/.env.example` is copied to the gitignored `app/.env.local`. Node verification scripts read plain names (`SEPOLIA_RPC_URL`). The app reads only `EXPO_PUBLIC_*` names, which are embedded in the binary and must be treated as public. Follow this split for every new variable.
 - Verification scripts live in `app/scripts/*.mjs`, are registered in `app/package.json` under `verify:*`, and run with `node --env-file-if-exists=.env.local`. They use `node:assert/strict` and fail loudly. Follow `verify-kernel-live.mjs` for structure.
 - The persisted wallet identity is read with `readPersistedWalletIdentity(storage)` from `app/src/wallet/wallet-identity.ts`. It returns `{ credential, account, deployed }`, where `account` is the checksummed Kernel smart account address. Every provider gets the account this way.
-- Native key-value storage is not generic. `modules/sodera-passkey` exposes fixed methods (`readWalletIdentityAsync`, `writeOnboardingProfileAsync`, and so on) backed by Kotlin. Adding a native method requires a rebuild with `pnpm android`. Section 1 uses `expo-file-system` for the new journal to avoid that.
-- Screens receive providers as props and are wired in `app/src/app/*.tsx` route files. Example: `app/src/app/transactions.tsx` passes `blockscoutTransactionActivityProvider` into `TransactionsScreen`.
+- Native key-value storage is not generic. `modules/sodera-passkey` exposes fixed methods (`readWalletIdentityAsync`, `writeOnboardingProfileAsync`, and so on) backed by Kotlin. Adding a native method requires a rebuild with `pnpm android`.
+- Screens receive providers as props and are wired in `app/src/app/*.tsx` route files. Example: `app/src/app/transactions.tsx` passes `multiBaasTransactionActivityProvider` into `TransactionsScreen`.
 - The send flow (`app/src/components/send-screen.tsx`) calls `client.prepare(calls)` to get a `KernelOperationReview`, then `client.execute(review.userOperationHash)` after the passkey ceremony, and receives `KernelOperationEvidence` with `userOperationHash`, `transactionHash`, `account`, and `receipt.actualGasCostWei`. On success it calls `walletHomeLiveProvider.refresh()`.
 
 ### Pinned on-chain facts (Ethereum Sepolia, chain id 11155111)
@@ -90,7 +90,7 @@ ERC-20 `Transfer(address indexed from, address indexed to, uint256 value)` has i
 
 ## Prerequisites (human setup, then the spike)
 
-These steps need the Curvegrid console and cannot be automated from the repo. Record every value and answer in `docs/research/multibaas-sepolia.md` as you go, in the same style as the other research files.
+These steps need the Curvegrid console and cannot be automated from the repo.
 
 1. Create a MultiBaas deployment on Ethereum Sepolia. Record its domain.
 2. Add USDC by address (`0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238`). It is a `FiatTokenProxy`; confirm the discovered ABI is the implementation ABI containing `Transfer`, `balanceOf`, and `decimals`. Contract label `usdc`, address alias `usdc`. Enable sync events. Starting block: the most recent block the free tier allows (100 back from head). Record the block number.
@@ -118,11 +118,11 @@ EXPO_PUBLIC_MULTIBAAS_API_KEY=
 
 ### Goal
 
-Replace the Blockscout activity provider with a MultiBaas provider built on two event queries, extend the activity item model so smart-account operations appear, and add a local journal so ETH sends made from this phone keep their amount and recipient.
+Replace the Blockscout activity provider with a MultiBaas provider built on three event queries, extend the activity item model so smart-account operations appear, and decode ETH sends from their transactions so they show amount and recipient.
 
 ### Outcome
 
-The Transactions screen lists, newest first: USDC transfers in and out, and every user operation the account executed with success flag, sponsorship, and gas cost. USDC sends merge with their operation into one row. ETH sends from this phone show amount and recipient from the journal. Blockscout is gone from the codebase.
+The Transactions screen lists, newest first: USDC transfers in and out, and every user operation the account executed with success flag, sponsorship, and gas cost. USDC sends merge with their operation into one row. ETH sends show amount and recipient decoded from the chain. ETH received from other wallets comes from Blockscout; nothing else does.
 
 ### Files
 
@@ -131,16 +131,16 @@ Create:
 - `app/src/wallet/multibaas.test.ts`
 - `app/src/wallet/transaction-activity-multibaas.ts` — the provider.
 - `app/src/wallet/transaction-activity-multibaas.test.ts`
-- `app/src/wallet/operation-journal.ts` — ETH send journal.
-- `app/src/wallet/operation-journal.test.ts`
+- `app/src/wallet/user-operation-calls.ts` — decodes ETH sends from a bundle transaction.
+- `app/src/wallet/user-operation-calls.test.ts` and `user-operation-calls-fixtures.ts`
 - `app/scripts/verify-multibaas.mjs` — verification script.
+- `app/src/wallet/received-eth-blockscout.ts` and its test — ETH received from other wallets.
 
 Modify:
 - `app/src/wallet/transaction-activity.ts` — item model and `source` union.
 - `app/src/components/transactions-screen.tsx` and its test — render operation rows, update copy.
-- `app/src/components/send-screen.tsx` and its test — write the journal on success.
 - `app/src/app/transactions.tsx` — wire the new provider.
-- `app/package.json` — add `verify:multibaas` and the `expo-file-system` dependency.
+- `app/package.json` — add `verify:multibaas`.
 - `app/.env.example`, `app/README.md` — new variables and the verification command.
 
 Delete:
@@ -189,7 +189,7 @@ Request rules: send `Authorization: Bearer`, `accept: application/json`, and `co
 9. A `triggered_at` filter with `greaterthanorequal` and an ISO-8601 value from one hour ago returns rows and none older than that. If the value format is rejected, try a Unix seconds string and record the working form. Section 2 depends on this answer.
 10. The request in step 6 sent from Node with no `Origin` header succeeds, which is the CORS proof.
 
-Register it as `"verify:multibaas": "node --env-file-if-exists=.env.local ./scripts/verify-multibaas.mjs"`. Record the findings from steps 1, 4, 5, 7, and 9 in `docs/research/multibaas-sepolia.md` and update the constants in `multibaas.ts` if any assumed field name was wrong.
+Register it as `"verify:multibaas": "node --env-file-if-exists=.env.local ./scripts/verify-multibaas.mjs"`. Apply the findings from steps 1, 4, 5, 7, and 9 to the constants in `multibaas.ts`, with a short comment beside each, if any assumed field name was wrong.
 
 **1.2 Activity item model.**
 
@@ -229,32 +229,13 @@ export type TransactionActivityProvider = {
 
 `TransactionActivityResult` keeps its three statuses. `partial` is used when rows were skipped as malformed, with the same message wording as today.
 
-**1.3 Operation journal.**
+**1.3 ETH sends from the chain.**
 
-`app/src/wallet/operation-journal.ts` persists ETH sends made on this phone. Storage is a JSON file at `${FileSystem.documentDirectory}sodera-operation-journal.json` via `expo-file-system` (install with `pnpm exec expo install expo-file-system` so the version matches SDK 57). Keep the storage behind an injectable interface `{ read(): Promise<string | null>; write(value: string): Promise<void> }` like the other storages so tests use an in-memory object.
-
-```ts
-export type JournaledEthSend = {
-  userOperationHash: Hash;
-  transactionHash: Hash;
-  account: Address;
-  recipient: Address;
-  valueWei: string;
-  recordedAt: string; // ISO-8601
-};
-export function createOperationJournal(storage): {
-  append(entry: JournaledEthSend): Promise<void>;
-  list(account: Address): Promise<JournaledEthSend[]>;
-};
-```
-
-Schema: `{ schemaVersion: 1, entries: JournaledEthSend[] }`. Cap at 200 entries, dropping the oldest. A corrupt file is treated as empty and overwritten on the next append. `append` serialises writes the same way `launcher-preferences.ts` does, by chaining on a `writes` promise.
-
-In `send-screen.tsx`, after `executionClient.execute(approvedHash)` returns and before `setStep('success')`, append `{ userOperationHash: evidence.userOperationHash, transactionHash: evidence.transactionHash, account: evidence.account, recipient: review.calls[0].to, valueWei: review.calls[0].valueWei, recordedAt: new Date().toISOString() }`. Wrap it in try/catch and ignore failure, exactly as the `markPersistedWalletIdentityDeployed` call does; the chain result is authoritative. Inject the journal via a `journal` prop with a default, so the existing send-screen tests can pass a mock and assert the append.
+Native ETH transfers emit no events, so MultiBaas sees only the `UserOperationEvent`. The operation query also selects `nonce` (input 3). For each operation whose transaction has no USDC transfer row, the provider fetches the transaction over the public Sepolia RPC and decodes it in `app/src/wallet/user-operation-calls.ts`: decode `handleOps` with the EntryPoint v0.7 ABI, find the operation with the account as sender and the event's nonce, decode Kernel `execute(bytes32 mode, bytes executionCalldata)`, and read the target and value of each call. Call type `0x00` is packed `target(20) ++ value(32) ++ data`; `0x01` is an ABI-encoded `(address,uint256,bytes)[]`. Calls with a non-zero value become ETH sends. A failed lookup or undecodable transaction leaves the row as a plain operation. Nothing is persisted on the phone. Fixtures use ZeroDev's own `encodeCallDataEpV07` so tests prove the decoder reads what the wallet writes.
 
 **1.4 Provider.**
 
-`createMultiBaasTransactionActivityProvider({ storage = walletIdentityNativeStorage, client = createMultiBaasClient({ config: readMultiBaasConfigFromEnv() }) lazily, journal = defaultOperationJournal, limit = 100 })` in `app/src/wallet/transaction-activity-multibaas.ts`. `source: 'multibaas'`. Same `subscribeToChanges` (AppState active) and `refresh()` as the current providers.
+`createMultiBaasTransactionActivityProvider({ storage = walletIdentityNativeStorage, client = createMultiBaasClient({ config: readMultiBaasConfigFromEnv() }) lazily, transactionReader = public Sepolia client lazily, limit = 50 })` in `app/src/wallet/transaction-activity-multibaas.ts`. `source: 'multibaas'`. Same `subscribeToChanges` (AppState active) and `refresh()` as the current providers.
 
 `load()`:
 1. Read the account.
@@ -262,12 +243,12 @@ In `send-screen.tsx`, after `executionClient.execute(approvedHash)` returns and 
    - USDC sent: `Transfer`, filter `and(contract_address_alias == usdc, input[0] == account)`, select txHash, blockNumber, timestamp, from, to, value; `orderBy: 'timestamp', order: 'DESC'`, `limit`.
    - USDC received: same with `input[1] == account`.
    - Operations: `UserOperationEvent`, filter `and(contract_address_alias == entrypoint_v07, input[1] == account)`, select txHash, blockNumber, timestamp, userOpHash (0), paymaster (2), success (4), actualGasCost (5), actualGasUsed (6); same ordering and limit.
-3. Read the journal for the account.
-4. Normalise with an exported pure function `normalizeMultiBaasActivity({ account, usdcSent, usdcReceived, operations, journal })` returning `{ items, skippedCount }`, so tests cover it without the client:
+3. Decode ETH sends for operations that no USDC transfer explains (see 1.3).
+4. Normalise with an exported pure function `normalizeMultiBaasActivity({ account, usdcSent, usdcReceived, operations, ethTransfers })` returning `{ items, skippedCount }`, so tests cover it without the client:
    - Validate every row: `txHash` is a hash, `blockNumber` is a safe non-negative integer (rows may deliver it as a string; accept both), `timestamp` parses, addresses pass `isAddress`, `value` and gas fields parse as `BigInt`, `success` is boolean or the strings `"true"`/`"false"`. Malformed rows increment `skippedCount` and are dropped.
    - USDC rows become `transfer` items with `asset: 'USDC'`, `amount: formatUnits(value, 6)`, `counterparty` checksummed, `id: erc20:{txHash}:{direction}:{from}:{to}:{value}` (there is no log index in the query output; include enough fields to be unique), `operation: null` for now. Drop zero-value rows and rows where from equals to.
    - Operation rows become `operation` items: `sponsored = paymaster !== zeroAddress`, `id: userop:{userOpHash}`.
-   - Merge: for each operation item, if a USDC transfer item shares its `transactionHash`, set that transfer's `operation` field and drop the standalone operation item. If instead a journal entry shares its `userOperationHash`, replace the operation item with a `transfer` item `{ asset: 'ETH', direction: 'sent', amount: formatEther(valueWei), counterparty: recipient, operation: {...}, id: eth:{userOpHash} }` using the row's timestamp and block. Otherwise keep the operation item.
+   - Merge: for each operation item, if a USDC transfer item shares its `transactionHash`, set that transfer's `operation` field and drop the standalone operation item. If instead decoded ETH sends exist for its `userOperationHash`, replace the operation item with one `transfer` item per send `{ asset: 'ETH', direction: 'sent', amount: formatEther(valueWei), counterparty: to, operation: {...}, id: eth:{userOpHash}:{index} }` using the row's timestamp and block. Otherwise keep the operation item.
    - Sort newest first by timestamp, then blockNumber, then id, matching the current comparator.
 5. Return `ready`, `partial`, or `empty` exactly as the Blockscout provider does.
 
@@ -281,22 +262,21 @@ Export `multiBaasTransactionActivityProvider = createMultiBaasTransactionActivit
 
 **1.6 Cleanup.**
 
-Delete the Blockscout provider and test. Grep for `blockscout` and `Blockscout` across `app/src` and remove every reference. Update `app/README.md` with the new environment variables and `pnpm verify:multibaas`. Do not touch the `docs/hackathon-decisions.md` Graph statements.
+Delete the Blockscout provider and test. The only Blockscout use left under `app/src` is the received ETH reader. Update `app/README.md` with the new environment variables and `pnpm verify:multibaas`. Do not touch the `docs/hackathon-decisions.md` Graph statements.
 
 ### Tests
 
 - `multibaas.test.ts`: request headers and URL composition for each helper; error mapping for thrown fetch, non-2xx, and invalid body; `formatInts` always sent; `readMultiBaasConfigFromEnv` names the missing variable.
-- `transaction-activity-multibaas.test.ts`: `normalizeMultiBaasActivity` covers USDC in and out, a USDC send merged with its operation, an ETH send restored from the journal, a standalone failed self-funded operation, malformed rows counted as skipped, zero-value and self-transfer rows dropped, and ordering. A provider-level test with a fake client asserts the three query bodies (aliases, filter shape, input indexes, ordering, limit) and the `empty` result.
-- `operation-journal.test.ts`: append and list by account, cap at 200, corrupt file handling, serialised writes.
+- `transaction-activity-multibaas.test.ts`: `normalizeMultiBaasActivity` covers USDC in and out, a USDC send merged with its operation, an ETH send decoded from its transaction, a standalone failed self-funded operation, malformed rows counted as skipped, zero-value and self-transfer rows dropped, and ordering. A provider-level test with a fake client asserts the three query bodies (aliases, filter shape, input indexes, ordering, limit) and the `empty` result.
+- `user-operation-calls.test.ts`: single call, batch with mixed calls, matching sender and nonce in a shared bundle, no-ETH operation, undecodable input.
 - `transactions-screen.test.tsx`: update fixtures to the new item shapes; add a test for an operation row and a failed row.
-- `send-screen.test.tsx`: assert the journal receives one entry with the reviewed recipient and value after a successful execute, and that a journal failure does not change the success outcome.
 
 ### Acceptance criteria
 
-- `pnpm verify:multibaas` passes against the real deployment and its findings are recorded in `docs/research/multibaas-sepolia.md`.
+- `pnpm verify:multibaas` passes against the real deployment and its findings are applied in `multibaas.ts`.
 - `pnpm lint` and `pnpm test --runInBand` pass.
 - On a device with a deployed account: a USDC send made in the app appears as one row with the sponsored badge; the same operation is not duplicated; an ETH send appears with amount and recipient; a USDC transfer sent to the account from an external wallet appears as received.
-- No file under `app/src` mentions Blockscout.
+- Blockscout is used under `app/src` only for received ETH.
 
 ## Section 2: Asset flows card on the launcher home
 
@@ -482,7 +462,7 @@ In `_layout.tsx`, add `Notifications.addNotificationResponseReceivedListener` an
 ### Setup steps (human)
 
 1. On the section 5 Railway service, mount a volume at `/data` and add the environment variables above. The public domain already exists.
-2. Android push credentials: Expo's push service requires FCM V1 credentials for Android. Create a Firebase project for `xyz.sodera.app`, download `google-services.json` into `app/`, reference it as `android.googleServicesFile` in `app.json`, and upload the FCM V1 service account key with `eas credentials`. Record in `docs/research/multibaas-sepolia.md` that this is an optional-feature dependency permitted by ADR-0007.
+2. Android push credentials: Expo's push service requires FCM V1 credentials for Android. Create a Firebase project for `xyz.sodera.app`, download `google-services.json` into `app/`, reference it as `android.googleServicesFile` in `app.json`, and upload the FCM V1 service account key with `eas credentials`.
 3. In MultiBaas, create a webhook: label `sodera-notify`, URL `https://<service domain>/webhooks/multibaas`, event type `event.emitted`. Record where the UI presents the HMAC secret and set it as `MULTIBAAS_WEBHOOK_SECRET`.
 4. Send a small USDC transfer to a test account and capture the exact webhook payload from the service logs. Commit it, with addresses redacted to test values, as `agent/src/notify/__fixtures__/event-emitted.json`.
 
@@ -820,7 +800,7 @@ Create:
 - `app/src/agent/agent-client.ts` — `createAgentClient({ baseUrl, token, fetcher })` with `propose(request)`; error mapping to short messages.
 - `app/src/agent/agent-context.ts` — `buildAgentContext({ walletHomeProvider, sponsorship, addressBook, vault })` assembling `AgentContext` from the existing providers.
 - `app/src/agent/plan-encoder.ts` — `encodePlan(plan: EnrichedPlan, seams): Promise<{ calls: KernelExecutionCall[]; lines: ReviewLine[] }>`.
-- `app/src/agent/address-book.ts` — local JSON store via `expo-file-system` like the operation journal in section 1; `list`, `upsert`, `remove`; names are lowercase, unique, 1 to 32 characters.
+- `app/src/agent/address-book.ts` — local JSON store via `expo-file-system`; `list`, `upsert`, `remove`; names are lowercase, unique, 1 to 32 characters.
 - `app/src/components/intent-bar.tsx` — the field, submit button, microphone button when `expo-speech-recognition` is available (optional; text only is acceptable for the hackathon, in which case omit the button rather than stub it).
 - `app/src/components/plan-card.tsx` — renders `EnrichedPlan`, clarification, rejection, or error, with "Edit" and "Review & sign".
 - `app/src/components/plan-review-screen.tsx` — review and execute for a batched plan.
@@ -859,7 +839,7 @@ Recipient resolution uses the address book first, then `resolveRecipient`; the r
 1. `createExecutionClient` and assert the account matches the persisted wallet.
 2. `client.prepare(calls)`; assert `review.calls` equals the encoded calls one-for-one (to, valueWei, data), exactly as the send screen asserts its single call.
 3. Render the summary lines, the calls count, chain, sponsorship status from `review.sponsored`, and maximum network fee from `review.maximumNetworkFeeWei` when not sponsored.
-4. "Confirm with passkey" runs `execute(review.userOperationHash)`, then the same success handling as the send screen: `markPersistedWalletIdentityDeployed`, `walletHomeLiveProvider.refresh()`, and for any `send_eth` action append to the operation journal from section 1 so ETH sends keep their amounts in the activity feed.
+4. "Confirm with passkey" runs `execute(review.userOperationHash)`, then the same success handling as the send screen: `markPersistedWalletIdentityDeployed`, `walletHomeLiveProvider.refresh()`. ETH sends appear in the activity feed with their amounts because section 1 decodes them from the chain.
 5. Success shows the transaction hash with copy and explorer link, and "Done" returns home with the intent field cleared and the plan card dismissed.
 Any thrown error returns to the plan card with the message and keeps the sentence.
 
@@ -873,7 +853,7 @@ Any thrown error returns to the plan card with the message and keeps the sentenc
 - `plan-encoder.test.ts`: each action to calls and lines with fake seams; recipient resolution order; disabled actions throw before encoding.
 - `address-book.test.ts`: normalisation, uniqueness, persistence round trip.
 - `intent-bar.test.tsx`, `plan-card.test.tsx`: states and buttons; the field keeps its text after a clarification.
-- `plan-review-screen.test.tsx`: mirrors `send-screen.test.tsx` structure with a fake execution client; asserts the call-equality guard, the sponsored line, journal append for ETH sends, and error return to the card.
+- `plan-review-screen.test.tsx`: mirrors `send-screen.test.tsx` structure with a fake execution client; asserts the call-equality guard, the sponsored line, and error return to the card.
 - `launcher-home.test.tsx`: the bar renders, submission calls the client, and the card appears.
 
 ### Acceptance criteria
@@ -939,7 +919,7 @@ Card: eyebrow "YOUR WALLET · SODERA", headline, detail, and a button with the s
 
 ## Open verifications
 
-MultiBaas rows are resolved by the section 1 script and recorded in `docs/research/multibaas-sepolia.md`. Agent rows are resolved where stated.
+MultiBaas rows are resolved by the section 1 script and applied in `multibaas.ts`. Agent rows are resolved where stated.
 
 | Question | Resolved by | Consumers |
 | --- | --- | --- |
