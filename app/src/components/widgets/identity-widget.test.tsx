@@ -10,15 +10,15 @@ describe('IdentityWidget', () => {
         size={{ w: 4, h: 2 }}
         accountAddress="0x1234567890123456789012345678901234567890"
         username="anon.sodera.eth"
+        ensVerified
         onOpenWallet={onOpenWallet}
       />,
     );
 
     expect(screen.getByText('anon.sodera.eth')).toBeOnTheScreen();
     expect(screen.getByText('0x1234...7890')).toBeOnTheScreen();
-    expect(screen.getByText('𝕏 @anon_builder')).toBeOnTheScreen();
-    expect(screen.getByText('github/anon')).toBeOnTheScreen();
-    expect(screen.getByText('sodera.xyz')).toBeOnTheScreen();
+    expect(screen.getByText('ETHEREUM')).toBeOnTheScreen();
+    expect(screen.getByText('ENS VERIFIED')).toBeOnTheScreen();
     expect(screen.getByRole('button', { name: 'Copy account address' })).toBeOnTheScreen();
     await fireEvent.press(screen.getByRole('button', { name: 'View smart account' }));
     expect(onOpenWallet).toHaveBeenCalledTimes(1);
@@ -28,6 +28,7 @@ describe('IdentityWidget', () => {
     await render(<IdentityWidget size={{ w: 4, h: 2 }} onOpenWallet={jest.fn()} />);
 
     expect(screen.getByText('Your smart account')).toBeOnTheScreen();
-    expect(screen.getByText('Sepolia smart wallet')).toBeOnTheScreen();
+    expect(screen.getByText('Ethereum smart wallet')).toBeOnTheScreen();
+    expect(screen.getByText('ADDRESS ONLY')).toBeOnTheScreen();
   });
 });

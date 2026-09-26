@@ -53,7 +53,7 @@ describe('PlanCard', () => {
     expect(screen.getByText('Send 0.01 ETH to alice.')).toBeOnTheScreen();
     expect(screen.getByText('Send 0.01 ETH to alice')).toBeOnTheScreen();
     expect(screen.getByText('address book · 0x2222...2222')).toBeOnTheScreen();
-    expect(screen.getByText('· Network: Ethereum Sepolia')).toBeOnTheScreen();
+    expect(screen.getByText('· Network: Ethereum')).toBeOnTheScreen();
     expect(screen.getByText('shown at review')).toBeOnTheScreen();
 
     expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeOnTheScreen();

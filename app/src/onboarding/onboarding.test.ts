@@ -1,8 +1,8 @@
 import {
   persistCompletedOnboarding,
+  persistPendingEnsClaim,
   readOnboardingProfile,
   resolveOnboardingAccess,
-  SODERA_FIXTURE_USERNAME,
   type OnboardingProfileStorage,
 } from './onboarding';
 import {
@@ -21,6 +21,7 @@ const homeClient: DefaultHomeClient = {
 
 const account = '0x1111111111111111111111111111111111111111' as const;
 const otherAccount = '0x2222222222222222222222222222222222222222' as const;
+const claimId = '11111111-1111-4111-8111-111111111111';
 const credential: RegisteredPrimaryPasskey = {
   id: 'MDEyMzQ1Njc4OQ',
   publicKeyX: `0x${'11'.repeat(32)}`,
@@ -43,7 +44,7 @@ describe('onboarding state', () => {
 
   it('blocks profile data whose wallet identity is missing', async () => {
     const profileStorage = createStorage(null);
-    await persistCompletedOnboarding({ storage: profileStorage, account });
+    await persistCompletedOnboarding({ storage: profileStorage, account, name: 'gargs.sodera.eth', claimId });
 
     await expect(
       resolveOnboardingAccess({
@@ -62,6 +63,7 @@ describe('onboarding state', () => {
     const profile = await persistCompletedOnboarding({
       storage: profileStorage,
       account,
+      name: 'gargs.sodera.eth', claimId,
       now: () => new Date('2026-09-13T00:00:00.000Z'),
     });
 
@@ -76,7 +78,7 @@ describe('onboarding state', () => {
 
   it('blocks a profile copied from a different account', async () => {
     const profileStorage = createStorage(null);
-    await persistCompletedOnboarding({ storage: profileStorage, account: otherAccount });
+    await persistCompletedOnboarding({ storage: profileStorage, account: otherAccount, name: 'gargs.sodera.eth', claimId });
 
     await expect(
       resolveOnboardingAccess({
@@ -108,7 +110,7 @@ describe('onboarding state', () => {
 
   it('returns existing profiles to Home setup until Sodera is selected', async () => {
     const profileStorage = createStorage(null);
-    const profile = await persistCompletedOnboarding({ storage: profileStorage, account });
+    const profile = await persistCompletedOnboarding({ storage: profileStorage, account, name: 'gargs.sodera.eth', claimId });
     await expect(resolveOnboardingAccess({
       identityStorage: createStorage(readyIdentity(account)),
       profileStorage,
@@ -116,22 +118,42 @@ describe('onboarding state', () => {
     })).resolves.toEqual({ status: 'home', profile });
   });
 
-  it('persists an explicitly mocked fixed-name claim', async () => {
+  it('persists a confirmed ENS claim without upgrading old mock profiles', async () => {
     const storage = createStorage(null);
     const profile = await persistCompletedOnboarding({
       storage,
       account,
+      name: 'gargs.sodera.eth', claimId,
       now: () => new Date('2026-09-13T00:00:00.000Z'),
     });
 
     expect(profile).toEqual({
-      schemaVersion: 1,
+      schemaVersion: 2,
       account,
-      username: SODERA_FIXTURE_USERNAME,
-      claimMode: 'mock',
+      username: 'gargs.sodera.eth',
+      claimMode: 'ens',
+      claimId,
       completedAt: '2026-09-13T00:00:00.000Z',
     });
     await expect(readOnboardingProfile(storage)).resolves.toEqual(profile);
+    const legacy = createStorage(JSON.stringify({ schemaVersion: 1, account, username: 'anon.sodera.eth', claimMode: 'mock', completedAt: '2026-09-13T00:00:00.000Z' }));
+    await expect(readOnboardingProfile(legacy)).resolves.toMatchObject({ claimMode: 'mock' });
+  });
+
+  it('resumes a pending claim without issuing another name', async () => {
+    const profileStorage = createStorage(null);
+    const pending = await persistPendingEnsClaim(profileStorage, { account, username: 'gargs.sodera.eth', claimId });
+    await expect(resolveOnboardingAccess({
+      identityStorage: createStorage(readyIdentity(account)), profileStorage, homeClient,
+    })).resolves.toEqual({ status: 'incomplete', wallet: 'resumable', pending });
+  });
+
+  it('reopens a legacy mock wallet to claim a real name', async () => {
+    const profileStorage = createStorage(JSON.stringify({ schemaVersion: 1, account,
+      username: 'anon.sodera.eth', claimMode: 'mock', completedAt: '2026-09-13T00:00:00.000Z' }));
+    await expect(resolveOnboardingAccess({
+      identityStorage: createStorage(readyIdentity(account)), profileStorage, homeClient,
+    })).resolves.toEqual({ status: 'incomplete', wallet: 'resumable' });
   });
 });
 

@@ -22,7 +22,7 @@ const usdcAbi = [
 
 export function sepoliaClient() {
   const rpcUrl = process.env.EXPO_PUBLIC_SEPOLIA_RPC_URL;
-  if (!rpcUrl) throw new Error('EXPO_PUBLIC_SEPOLIA_RPC_URL is required to send');
+  if (!rpcUrl) throw new Error('Ethereum RPC URL is required to send');
   return createPublicClient({ chain: sepolia, transport: http(rpcUrl) });
 }
 
@@ -37,9 +37,9 @@ export async function resolveSepoliaRecipient(input: string): Promise<{ address:
     throw new Error('Enter a valid Ethereum address or ENS name');
   }
   const client = sepoliaClient();
-  if (await client.getChainId() !== sepolia.id) throw new Error('ENS RPC is not Ethereum Sepolia');
+  if (await client.getChainId() !== sepolia.id) throw new Error('ENS RPC is connected to the wrong network');
   const address = await client.getEnsAddress({ name });
-  if (!address || !isAddress(address)) throw new Error(`${name} has no address on Sepolia ENS`);
+  if (!address || !isAddress(address)) throw new Error(`${name} has no Ethereum address`);
   return { address, name };
 }
 
@@ -50,7 +50,7 @@ export async function readSendBalances(account: Address) {
     client.getBalance({ address: account }),
     client.readContract({ address: SEPOLIA_USDC_ADDRESS, abi: usdcAbi, functionName: 'balanceOf', args: [account] }),
   ]);
-  if (chainId !== sepolia.id) throw new Error('Send RPC is not Ethereum Sepolia');
+  if (chainId !== sepolia.id) throw new Error('Send RPC is connected to the wrong network');
   return { ETH, USDC };
 }
 

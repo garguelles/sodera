@@ -1,0 +1,34 @@
+{
+  "name": "@sodera/api",
+  "version": "0.1.0",
+  "packageManager": "pnpm@12.3.4",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "tsx watch --env-file-if-exists=.env src/server.ts",
+    "issuer:dev": "tsx watch --env-file-if-exists=.env src/issuer/worker.ts",
+    "issuer:start": "node --env-file-if-exists=.env dist/issuer/worker.js",
+    "verify:issuer-resolver": "tsx --env-file-if-exists=.env src/issuer/verify-resolver.ts",
+    "test:db": "TEST_DATABASE_URL=postgres://sodera:sodera_local_only@127.0.0.1:5433/sodera vitest run",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/server.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@hono/node-server": "^2.1.1",
+    "hono": "^4.13.9",
+    "pg": "8.16.3",
+    "viem": "2.35.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.4",
+    "@types/pg": "8.15.5",
+    "tsx": "^4.23.15",
+    "typescript": "~6.0.3",
+    "vitest": "^5.0.1"
+  }
+}

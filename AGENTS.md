@@ -1,10 +1,10 @@
 # Sodera
 
-Sodera is a seedless smart-account wallet and Android home launcher. The repository contains three isolated applications: `app/` is the Expo mobile application, `landing/` is the React landing site and passkey domain host, and `agent/` is the Hono service that turns wallet requests into reviewable plans.
+Sodera is a seedless smart-account wallet and Android home launcher. The repository contains five isolated applications: `app/` is the Expo mobile application, `landing/` is the React landing site and passkey domain host, `agent/` is the keyless Hono service that turns wallet requests into reviewable plans, `ens/` is the local ENS namespace owner tool, and `api/` is one Hono API with ENS and Uniswap routes.
 
 ## Design
 
-- `docs/DESIGN.md` is the Platinum Fluid visual specification for both applications. Use its dark surfaces, platinum hierarchy, emerald/cyan status accents, Geist text, and JetBrains Mono data labels.
+- `docs/DESIGN.md` is the Platinum Fluid visual specification for the mobile and landing applications; the local ENS owner tool follows the same visual roles. Use its dark surfaces, platinum hierarchy, emerald/cyan status accents, Geist text, and JetBrains Mono data labels.
 - The Expo app's executable tokens live in `app/src/constants/theme.ts` (`platinum`); use those for new and updated screens instead of adding inline palettes, font sizes, spacing scales, or another theme file. Preserve real data and existing feature states when adapting Stitch mockups.
 - The landing site's CSS variables live in `landing/src/styles.css` and should mirror the same design roles. Update both token sets and `docs/DESIGN.md` together when the brand changes.
 

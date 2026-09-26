@@ -658,7 +658,7 @@ function EarnReview({
         )}
         <FriendlyReviewRow label="Pool" value="1inch SwapVM · x·y=k USDC/WETH" />
         <FriendlyReviewRow label="From" value={`Your wallet (${shortenAddress(review.account)})`} />
-        <FriendlyReviewRow label="Network" value="Ethereum Sepolia" />
+        <FriendlyReviewRow label="Network" value="Ethereum" />
         <FriendlyReviewRow
           label="Network fee"
           value={review.sponsored ? 'Sponsored' : `${formatEther(BigInt(review.maximumNetworkFeeWei))} ETH maximum`}

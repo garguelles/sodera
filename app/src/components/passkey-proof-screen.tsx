@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
+import { Host, TextInput } from '@expo/ui';
 import * as Device from 'expo-device';
 import { router } from 'expo-router';
 import { AppState, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { platinum } from '@/constants/theme';
+import { createEnsClaimAuthClient } from '@/ens/claim-auth-client';
+import { createEnsClaimClient } from '@/ens/claim-client';
 import { sha256, toBytes, type Hash } from 'viem';
 
 import {
@@ -45,6 +48,10 @@ export function PasskeyProofScreen({
   const [review, setReview] = useState<KernelOperationReview | null>(null);
   const [confirmedHash, setConfirmedHash] = useState<Hash | null>(null);
   const [busy, setBusy] = useState(false);
+  const [proofLabel, setProofLabel] = useState('');
+  const [proofStatus, setProofStatus] = useState('');
+  const [claim, setClaim] = useState<{ id: string; label: string; status: string } | null>(null);
+  const [claimMessage, setClaimMessage] = useState('');
   const [status, setStatus] = useState('Create a new Wallet Identity or reopen the existing one.');
   const [executionState, setExecutionState] = useState<'idle' | 'pending' | 'confirmed' | 'failed'>(
     'idle',
@@ -109,7 +116,7 @@ export function PasskeyProofScreen({
         authenticatorAttachment: result.credential.authenticatorAttachment,
         privateKeyExported: false,
       });
-      setStatus('Kernel account derived. Prepare the bounded Sepolia operation for review.');
+      setStatus('Kernel account derived. Prepare the bounded Ethereum operation for review.');
     } catch (error) {
       if (currentInvocation === invocation.current) {
         setExecutionState('failed');
@@ -229,14 +236,80 @@ export function PasskeyProofScreen({
       setExecutionState('confirmed');
       setStatus(
         deploymentPersisted
-          ? 'Confirmed: the UserOperation and independent Sepolia state checks succeeded.'
-          : 'Confirmed on Sepolia, but the local deployment marker could not be persisted. Reopen the existing wallet before another operation.',
+          ? 'Confirmed: the UserOperation and independent Ethereum state checks succeeded.'
+          : 'Confirmed on Ethereum, but the local deployment marker could not be persisted. Reopen the existing wallet before another operation.',
       );
     } catch (error) {
       if (currentInvocation === invocation.current) {
         setExecutionState('failed');
         setStatus(describeExecutionError(error));
       }
+    } finally {
+      if (currentInvocation === invocation.current) setBusy(false);
+    }
+  };
+
+  const verifyEnsClaimAuthority = async () => {
+    if (!credential || !executionClient || busy ||
+      !(executionClient.deployed || executionState === 'confirmed')) return;
+    const currentInvocation = ++invocation.current;
+    setBusy(true);
+    setProofStatus('Requesting a one-time ENS challenge for this wallet...');
+    try {
+      const result = await createEnsClaimAuthClient({ ceremonyClient: client }).prove({
+        account: executionClient.account,
+        credential,
+        label: proofLabel,
+      });
+      if (currentInvocation === invocation.current) {
+        setProofStatus(`Primary Passkey verified for ${result.name}. No ENS name was issued.`);
+      }
+    } catch (error) {
+      if (currentInvocation === invocation.current) setProofStatus(describeExecutionError(error));
+    } finally {
+      if (currentInvocation === invocation.current) setBusy(false);
+    }
+  };
+
+  const requestEnsName = async () => {
+    if (!credential || !executionClient || busy ||
+      !(executionClient.deployed || executionState === 'confirmed')) return;
+    const currentInvocation = ++invocation.current;
+    setBusy(true);
+    setClaimMessage('Confirming passkey authority for this one-year ENS name...');
+    try {
+      const result = await createEnsClaimClient({ ceremonyClient: client }).submit({
+        account: executionClient.account,
+        credential,
+        label: proofLabel,
+      });
+      if (currentInvocation === invocation.current) {
+        setClaim({ id: result.id, label: proofLabel, status: result.status });
+        setClaimMessage(`Claim for ${result.name}: ${result.status}. An API response alone does not confirm on-chain issuance.`);
+      }
+    } catch (error) {
+      if (currentInvocation === invocation.current) setClaimMessage(describeExecutionError(error));
+    } finally {
+      if (currentInvocation === invocation.current) setBusy(false);
+    }
+  };
+
+  const refreshEnsClaim = async () => {
+    if (!executionClient || !claim || busy) return;
+    const currentInvocation = ++invocation.current;
+    setBusy(true);
+    try {
+      const result = await createEnsClaimClient({ ceremonyClient: client }).status({
+        id: claim.id,
+        account: executionClient.account,
+        label: claim.label,
+      });
+      if (currentInvocation === invocation.current) {
+        setClaim({ ...claim, status: result.status });
+        setClaimMessage(`Claim for ${result.name}: ${result.status}.`);
+      }
+    } catch (error) {
+      if (currentInvocation === invocation.current) setClaimMessage(describeExecutionError(error));
     } finally {
       if (currentInvocation === invocation.current) setBusy(false);
     }
@@ -296,7 +369,7 @@ export function PasskeyProofScreen({
           </Text>
           <ActionButton
             disabled={busy || !credential || !executionClient}
-            label="Prepare Sepolia operation"
+            label="Prepare Ethereum operation"
             onPress={prepare}
           />
         </View>
@@ -331,6 +404,52 @@ export function PasskeyProofScreen({
           />
         </View>
 
+        {process.env.EXPO_PUBLIC_API_URL ? (
+          <View style={styles.card}>
+            <Text style={styles.step}>5. Verify ENS claim authority</Text>
+            <Text style={styles.body}>
+              Sign a one-time server challenge with this wallet’s Primary Passkey. This checks
+              account control; it does not register a name.
+            </Text>
+            <Host matchContents={{ vertical: true }} style={{ width: '100%' }}>
+              <TextInput
+                autoCapitalize="none"
+                autoCorrect={false}
+                editable={!busy}
+                onChangeText={setProofLabel}
+                placeholder="Choose a test username"
+                placeholderTextColor={colors.mutedText}
+                style={styles.proofInput}
+              />
+            </Host>
+            <ActionButton
+              disabled={busy || !credential || !executionClient ||
+                !(executionClient.deployed || executionState === 'confirmed')}
+              label="Verify passkey with ENS service"
+              onPress={verifyEnsClaimAuthority}
+            />
+            {proofStatus ? <Text accessibilityRole="alert" style={styles.body}>{proofStatus}</Text> : null}
+          </View>
+        ) : null}
+
+        {process.env.EXPO_PUBLIC_API_URL && process.env.EXPO_PUBLIC_ENS_CLAIMS_ENABLED === '1' ? (
+          <View style={styles.card}>
+            <Text style={styles.step}>6. Request a one-year ENS name</Text>
+            <Text style={styles.body}>
+              Review the username above before requesting a free, user-owned subname. This action
+              runs a fresh passkey ceremony and asks the issuer to register the name on Ethereum.
+            </Text>
+            <ActionButton
+              disabled={busy || !credential || !executionClient || Boolean(claim) ||
+                !(executionClient.deployed || executionState === 'confirmed')}
+              label="Request ENS name"
+              onPress={requestEnsName}
+            />
+            {claim ? <ActionButton disabled={busy} label="Refresh ENS claim status" onPress={refreshEnsClaim} secondary /> : null}
+            {claimMessage ? <Text accessibilityRole="alert" style={styles.body}>{claimMessage}</Text> : null}
+          </View>
+        ) : null}
+
         <View accessibilityRole="alert" style={[styles.status, styles[executionState]]}>
           <Text style={styles.statusLabel}>STATUS</Text>
           <Text selectable style={styles.body}>
@@ -355,7 +474,7 @@ function OperationReview({ review }: { review: KernelOperationReview }) {
   return (
     <View style={styles.review}>
       <ReviewRow label="Account" value={review.account} />
-      <ReviewRow label="Chain" value={`${review.chain} (${review.chainId})`} />
+      <ReviewRow label="Chain" value="Ethereum" />
       <ReviewRow label="EntryPoint" value={review.entryPoint} />
       <ReviewRow label="Validator" value={review.validator} />
       <ReviewRow label="Deploy account" value={review.deploymentRequired ? 'Yes' : 'No'} />
@@ -429,6 +548,7 @@ const styles = StyleSheet.create({
   warning: { ...typography.bodySmall, color: colors.warning },
   card: { backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.lg, gap: spacing.md },
   step: { ...typography.subheading, color: colors.platinum },
+  proofInput: { backgroundColor: colors.platinum, borderRadius: radius.md, paddingHorizontal: spacing.md, height: 48 },
   button: {
     backgroundColor: colors.platinum,
     minHeight: 48,

@@ -1,6 +1,6 @@
 # Sodera
 
-Sodera is a seedless smart-account wallet and Android home launcher. This repository contains three independently installable applications.
+Sodera is a seedless smart-account wallet and Android home launcher. This repository contains five independently installable applications.
 
 ## Applications
 
@@ -9,6 +9,8 @@ Sodera is a seedless smart-account wallet and Android home launcher. This reposi
 | [`app/`](app/) | Expo SDK 57 mobile application and Android home launcher |
 | [`landing/`](landing/) | React landing site and passkey domain host for `sodera.xyz` |
 | [`agent/`](agent/) | Hono service that turns wallet requests into reviewable plans with Claude |
+| [`ens/`](ens/) | Local ENSv2 namespace owner tool and read-only Sepolia checks |
+| [`api/`](api/) | One Hono API with ENS and Uniswap route modules |
 
 Each application owns its package manifest, lockfile, dependencies, commands, and deployment configuration. There is no repository-root JavaScript workspace or install command.
 
@@ -30,7 +32,7 @@ pnpm install
 pnpm dev
 ```
 
-See the application READMEs for verification, native development, Digital Asset Links, and deployment instructions.
+For namespace setup, run the standalone owner tool from `ens/`; see its [README](ens/README.md). For the combined ENS/Uniswap API plus local PostgreSQL, run `make start` from `api/`; see [`api/README.md`](api/README.md). See the application READMEs for verification, native development, Digital Asset Links, and deployment instructions.
 
 ## Uniswap Integration
 

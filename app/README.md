@@ -41,6 +41,28 @@ adb -s <serial> shell am start -a android.intent.action.VIEW -d sodera://passkey
 
 Use `x86_64` instead of `arm64-v8a` for the Google Play emulator. Before accepting evidence, verify the APK signer matches `https://sodera.xyz/.well-known/assetlinks.json`, the hosted statement grants both `handle_all_urls` and `get_login_creds`, and the APK contains the `asset_statements` manifest resource. The complete security boundary, request format, and device evidence checklist are in [`../docs/research/PRA-185-android-credential-manager.md`](../docs/research/PRA-185-android-credential-manager.md).
 
+### Local ENS passkey proof
+
+Start the API and PostgreSQL with `make start` from `api/`. For a connected Android debug build, forward the API over USB with `adb reverse tcp:8082 tcp:8082` (and Metro with `adb reverse tcp:8081 tcp:8081`). **Restart** any existing Metro process so it picks up the ENS URL, then run from `app/`:
+
+```bash
+EXPO_PUBLIC_API_URL=http://127.0.0.1:8082 pnpm exec expo start --dev-client
+```
+
+In another terminal, open the diagnostic route:
+
+```bash
+adb shell am start -a android.intent.action.VIEW -d sodera://passkey-proof xyz.sodera.app
+```
+
+On the Passkey Proof screen, reopen a deployed wallet, enter an available Sodera label, and choose **Verify passkey with ENS service**. The server must verify the one-time assertion; the screen explicitly says that no name was issued. Loopback HTTP is allowed only in development; outside a local debug build the API URL must be HTTPS. This proof does not authorize a registration or change the wallet.
+
+`EXPO_PUBLIC_ENS_CLAIMS_ENABLED=0` keeps the separate **Request ENS name** diagnostic hidden. Onboarding uses the same live API and issuer flow without that diagnostic flag: create or reopen the passkey wallet, review and activate its Kernel if undeployed, choose a label, then tap **Claim** to check availability and authorize the request with the primary passkey. The claim ID is saved locally and checked again after restarts. Onboarding finishes only after the issuer reports confirmation and current ENS ownership and resolution both point to the Kernel. An existing wallet claim (including one made through the earlier diagnostic) is recovered by account and verified instead of issuing a second name; old mock-era profiles reopen their original wallet. The launcher and Wallet display the ENS name only while those checks continue to pass; otherwise they show the address.
+
+For a Railway-backed hackathon build, set `EXPO_PUBLIC_API_URL` to the deployed API's HTTPS domain and `EXPO_PUBLIC_SEPOLIA_RPC_URL` to the Sepolia RPC used to independently verify ENS resolution. Enable `EXPO_PUBLIC_ENS_CLAIMS_ENABLED=1` only if you also want the separate diagnostic button. The API must have `ENS_CLAIMS_ENABLED=1`, shared PostgreSQL and a running private issuer worker. The phone then talks directly to Railway; USB forwarding is only needed when testing the local API.
+
+For a **new disposable testnet wallet on the next demo**, stop the Sodera app and clear its local app data with `adb shell pm clear xyz.sodera.app`, then reopen it. This clears Wallet Identity metadata, any pending/confirmed onboarding claim and local settings; it does **not** delete Android passkeys, undo Kernel transactions, transfer ENS tokens, free an existing label or reset the API's claim ledger. The previous wallet may become inaccessible in Sodera without its persisted credential metadata and a recovery flow, so use only a demo wallet with no assets or names you need to manage later. Choose a fresh username and passkey on each live run. `adb reverse` port mappings may need to be restored after reconnecting the USB cable.
+
 ## Verification
 
 ```bash

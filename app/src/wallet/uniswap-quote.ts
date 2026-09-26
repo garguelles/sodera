@@ -178,10 +178,10 @@ function getDefaultSwapQuoteClient() {
   if (defaultClient) return defaultClient;
   const pending = (async () => {
     const rpcUrl = process.env.EXPO_PUBLIC_SEPOLIA_RPC_URL;
-    if (!rpcUrl) throw new Error('EXPO_PUBLIC_SEPOLIA_RPC_URL is required for swap quotes');
+    if (!rpcUrl) throw new Error('Ethereum RPC URL is required for swap quotes');
     const client = createPublicClient({ chain: sepolia, transport: http(rpcUrl) });
     if ((await client.getChainId()) !== sepolia.id) {
-      throw new Error('Swap RPC is not Ethereum Sepolia');
+      throw new Error('Swap RPC is connected to the wrong network');
     }
     return client;
   })();

@@ -37,7 +37,7 @@ describe('ReceiveScreen', () => {
       await screen.findByLabelText(`QR code for wallet address ${account}`),
     ).toBeOnTheScreen();
     expect(screen.getByText(account)).toBeOnTheScreen();
-    expect(screen.getByText('Sepolia')).toBeOnTheScreen();
+    expect(screen.getByText('Ethereum')).toBeOnTheScreen();
   });
 
   it('copies the exact persisted account and confirms success', async () => {

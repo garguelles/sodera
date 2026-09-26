@@ -86,7 +86,7 @@ describe('ActivityWidget', () => {
     });
     await render(<ActivityWidget size={{ w: 4, h: 1 }} provider={provider} onOpenActivity={jest.fn()} />);
 
-    expect(await screen.findByText('Your Sepolia transaction history')).toBeOnTheScreen();
+    expect(await screen.findByText('Your Ethereum transaction history')).toBeOnTheScreen();
   });
 
   it('formats relative times', () => {

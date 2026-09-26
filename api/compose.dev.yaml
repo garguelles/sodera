@@ -1,0 +1,55 @@
+name: sodera-ens-dev
+
+services:
+  postgres:
+    image: docker.io/library/postgres:16-alpine
+    environment:
+      POSTGRES_USER: sodera
+      POSTGRES_PASSWORD: sodera_local_only
+      POSTGRES_DB: sodera
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - ens_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sodera -d sodera"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+
+  api:
+    build: .
+    environment:
+      PORT: "8080"
+      SEPOLIA_RPC_URL: https://ethereum-sepolia-rpc.publicnode.com
+      DATABASE_URL: postgres://sodera:sodera_local_only@postgres:5432/sodera
+      ENS_CHALLENGE_IP_KEY: sodera-local-proof-ip-hash-key-only
+      ENS_CLAIMS_ENABLED: ${ENS_CLAIMS_ENABLED:-0}
+    ports:
+      - "127.0.0.1:8082:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+
+  issuer-worker:
+    profiles: [issuer]
+    build: .
+    command: ["node", "dist/issuer/worker.js"]
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgres://sodera:sodera_local_only@postgres:5432/sodera
+      SEPOLIA_RPC_URL: https://ethereum-sepolia-rpc.publicnode.com
+      ENS_ISSUER_MODE: hackathon
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  ens_postgres_data:

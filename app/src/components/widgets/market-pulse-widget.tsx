@@ -45,7 +45,7 @@ function WidePulse({ pulse }: { pulse: MarketPulseState }) {
           <RetryButton pulse={pulse} />
         </View>
       ) : (
-        <Text style={styles.footnote}>Global market prices · Wallet uses Sepolia testnet</Text>
+        <Text style={styles.footnote}>Global market prices · Wallet on Ethereum</Text>
       )}
     </View>
   );

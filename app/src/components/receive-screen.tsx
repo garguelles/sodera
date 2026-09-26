@@ -95,7 +95,7 @@ export function ReceiveScreen({
           </Pressable>
           <View style={styles.networkPill}>
             <View style={styles.networkDot} />
-            <Text style={styles.networkText}>Sepolia</Text>
+            <Text style={styles.networkText}>Ethereum</Text>
           </View>
         </View>
 
@@ -103,7 +103,7 @@ export function ReceiveScreen({
           <Text style={styles.eyebrow}>RECEIVE ASSETS</Text>
           <Text style={styles.title}>Your wallet address.</Text>
           <Text style={styles.description}>
-            Scan this code or copy the address to receive ETH and USDC on Ethereum Sepolia.
+            Scan this code or copy the address to receive ETH and USDC on Ethereum.
           </Text>
         </View>
 
@@ -175,7 +175,7 @@ export function ReceiveScreen({
         ) : null}
 
         <Text style={styles.warning}>
-          Only send Ethereum Sepolia assets to this address. Assets sent on another network may not
+          Only send assets on the same network as this wallet to this address. Assets sent on another network may not
           appear here.
         </Text>
       </ScrollView>

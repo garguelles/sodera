@@ -388,9 +388,9 @@ export function SendScreen({
           </Pressable>
 
           <View style={styles.heading}>
-            <Text style={styles.eyebrow}>ETHEREUM SEPOLIA · STEP {step === 'recipient' ? '1' : step === 'asset' ? '2' : '3'} OF 4</Text>
+            <Text style={styles.eyebrow}>ETHEREUM · STEP {step === 'recipient' ? '1' : step === 'asset' ? '2' : '3'} OF 4</Text>
             <Text style={styles.title}>{step === 'recipient' ? 'Who are you sending to?' : step === 'asset' ? 'Choose an asset' : 'How much?'}</Text>
-            <Text style={styles.body}>{step === 'recipient' ? 'Enter a Sepolia ENS name or wallet address.' : step === 'asset' ? 'Select the asset you want to send.' : payAsset ? `Enter the exact amount of ${asset} the recipient gets. Uniswap swaps your ${payAsset} for it.` : `Enter the amount of ${asset} to send.`}</Text>
+            <Text style={styles.body}>{step === 'recipient' ? 'Enter an ENS name or wallet address.' : step === 'asset' ? 'Select the asset you want to send.' : payAsset ? `Enter the exact amount of ${asset} the recipient gets. Uniswap swaps your ${payAsset} for it.` : `Enter the amount of ${asset} to send.`}</Text>
           </View>
 
           {step === 'recipient' ? <View style={styles.form}>
@@ -410,7 +410,7 @@ export function SendScreen({
               style={styles.input}
               value={recipient}
             />
-            <PrimaryButton disabled={busy || !wallet} label={busy ? 'Resolving on Sepolia...' : 'Continue'} onPress={() => void continueRecipient()} />
+            <PrimaryButton disabled={busy || !wallet} label={busy ? 'Resolving name...' : 'Continue'} onPress={() => void continueRecipient()} />
           </View> : null}
 
           {step === 'asset' ? <View style={styles.form}>
@@ -517,7 +517,7 @@ export function SendScreen({
           </Pressable>
 
           <View style={styles.heading}>
-            <Text style={styles.eyebrow}>ETHEREUM SEPOLIA · STEP 4 OF 4</Text>
+            <Text style={styles.eyebrow}>ETHEREUM · STEP 4 OF 4</Text>
             <Text style={styles.title}>Does this look right?</Text>
             <Text style={styles.body}>{payWithReview ? 'The swap and the transfer run together. Once sent, the payment cannot be reversed.' : 'Once sent, this transfer cannot be reversed.'}</Text>
           </View>
@@ -568,7 +568,7 @@ export function SendScreen({
           </View>
           <View style={styles.successHeading}>
             <Text accessibilityRole="header" style={styles.successTitle}>Transaction submitted</Text>
-            <Text style={styles.centeredBody}>Your {asset} {payWith && payWith !== asset ? 'payment' : 'transfer'} is awaiting confirmation on Ethereum Sepolia. Check its status in transaction history.</Text>
+            <Text style={styles.centeredBody}>Your {asset} {payWith && payWith !== asset ? 'payment' : 'transfer'} is awaiting confirmation on Ethereum. Check its status in transaction history.</Text>
           </View>
 
           <View style={styles.transactionCard}>
@@ -639,13 +639,13 @@ function SendReview({
                 value={`Up to ${formatAssetAmount(BigInt(quote.maxAmountIn), 'USDC')} USDC for Uniswap, until ${new Date(quote.deadline * 1000).toLocaleTimeString()}`}
               />
             ) : null}
-            <FriendlyReviewRow label="Prices" value="Sepolia testnet pools, not market prices" />
+            <FriendlyReviewRow label="Prices" value="Pool prices, not market prices" />
           </>
         ) : (
           <FriendlyReviewRow label="Asset" value={asset} />
         )}
         <FriendlyReviewRow label="From" value={`Your wallet (${shortenAddress(review.account)})`} />
-        <FriendlyReviewRow label="Network" value="Ethereum Sepolia" />
+        <FriendlyReviewRow label="Network" value="Ethereum" />
         <FriendlyReviewRow
           label="Network fee"
           value={
@@ -691,7 +691,7 @@ function SendReview({
             />
           ))}
           <ReviewRow label="From account" value={review.account} />
-          <ReviewRow label="Network" value={`${review.chain} (${review.chainId})`} />
+          <ReviewRow label="Network" value="Ethereum" />
           <ReviewRow label="Deploy account" value={review.deploymentRequired ? 'Yes' : 'No'} />
           <ReviewRow label="EntryPoint" value={review.entryPoint} />
           <ReviewRow label="Nonce" value={review.userOperation.nonce ?? 'Unavailable'} />

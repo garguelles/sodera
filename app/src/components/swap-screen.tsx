@@ -340,7 +340,7 @@ export function SwapScreen({
           </Pressable>
 
           <View style={styles.heading}>
-            <Text style={styles.eyebrow}>ETHEREUM SEPOLIA · UNISWAP</Text>
+            <Text style={styles.eyebrow}>ETHEREUM · UNISWAP</Text>
             <Text style={styles.title}>Swap</Text>
             <Text style={styles.body}>Trade between ETH and USDC in your wallet.</Text>
           </View>
@@ -510,7 +510,7 @@ export function SwapScreen({
               Swap complete
             </Text>
             <Text style={styles.centeredBody}>
-              {`You swapped ${formatSwapAmount(completed.quote.amountIn, SWAP_DIRECTIONS[completed.quote.direction].input)} ${SWAP_DIRECTIONS[completed.quote.direction].input} for ${SWAP_DIRECTIONS[completed.quote.direction].output} on Ethereum Sepolia.`}
+              {`You swapped ${formatSwapAmount(completed.quote.amountIn, SWAP_DIRECTIONS[completed.quote.direction].input)} ${SWAP_DIRECTIONS[completed.quote.direction].output} on Ethereum.`}
             </Text>
           </View>
 
@@ -598,7 +598,7 @@ function SwapReview({
         ) : null}
         <FriendlyReviewRow label="Route" value="Uniswap v4 · ETH/USDC pool" />
         <FriendlyReviewRow label="From" value={`Your wallet (${shortenAddress(review.account)})`} />
-        <FriendlyReviewRow label="Network" value="Ethereum Sepolia" />
+        <FriendlyReviewRow label="Network" value="Ethereum" />
         <FriendlyReviewRow
           label="Network fee"
           value={
@@ -640,7 +640,7 @@ function SwapReview({
             />
           ))}
           <ReviewRow label="From account" value={review.account} />
-          <ReviewRow label="Network" value={`${review.chain} (${review.chainId})`} />
+          <ReviewRow label="Network" value="Ethereum" />
           <ReviewRow label="Deploy account" value={review.deploymentRequired ? 'Yes' : 'No'} />
           <ReviewRow label="EntryPoint" value={review.entryPoint} />
           <ReviewRow label="Nonce" value={review.userOperation.nonce ?? 'Unavailable'} />
@@ -754,9 +754,9 @@ function shortenHash(hash: Hash) {
 
 async function readSepoliaSwapBalances(account: Address): Promise<SwapBalances> {
   const rpcUrl = process.env.EXPO_PUBLIC_SEPOLIA_RPC_URL;
-  if (!rpcUrl) throw new Error('EXPO_PUBLIC_SEPOLIA_RPC_URL is required to swap');
+  if (!rpcUrl) throw new Error('Ethereum RPC URL is required to swap');
   const client = createPublicClient({ chain: sepolia, transport: http(rpcUrl) });
-  if ((await client.getChainId()) !== sepolia.id) throw new Error('Swap RPC is not Ethereum Sepolia');
+  if ((await client.getChainId()) !== sepolia.id) throw new Error('Swap RPC is connected to the wrong network');
   const [eth, usdc] = await Promise.all([
     client.getBalance({ address: account }),
     client.readContract({

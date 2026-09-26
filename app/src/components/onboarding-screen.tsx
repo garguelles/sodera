@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   AppState,
@@ -7,29 +7,34 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { Address } from 'viem';
 
 import { platinum } from '@/constants/theme';
+import { createEnsClaimClient } from '@/ens/claim-client';
+import { createEnsIdentityReader, type EnsIdentityReader } from '@/ens/identity-client';
+import { parseSoderaUsername } from '@/ens/username';
 import {
-  mockUsernameClaimClient,
   persistCompletedOnboarding,
+  persistPendingEnsClaim,
   resolveOnboardingAccess,
-  SODERA_FIXTURE_USERNAME,
   type OnboardingProfile,
   type OnboardingProfileStorage,
+  type PendingEnsClaim,
   type UsernameClaimClient,
 } from '@/onboarding/onboarding';
 import { onboardingNativeStorage } from '@/onboarding/onboarding-native-storage';
 import { defaultHomeClient, type DefaultHomeClient } from '@/launcher/default-home';
-import { createKernelPasskeyExecutionClient } from '@/wallet/kernel-passkey-execution';
+import { createKernelPasskeyExecutionClient, type KernelOperationReview, type KernelPasskeyExecutionClient } from '@/wallet/kernel-passkey-execution';
 import { createPasskeyCeremonyClient } from '@/wallet/passkey-ceremony';
 import { passkeyNativeAdapter } from '@/wallet/passkey-native-adapter';
 import {
   createWalletIdentityClient,
   inspectPersistedWalletIdentity,
+  readPersistedWalletIdentity,
   type WalletIdentityStorage,
 } from '@/wallet/wallet-identity';
 import { walletIdentityNativeStorage } from '@/wallet/wallet-identity-native-storage';
@@ -39,14 +44,15 @@ const defaultCeremonyClient = createPasskeyCeremonyClient(passkeyNativeAdapter, 
   isForeground: waitForAppForeground,
 });
 
-type Stage = 'loading' | 'welcome' | 'wallet' | 'username' | 'home' | 'recovery' | 'blocked';
+type Stage = 'loading' | 'welcome' | 'wallet' | 'username' | 'claimPending' | 'home' | 'recovery' | 'blocked';
 
 export function OnboardingScreen({
   client = defaultCeremonyClient,
   createExecutionClient = createKernelPasskeyExecutionClient,
   identityStorage = walletIdentityNativeStorage,
   profileStorage = onboardingNativeStorage,
-  usernameClaimClient = mockUsernameClaimClient,
+  usernameClaimClient,
+  identityReader,
   homeClient = defaultHomeClient,
   onComplete,
   onRetry,
@@ -57,6 +63,7 @@ export function OnboardingScreen({
   identityStorage?: WalletIdentityStorage;
   profileStorage?: OnboardingProfileStorage;
   usernameClaimClient?: UsernameClaimClient;
+  identityReader?: EnsIdentityReader;
   homeClient?: DefaultHomeClient;
   onComplete(profile: OnboardingProfile): void;
   onRetry?: () => void;
@@ -64,6 +71,10 @@ export function OnboardingScreen({
 }) {
   const [stage, setStage] = useState<Stage>(initialError ? 'blocked' : 'loading');
   const [account, setAccount] = useState<Address | null>(null);
+  const [executionClient, setExecutionClient] = useState<KernelPasskeyExecutionClient | null>(null);
+  const [activationReview, setActivationReview] = useState<KernelOperationReview | null>(null);
+  const [label, setLabel] = useState('');
+  const [pending, setPending] = useState<PendingEnsClaim | null>(null);
   const [profile, setProfile] = useState<OnboardingProfile | null>(null);
   const [resumeWallet, setResumeWallet] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -87,6 +98,17 @@ export function OnboardingScreen({
     },
   });
 
+  const recoverClaim = async (wallet: Address) => {
+    const existing = await (usernameClaimClient ?? createEnsClaimClient({ ceremonyClient: client })).forAccount(wallet);
+    if (!existing) return false;
+    const saved = await persistPendingEnsClaim(profileStorage, {
+      account: wallet, username: existing.name, claimId: existing.id,
+    });
+    setPending(saved);
+    setStage('claimPending');
+    return true;
+  };
+
   useEffect(() => {
     if (initialError) return;
     let active = true;
@@ -102,6 +124,13 @@ export function OnboardingScreen({
         if (access.status === 'incomplete') {
           const resumable = access.wallet === 'resumable';
           setResumeWallet(resumable);
+          if (access.pending) {
+            setAccount(access.pending.account);
+            setLabel(access.pending.username.replace(/\.sodera\.eth$/, ''));
+            setPending(access.pending);
+            setStage('claimPending');
+            return;
+          }
           setStage(resumable ? 'wallet' : 'welcome');
           return;
         }
@@ -207,7 +236,15 @@ export function OnboardingScreen({
         return;
       }
       setAccount(result.account);
-      setStage('username');
+      setExecutionClient(result.executionClient ?? null);
+      if (result.deployed && await recoverClaim(result.account)) return;
+      if (result.deployed) {
+        setStage('username');
+      } else if (result.executionClient) {
+        setActivationReview(await result.executionClient.prepare());
+      } else {
+        throw new Error('Wallet activation is unavailable. Reopen the existing wallet to retry.');
+      }
     } catch (error) {
       if (currentInvocation === invocation.current) setMessage(getErrorMessage(error));
     } finally {
@@ -216,22 +253,55 @@ export function OnboardingScreen({
     }
   };
 
+  const activateWallet = async () => {
+    if (!executionClient || operationInFlight.current) return;
+    operationInFlight.current = true;
+    setBusy(true);
+    setMessage('');
+    try {
+      if (!activationReview) {
+        setActivationReview(await executionClient.prepare());
+      } else {
+        const receipt = await executionClient.execute(activationReview.userOperationHash);
+        await walletIdentityClient.markDeployed(receipt.account);
+        setActivationReview(null);
+        setStage('username');
+      }
+    } catch (error) {
+      setActivationReview(null);
+      setMessage(getErrorMessage(error));
+    } finally {
+      operationInFlight.current = false;
+      setBusy(false);
+    }
+  };
+
   const claimUsername = async () => {
-    if (!account || operationInFlight.current) return;
+    if (!account || !label || operationInFlight.current) return;
     operationInFlight.current = true;
     const currentInvocation = ++invocation.current;
     setBusy(true);
     setMessage('');
     try {
-      await usernameClaimClient.claim({ account, username: SODERA_FIXTURE_USERNAME });
-      if (currentInvocation !== invocation.current) return;
-      const completedProfile = await persistCompletedOnboarding({
-        storage: profileStorage,
-        account,
+      if (await recoverClaim(account)) return;
+      const username = parseSoderaUsername(label);
+      if (!(await (identityReader ?? createEnsIdentityReader()).availability(username.label))) {
+        throw new Error('This name is unavailable or the parent expires too soon');
+      }
+      const identity = await readPersistedWalletIdentity(identityStorage);
+      if (!identity.deployed || identity.account.toLowerCase() !== account.toLowerCase()) {
+        throw new Error('Activate this wallet before claiming a name');
+      }
+      const claim = await (usernameClaimClient ?? createEnsClaimClient({ ceremonyClient: client })).submit({
+        account, credential: identity.credential, label: username.label,
       });
       if (currentInvocation !== invocation.current) return;
-      setProfile(completedProfile);
-      setStage('home');
+      const saved = await persistPendingEnsClaim(profileStorage, {
+        account, username: claim.name, claimId: claim.id,
+      });
+      setPending(saved);
+      setStage('claimPending');
+      if (claim.status === 'confirmed') void refreshClaim(saved);
     } catch (error) {
       if (currentInvocation === invocation.current) setMessage(getErrorMessage(error));
     } finally {
@@ -239,6 +309,44 @@ export function OnboardingScreen({
       if (currentInvocation === invocation.current) setBusy(false);
     }
   };
+
+  const refreshClaim = useCallback(async (claim: PendingEnsClaim) => {
+    if (!claim || operationInFlight.current) return;
+    operationInFlight.current = true;
+    setBusy(true);
+    try {
+      const result = await (usernameClaimClient ?? createEnsClaimClient({ ceremonyClient: client })).status({
+        id: claim.claimId, account: claim.account, label: claim.username.replace(/\.sodera\.eth$/, ''),
+      });
+      if (result.status === 'needs_attention' || result.status === 'detached') {
+        setMessage('Issuance needs attention. Your wallet is safe; retry status later or contact Sodera support.');
+      } else if (result.status === 'confirmed') {
+        const verified = await (identityReader ?? createEnsIdentityReader()).verify(claim.username, claim.account);
+        if (!verified) throw new Error('The name is not currently owned by and resolving to this wallet');
+        const completed = await persistCompletedOnboarding({
+          storage: profileStorage, account: claim.account, name: claim.username, claimId: claim.claimId,
+        });
+        setProfile(completed);
+        setPending(null);
+        setMessage('');
+        setStage('home');
+      } else {
+        setMessage('');
+      }
+    } catch (error) {
+      setMessage(getErrorMessage(error));
+    } finally {
+      operationInFlight.current = false;
+      setBusy(false);
+    }
+  }, [client, identityReader, profileStorage, usernameClaimClient]);
+
+  useEffect(() => {
+    if (stage !== 'claimPending' || !pending) return;
+    void refreshClaim(pending);
+    const interval = setInterval(() => void refreshClaim(pending), 5_000);
+    return () => clearInterval(interval);
+  }, [stage, pending, refreshClaim]);
 
   return (
     <SafeAreaView style={styles.screen}>
@@ -267,7 +375,7 @@ export function OnboardingScreen({
                 <Text style={styles.eyebrow}>WALLET MEETS HOME</Text>
                 <Text style={styles.title}>Your wallet, right at home.</Text>
                 <Text style={styles.description}>
-                  Create a passkey-controlled Sepolia wallet, then make it yours with a Sodera name.
+                  Create a passkey-controlled wallet, then make it yours with a Sodera name.
                 </Text>
               </View>
               <View style={styles.actions}>
@@ -285,26 +393,36 @@ export function OnboardingScreen({
             <>
               <View style={styles.hero}>
                 <Text style={styles.eyebrow}>YOUR PRIMARY PASSKEY</Text>
-                <Text style={styles.title}>{resumeWallet ? 'Finish your wallet.' : 'Create your wallet.'}</Text>
+                <Text style={styles.title}>{executionClient ? 'Activate your wallet.' : resumeWallet ? 'Finish your wallet.' : 'Create your wallet.'}</Text>
                 <Text style={styles.description}>
-                  Android will ask you to create a passkey. It directly controls your testnet smart account.
+                  {executionClient
+                    ? 'One passkey confirmation deploys your smart account and sends a zero-value operation.'
+                    : 'Android will ask you to create a passkey. It directly controls your smart account.'}
                 </Text>
               </View>
               <View style={styles.detailCard}>
-                <Text style={styles.detailTitle}>No password. No seed phrase.</Text>
-                <Text style={styles.detailBody}>
-                  This testnet wallet is tied to your passkey. Recovery is not available in this build.
-                </Text>
+                {executionClient ? (
+                  <>
+                    <Text style={styles.detailTitle}>Wallet activation</Text>
+                    <Text style={styles.detailBody}>Deploy wallet + 0 ETH operation</Text>
+                    <Text style={styles.detailBody}>Network fee: {activationReview?.sponsored ? 'Sponsored' : 'Requires ETH if not sponsored'}</Text>
+                  </>
+                ) : (
+                  <>
+                    <Text style={styles.detailTitle}>No password. No seed phrase.</Text>
+                    <Text style={styles.detailBody}>This wallet is tied to your passkey.</Text>
+                  </>
+                )}
               </View>
               <InlineError message={message} />
               <View style={styles.actions}>
                 <ActionButton
                   busy={busy}
                   disabled={busy}
-                  label={resumeWallet ? 'Continue wallet setup' : 'Create with passkey'}
-                  onPress={createOrResumeWallet}
+                  label={executionClient ? activationReview ? 'Activate wallet' : 'Retry activation' : resumeWallet ? 'Continue wallet setup' : 'Create with passkey'}
+                  onPress={executionClient ? activateWallet : createOrResumeWallet}
                 />
-                {!resumeWallet ? (
+                {!resumeWallet && !executionClient ? (
                   <ActionButton label="Back" onPress={() => setStage('welcome')} secondary />
                 ) : null}
               </View>
@@ -317,29 +435,44 @@ export function OnboardingScreen({
                 <Text style={styles.eyebrow}>YOUR SODERA NAME</Text>
                 <Text style={styles.title}>Claim your place.</Text>
                 <Text style={styles.description}>
-                  Your name is how Sodera identifies this wallet throughout the launcher.
+                  Pick an available name owned by your passkey-controlled wallet. Registration lasts one year.
                 </Text>
               </View>
               <View style={styles.nameCard}>
-                <Text style={styles.name}>{SODERA_FIXTURE_USERNAME}</Text>
-                <View style={styles.availablePill}>
-                  <View style={styles.availableDot} />
-                  <Text style={styles.availableText}>Reserved for this demo</Text>
-                </View>
+                <TextInput
+                  accessibilityLabel="Choose your Sodera name"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  editable={!busy}
+                  maxLength={20}
+                  onChangeText={(value) => { setLabel(value); setMessage(''); }}
+                  placeholder="yourname"
+                  placeholderTextColor={colors.faintText}
+                  selectionColor={colors.emerald}
+                  style={styles.nameInput}
+                  testID="ens-username"
+                  value={label}
+                />
+                <Text style={styles.name}>.sodera.eth</Text>
               </View>
-              <Text style={styles.disclaimer}>
-                Demo claim only. No ENS transaction is submitted and this name does not resolve onchain.
-              </Text>
               <InlineError message={message} />
               <View style={styles.actions}>
                 <ActionButton
                   busy={busy}
-                  disabled={busy}
-                  label="Claim anon.sodera.eth"
+                  disabled={busy || !label}
+                  label="Claim"
                   onPress={claimUsername}
                 />
               </View>
             </>
+          ) : null}
+
+          {stage === 'claimPending' && pending ? (
+            <View accessibilityLabel="Registering Sodera name" style={styles.pendingMask}>
+              <ActivityIndicator color={colors.emerald} size="large" />
+              <Text style={styles.pendingTitle}>Making it official.</Text>
+              <InlineError message={message} />
+            </View>
           ) : null}
 
           {stage === 'home' && account && profile ? (
@@ -352,7 +485,7 @@ export function OnboardingScreen({
                 </Text>
               </View>
               <View style={styles.summaryCard}>
-                <Text style={styles.summaryLabel}>SODERA NAME</Text>
+                <Text style={styles.summaryLabel}>{profile.claimMode === 'ens' ? 'VERIFIED SODERA NAME' : 'LEGACY DEMO NAME (UNVERIFIED)'}</Text>
                 <Text selectable style={styles.summaryValue}>
                   {profile.username}
                 </Text>
@@ -376,7 +509,7 @@ export function OnboardingScreen({
                 <Text style={styles.eyebrow}>RECOVER WALLET</Text>
                 <Text style={styles.title}>Recovery is coming later.</Text>
                 <Text style={styles.description}>
-                  Recovery is not available in this testnet build. No existing wallet has been changed.
+                  Recovery is not available in this build. No existing wallet has been changed.
                 </Text>
               </View>
               <View style={styles.actions}>
@@ -452,7 +585,7 @@ function InlineError({ message }: { message: string }) {
 function progressLabel(stage: Stage) {
   if (stage === 'welcome') return '1 / 4';
   if (stage === 'wallet') return '2 / 4';
-  if (stage === 'username') return '3 / 4';
+  if (stage === 'username' || stage === 'claimPending') return '3 / 4';
   return '4 / 4';
 }
 
@@ -482,6 +615,8 @@ const styles = StyleSheet.create({
   progress: { ...typography.labelSmall, marginLeft: 'auto', color: colors.mutedText },
   body: { flex: 1, justifyContent: 'space-between', paddingTop: spacing.xxl, paddingBottom: spacing.lg, gap: spacing.xxl },
   centered: { flex: 1, minHeight: 400, alignItems: 'center', justifyContent: 'center', gap: spacing.lg },
+  pendingMask: { flex: 1, minHeight: 400, alignItems: 'center', justifyContent: 'center', gap: spacing.xl },
+  pendingTitle: { ...typography.heading, color: colors.platinum, textAlign: 'center' },
   hero: { gap: spacing.md },
   eyebrow: { ...typography.labelSmall, color: colors.emerald },
   title: { ...typography.display, color: colors.platinum, maxWidth: 520 },
@@ -521,10 +656,14 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   name: { ...typography.title, color: colors.onPlatinum },
-  availablePill: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: colors.onPlatinum, borderRadius: radius.full, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
-  availableDot: { width: 7, height: 7, borderRadius: radius.full, backgroundColor: colors.emerald },
-  availableText: { ...typography.caption, color: colors.platinum },
-  disclaimer: { ...typography.bodySmall, color: colors.mutedText },
+  nameInput: {
+    ...typography.title,
+    color: colors.onPlatinum,
+    minHeight: 64,
+    paddingHorizontal: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.faintText,
+  },
   summaryCard: {
     backgroundColor: colors.surface,
     borderRadius: radius.xl,

@@ -120,7 +120,7 @@ export function createWalletIdentityClient({
     } catch (error) {
       return blocked(
         'infrastructureUnavailable',
-        error instanceof Error ? error.message : 'Smart Account infrastructure is unavailable',
+        describeAccountDerivationError(error),
       );
     }
     if (registered.account && registered.account.toLowerCase() !== derived.address.toLowerCase()) {
@@ -254,6 +254,14 @@ export function createWalletIdentityClient({
       await markPersistedWalletIdentityDeployed(storage, account);
     },
   };
+}
+
+function describeAccountDerivationError(error: unknown) {
+  if (!(error instanceof Error)) return 'Smart Account infrastructure is unavailable';
+  if (/getSenderAddress/.test(error.message)) {
+      return 'Ethereum could not derive this Smart Account address. Your wallet identity was preserved; check the RPC and retry.';
+  }
+  return error.message.replace(/https?:\/\/\S+/g, '[redacted RPC URL]');
 }
 
 export async function readPersistedWalletIdentity(

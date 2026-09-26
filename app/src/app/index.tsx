@@ -1,6 +1,6 @@
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { BackHandler, type ScrollView, type View } from 'react-native';
+import { AppState, BackHandler, type ScrollView, type View } from 'react-native';
 
 import { readAgentConfigFromEnv } from '@/agent/agent-client';
 import { HomeGrid } from '@/components/home-grid';
@@ -13,6 +13,7 @@ import { MarketPulseWidget } from '@/components/widgets/market-pulse-widget';
 import { PhoneWidget } from '@/components/widgets/phone-widget';
 import { SwapEarnWidget } from '@/components/widgets/swap-earn-widget';
 import { WalletWidget } from '@/components/widgets/wallet-widget';
+import { createEnsIdentityReader } from '@/ens/identity-client';
 import {
   addWidget,
   columnWidth,
@@ -37,6 +38,7 @@ import { defaultHomeLayout, getWidgetDefinition, layoutRowHeights, sizesAfter, W
 import { useOnboarding } from '@/onboarding/onboarding-context';
 import { pendingSends } from '@/wallet/pending-sends';
 import { walletHomeLiveProvider } from '@/wallet/wallet-home-live';
+import { shortenAddress } from '@/wallet/sepolia';
 
 const agentConfigured = readAgentConfigFromEnv() !== null;
 /** Phone is the app drawer and cannot be removed, so it is never offered in the sheet. */
@@ -47,6 +49,29 @@ const EDIT_CONTENT_TOP = platinum.spacing.lg;
 export default function HomeScreen() {
   const { access } = useOnboarding();
   const profile = access?.status === 'complete' ? access.profile : null;
+  const [verifiedName, setVerifiedName] = useState<{ key: string; name: string } | null>(null);
+  const nameKey = profile?.claimMode === 'ens' ? `${profile.account}:${profile.username}` : null;
+
+  useEffect(() => {
+    if (!profile || profile.claimMode !== 'ens') return;
+    let active = true;
+    let requestId = 0;
+    const refresh = async () => {
+      const id = ++requestId;
+      try {
+        const verified = await createEnsIdentityReader().verify(profile.username, profile.account);
+        if (active && id === requestId) setVerifiedName(verified ? { key: `${profile.account}:${profile.username}`, name: profile.username } : null);
+      } catch {
+        if (active && id === requestId) setVerifiedName(null);
+      }
+    };
+    void refresh();
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') { setVerifiedName(null); void refresh(); }
+    });
+    return () => { active = false; subscription.remove(); };
+  }, [profile]);
+
   const account = profile?.account ?? null;
   const { preferences, save } = useLauncherPreferences(launcherPreferencesNativeStorage);
   const layout = preferences?.homeLayout ?? defaultHomeLayout();
@@ -179,7 +204,7 @@ export default function HomeScreen() {
     const size = { w: item.w, h: item.h };
     switch (item.id) {
       case 'identity':
-        return <IdentityWidget size={size} accountAddress={account} username={profile?.username} onOpenWallet={() => router.push('/wallet')} />;
+        return <IdentityWidget size={size} accountAddress={account} username={verifiedName?.key === nameKey ? verifiedName.name : (account ? shortenAddress(account) : null)} ensVerified={Boolean(nameKey && verifiedName?.key === nameKey)} onOpenWallet={() => router.push('/wallet')} />;
       case 'wallet':
         return (
           <WalletWidget

@@ -22,7 +22,7 @@ type ActivityWidgetProps = {
 type LatestState = { status: 'loading' } | { status: 'error' } | { status: 'loaded'; item: TransactionActivityItem | null };
 
 const { colors, radius, spacing, typography } = platinum;
-const FALLBACK_SUBTITLE = 'Your Sepolia transaction history';
+const FALLBACK_SUBTITLE = 'Your Ethereum transaction history';
 
 /** 4×1 row describing the newest transaction; opens the transaction history. */
 export function ActivityWidget({ provider, onOpenActivity, now = Date.now }: ActivityWidgetProps) {

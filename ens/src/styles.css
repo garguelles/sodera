@@ -1,0 +1,46 @@
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+
+:root {
+  --canvas: #090a0f;
+  --surface: #121318;
+  --surface-low: #1a1b21;
+  --platinum: #f4f5f7;
+  --text: #e3e1e9;
+  --text-muted: #94a3b8;
+  --emerald: #4edea3;
+  --cyan: #38bdf8;
+  --border: rgba(255, 255, 255, 0.08);
+  --font-body: 'Geist', ui-sans-serif, system-ui, sans-serif;
+  --font-data: 'JetBrains Mono', ui-monospace, monospace;
+
+  color: var(--text);
+  background: var(--canvas);
+  font-family: var(--font-body);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* { box-sizing: border-box; }
+html, body, #root { min-height: 100%; margin: 0; }
+
+.ens-owner-page { max-width: 980px; min-height: 100dvh; margin: auto; padding: 2rem; }
+.ens-owner-panel { width: 100%; }
+.ens-owner-panel h1 { margin: 0; color: var(--platinum); font-size: clamp(2.5rem, 7vw, 4.5rem); font-weight: 500; letter-spacing: -0.06em; }
+.ens-owner-panel p { color: var(--text-muted); line-height: 1.6; }
+.ens-eyebrow { color: var(--emerald) !important; font: 500 0.75rem var(--font-data); letter-spacing: 0.16em; }
+.ens-summary { display: grid; gap: 0.75rem; padding: 1.25rem; margin: 2rem 0; background: var(--surface); border: 1px solid var(--border); border-radius: 1rem; }
+.ens-summary span { display: flex; gap: 1rem; flex-wrap: wrap; justify-content: space-between; }
+.ens-owner-panel code { font: 0.8rem var(--font-data); overflow-wrap: anywhere; color: var(--platinum); }
+.ens-owner-panel button { background: var(--platinum); color: var(--canvas); border: 0; padding: 0.9rem 1.25rem; border-radius: 0.6rem; cursor: pointer; font: 500 0.95rem var(--font-body); }
+.ens-owner-panel button:disabled { opacity: 0.45; cursor: not-allowed; }
+.ens-steps { display: grid; gap: 1rem; padding: 0; list-style: none; counter-reset: step; }
+.ens-steps li { background: var(--surface); border: 1px solid var(--border); border-radius: 1rem; padding: 1.5rem; }
+.ens-step-heading { display: flex; justify-content: space-between; gap: 1rem; }
+.ens-step-heading span { color: var(--emerald); font: 0.75rem var(--font-data); }
+.ens-steps details { margin: 1rem 0; color: var(--text-muted); }
+.ens-steps summary { cursor: pointer; }
+.ens-calldata { display: block; padding: 1rem; background: var(--surface-low); max-height: 9rem; overflow: auto; }
+.ens-grant-confirmation input { width: 100%; padding: 0.9rem; margin: 0.5rem 0; background: var(--surface-low); border: 1px solid var(--border); border-radius: 0.6rem; color: var(--platinum); font: 0.85rem var(--font-data); }
+.ens-owner-panel a { color: var(--cyan); overflow-wrap: anywhere; }
+.ens-error { color: #ff9f9f !important; }
+.ens-note { border-top: 1px solid var(--border); padding-top: 1rem; }

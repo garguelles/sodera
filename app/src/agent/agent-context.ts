@@ -38,8 +38,8 @@ export async function loadAgentContext({
     }),
     readEthUsdPrice(balanceClient, now),
   ]);
-  if (chainId !== 11155111) throw new Error('MultiBaas deployment is not Ethereum Sepolia');
-  if (typeof usdcMicro !== 'bigint') throw new Error('Invalid Sepolia USDC balance');
+  if (chainId !== 11155111) throw new Error('Wallet data is connected to the wrong network');
+  if (typeof usdcMicro !== 'bigint') throw new Error('Invalid USDC balance');
 
   return {
     chainId: 11155111,

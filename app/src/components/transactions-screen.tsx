@@ -96,7 +96,7 @@ export function TransactionsScreen({
         <Text style={styles.back}>Back</Text>
       </Pressable>
       <View style={styles.heading}>
-        <Text style={styles.eyebrow}>ETHEREUM SEPOLIA</Text>
+        <Text style={styles.eyebrow}>ETHEREUM</Text>
         <Text accessibilityRole="header" style={styles.title}>Transactions</Text>
         <Text style={styles.subtitle}>Your sends and payments, ETH and USDC transfers, Earn deposits and withdrawals, and smart account operations.</Text>
       </View>

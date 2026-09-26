@@ -34,7 +34,7 @@ describe('MarketPulseWidget', () => {
 
     expect(await screen.findByText('$84,002.00')).toBeOnTheScreen();
     expect(screen.getByText('$2,673.55')).toBeOnTheScreen();
-    expect(screen.getByText('Global market prices · Wallet uses Sepolia testnet')).toBeOnTheScreen();
+    expect(screen.getByText('Global market prices · Wallet on Ethereum')).toBeOnTheScreen();
     await widget.unmount();
   });
 
@@ -45,7 +45,7 @@ describe('MarketPulseWidget', () => {
     expect(await screen.findByText('$84,002.00')).toBeOnTheScreen();
     expect(screen.getByText('BTC')).toBeOnTheScreen();
     expect(screen.getByText('-0.3%')).toBeOnTheScreen();
-    expect(screen.queryByText('Global market prices · Wallet uses Sepolia testnet')).not.toBeOnTheScreen();
+    expect(screen.queryByText('Global market prices · Wallet on Ethereum')).not.toBeOnTheScreen();
     expect(screen.queryByLabelText('24 hour price trend')).not.toBeOnTheScreen();
     await widget.unmount();
   });

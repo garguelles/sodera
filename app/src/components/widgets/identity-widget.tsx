@@ -10,13 +10,14 @@ type IdentityWidgetProps = {
   size: WidgetSize;
   accountAddress?: string | null;
   username?: string | null;
+  ensVerified?: boolean;
   onOpenWallet: () => void;
 };
 
 const { colors, radius, spacing, typography } = platinum;
 
 /** 4×2 identity card: username, copyable address, presence dot, and profile links. */
-export function IdentityWidget({ accountAddress, username, onOpenWallet }: IdentityWidgetProps) {
+export function IdentityWidget({ accountAddress, username, ensVerified = false, onOpenWallet }: IdentityWidgetProps) {
   return (
     <View style={styles.identity}>
       <View style={styles.identityTop}>
@@ -38,7 +39,7 @@ export function IdentityWidget({ accountAddress, username, onOpenWallet }: Ident
               <SymbolView name={{ ios: 'square.on.square', android: 'content_copy', web: 'content_copy' }} size={12} tintColor={colors.faintText} />
             </Pressable>
           ) : (
-            <Text style={styles.identityAddress}>Sepolia smart wallet</Text>
+            <Text style={styles.identityAddress}>Ethereum smart wallet</Text>
           )}
         </View>
         <Pressable accessibilityRole="button" accessibilityLabel="View smart account" onPress={onOpenWallet} style={styles.identityArrow}>
@@ -46,9 +47,8 @@ export function IdentityWidget({ accountAddress, username, onOpenWallet }: Ident
         </Pressable>
       </View>
       <View style={styles.identityFooter}>
-        <Text style={styles.identityChip}>𝕏 @anon_builder</Text>
-        <Text style={styles.identityChip}>github/anon</Text>
-        <Text style={styles.identityChipActive}>sodera.xyz</Text>
+        <Text style={styles.identityChip}>ETHEREUM</Text>
+        <Text style={ensVerified ? styles.identityChipActive : styles.identityChip}>{ensVerified ? 'ENS VERIFIED' : 'ADDRESS ONLY'}</Text>
         <Pressable accessibilityRole="button" accessibilityLabel="Open profile wallet" onPress={onOpenWallet} style={styles.identityFooterArrow}>
           <Text style={styles.footerArrowText}>›</Text>
         </Pressable>
