@@ -1,7 +1,7 @@
 import { useFocusEffect } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View, type TextInput } from 'react-native';
+import { KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, View, type TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { Address } from 'viem';
 
@@ -115,7 +115,9 @@ export function AssistantScreen({
         )}
       </View>
 
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.body}>
+      {/* Android runs edge-to-edge, where the system no longer resizes the window for the keyboard,
+          so the page adds the keyboard's height as padding on both platforms. */}
+      <KeyboardAvoidingView behavior="padding" style={styles.body}>
         <ScrollView
           ref={scroll}
           contentContainerStyle={[styles.conversation, turns.length === 0 && styles.conversationEmpty]}

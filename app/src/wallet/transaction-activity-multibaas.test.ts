@@ -72,6 +72,22 @@ describe('normalizeMultiBaasActivity', () => {
     });
   });
 
+  it('shows both the USDC transfer and the ETH send of one batched operation', () => {
+    const result = normalize({
+      usdcSent: [transferRow({ txHash: hash('aa'), from: account, to: other, value: '5000000' })],
+      operations: [operationRow({ txHash: hash('aa'), userOpHash: hash('cc'), paymaster })],
+      ethTransfers: new Map([[hash('cc'), [{ to: other, valueWei: '1735000000000000' }]]]),
+    });
+
+    expect(result.items).toHaveLength(2);
+    expect(result.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: 'transfer', asset: 'USDC', amount: '5', operation: expect.objectContaining({ userOperationHash: hash('cc') }) }),
+        expect.objectContaining({ kind: 'transfer', asset: 'ETH', amount: '0.001735', counterparty: other, operation: expect.objectContaining({ userOperationHash: hash('cc') }) }),
+      ]),
+    );
+  });
+
   it('shows an ETH send decoded from its transaction', () => {
     const result = normalize({
       operations: [operationRow({ txHash: hash('aa'), userOpHash: hash('cc'), paymaster, block: 20 })],
@@ -342,7 +358,7 @@ describe('createMultiBaasTransactionActivityProvider', () => {
     });
   });
 
-  it('reads ETH send details from the chain only for operations without a USDC transfer', async () => {
+  it('reads ETH send details from the chain for every operation', async () => {
     const reader = createReader(
       encodeBundle(account, 7n, await encodeKernelCalls([{ to: other, value: 100000000000000000n }])),
     );
@@ -352,7 +368,7 @@ describe('createMultiBaasTransactionActivityProvider', () => {
       client: createClient({
         sent: [transferRow({ txHash: hash('aa'), from: account, to: other })],
         operations: [
-          operationRow({ txHash: hash('aa'), userOpHash: hash('cc') }),
+          { ...operationRow({ txHash: hash('aa'), userOpHash: hash('cc') }), nonce: '3' },
           { ...operationRow({ txHash: hash('bb'), userOpHash: hash('dd') }), nonce: '7' },
         ],
       }),
@@ -361,7 +377,8 @@ describe('createMultiBaasTransactionActivityProvider', () => {
 
     const result = await provider.load();
 
-    expect(reader.getTransaction).toHaveBeenCalledTimes(1);
+    expect(reader.getTransaction).toHaveBeenCalledTimes(2);
+    expect(reader.getTransaction).toHaveBeenCalledWith({ hash: hash('aa') });
     expect(reader.getTransaction).toHaveBeenCalledWith({ hash: hash('bb') });
     expect(result).toMatchObject({
       status: 'ready',

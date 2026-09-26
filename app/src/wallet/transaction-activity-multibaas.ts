@@ -158,7 +158,6 @@ export function createMultiBaasTransactionActivityProvider({
       const ethTransfers = await readEthTransfers({
         account,
         reader: getReader(),
-        transferRows: [...usdcSent, ...usdcReceived],
         operationRows: operations,
       });
       const indexed = normalizeMultiBaasActivity({
@@ -211,24 +210,20 @@ function createSepoliaTransactionReader(): UserOperationTransactionReader {
 }
 
 /**
- * Native ETH transfers emit no events, so MultiBaas only sees the user operation. For each
- * operation that no USDC transfer explains, read its ETH calls from the bundle transaction.
- * A failed lookup leaves the row as a plain account operation.
+ * Native ETH transfers emit no events, so MultiBaas only sees the user operation. Read the ETH
+ * calls of every operation from its bundle transaction: a batched operation can move USDC and
+ * send ETH at once, such as a swap followed by a send. A failed lookup leaves the operation's
+ * ETH sends out, and the row still shows its USDC transfers or a plain account operation.
  */
 export async function readEthTransfers({
   account,
   reader,
-  transferRows,
   operationRows,
 }: {
   account: Address;
   reader: UserOperationTransactionReader;
-  transferRows: readonly EventRow[];
   operationRows: readonly EventRow[];
 }) {
-  const explained = new Set(
-    transferRows.flatMap((row) => (parseHash(row.txHash) ? [String(row.txHash).toLowerCase()] : [])),
-  );
   const result = new Map<string, UserOperationEthTransfer[]>();
   await Promise.all(
     operationRows.map(async (row) => {
@@ -236,7 +231,6 @@ export async function readEthTransfers({
       const userOperationHash = parseBytes32(row.userOpHash);
       const nonce = parseUint(row.nonce);
       if (!transactionHash || !userOperationHash || nonce === null) return;
-      if (explained.has(transactionHash.toLowerCase())) return;
       try {
         const transfers = await readUserOperationEthTransfers(reader, {
           transactionHash,
@@ -350,12 +344,9 @@ export function normalizeMultiBaasActivity({
         transfer.operation === null &&
         transfer.transactionHash?.toLowerCase() === operation.transactionHash.toLowerCase(),
     );
-    if (matchingTransfers.length > 0) {
-      matchingTransfers.forEach((transfer) => {
-        transfer.operation = summary;
-      });
-      continue;
-    }
+    matchingTransfers.forEach((transfer) => {
+      transfer.operation = summary;
+    });
     const sends = ethTransfers.get(operation.userOperationHash.toLowerCase());
     if (sends && sends.length > 0) {
       sends.forEach((send, index) => {
@@ -372,9 +363,9 @@ export function normalizeMultiBaasActivity({
           operation: summary,
         });
       });
-      continue;
     }
-    items.push(operation);
+    // An operation that moved nothing the feed can show still appears on its own.
+    if (matchingTransfers.length === 0 && !(sends && sends.length > 0)) items.push(operation);
   }
 
   return { items: sortActivity(items), skippedCount };
