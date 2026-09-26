@@ -131,6 +131,12 @@ spacing:
 ## Brand & Style
 The design system manifests an ultra-refined, futuristic mobile operating surface engineered for power users and onchain natives. It dissolves the friction between daily smartphone utility and decentralized technology, transforming the primary home surface into an ambient, context-aware command center.
 
+### Implementation contract
+- This document defines the brand; `app/src/constants/theme.ts` (`platinum`) holds the executable Expo tokens and `landing/src/styles.css` holds matching CSS custom properties. Change all three together when updating visual roles. Keep static native splash/icon backgrounds in `app/app.json` synchronized with the canvas token.
+- App text uses bundled Geist and JetBrains Mono weights loaded at the root. Human-facing text uses the Geist typography styles; prices, network indicators, and data labels use the JetBrains Mono styles. Keep repeated colors, spacing, radii, and type values in the tokens rather than duplicating them in screens.
+- The launcher is an Android home surface, not a financial dashboard: a social identity card, prominent Wallet and Phone launchers, compact Swap/Earn tiles, two market cards, Activity, and a swipe-up affordance. The persisted onboarding profile supplies the account and its `anon.sodera.eth` demo username; this name and the Stitch social handles are illustrative fixtures, not verified ENS or linked social accounts. Do not render them as verified links. Market prices and 24h charts come from CoinGecko; retain loading, error, and stale states and do not hardcode the Stitch price, volume, or gas figures.
+- The brand is dark by design, including the existing `Colors` compatibility map; the canvas is `#090A0F`, surfaces are `#121318` through `#292A2F`, primary text is platinum, positive/live status is emerald, and network or secondary telemetry is cyan. Do not repurpose a status accent as the primary launcher surface.
+
 The aesthetic philosophy centers on **Platinum Fluid Minimalist**: deep astronomical voids punctuated by cold platinum luminescence, ethereal optics, and sub-pixel structural borders. The interface avoids loud skeumorphic mimicry in favor of precise optical materials—translucent frosted membranes, atmospheric cyan-emerald radial fields, and micro-precision typography. The emotional posture is calm, authoritative, high-bandwidth, and relentlessly modern.
 
 ## Colors
