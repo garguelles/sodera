@@ -1,9 +1,29 @@
-import { fireEvent, render } from '@testing-library/react-native';
+import { act, fireEvent, render } from '@testing-library/react-native';
 import { Text } from 'react-native';
 
 import { LauncherScreen } from './launcher-screen';
 
 describe('LauncherScreen', () => {
+  it('shows the assistant button next to settings only when configured', async () => {
+    const onOpenAssistant = jest.fn();
+    const home = await render(
+      <LauncherScreen
+        homeContent={null}
+        onOpenAssistant={onOpenAssistant}
+        onOpenPhone={jest.fn()}
+        onOpenSettings={jest.fn()}
+        onOpenWallet={jest.fn()}
+      />,
+    );
+    await act(async () => {
+      fireEvent.press(home.getByRole('button', { name: 'Open Dera' }));
+    });
+    expect(onOpenAssistant).toHaveBeenCalled();
+    await home.rerender(<LauncherScreen homeContent={null} onOpenPhone={jest.fn()} onOpenSettings={jest.fn()} onOpenWallet={jest.fn()} />);
+    expect(home.queryByRole('button', { name: 'Open Dera' })).not.toBeOnTheScreen();
+    await home.unmount();
+  });
+
   it('opens Phone by card or upward gesture, alongside Wallet and Settings', async () => {
     const onOpenPhone = jest.fn();
     const onOpenWallet = jest.fn();

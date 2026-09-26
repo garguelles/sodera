@@ -1,0 +1,341 @@
+{
+  "vectors": [
+    {
+      "name": "plan with one ETH send",
+      "valid": true,
+      "output": {
+        "kind": "plan",
+        "summary": "Test plan.",
+        "actions": [
+          {
+            "type": "send_eth",
+            "recipient": {
+              "kind": "name",
+              "value": "alice"
+            },
+            "amount": "0.01"
+          }
+        ],
+        "assumptions": []
+      }
+    },
+    {
+      "name": "plan with every action type",
+      "valid": true,
+      "output": {
+        "kind": "plan",
+        "summary": "Test plan.",
+        "actions": [
+          {
+            "type": "send_usdc",
+            "recipient": {
+              "kind": "name",
+              "value": "alice"
+            },
+            "amount": "5"
+          },
+          {
+            "type": "swap",
+            "direction": "eth_to_usdc",
+            "amountIn": "0.1"
+          },
+          {
+            "type": "vault_deposit",
+            "amount": "10"
+          },
+          {
+            "type": "vault_withdraw",
+            "amount": "all"
+          }
+        ],
+        "assumptions": []
+      }
+    },
+    {
+      "name": "clarification",
+      "valid": true,
+      "output": {
+        "kind": "clarification",
+        "question": "How much ETH?"
+      }
+    },
+    {
+      "name": "18 decimal places",
+      "valid": true,
+      "output": {
+        "kind": "plan",
+        "summary": "Test plan.",
+        "actions": [
+          {
+            "type": "send_eth",
+            "recipient": {
+              "kind": "name",
+              "value": "alice"
+            },
+            "amount": "0.000000000000000001"
+          }
+        ],
+        "assumptions": []
+      }
+    },
+    {
+      "name": "integer amount",
+      "valid": true,
+      "output": {
+        "kind": "plan",
+        "summary": "Test plan.",
+        "actions": [
+          {
+            "type": "send_usdc",
+            "recipient": {
+              "kind": "name",
+              "value": "alice"
+            },
+            "amount": "25"
+          }
+        ],
+        "assumptions": []
+      }
+    },
+    {
+      "name": "hex address recipient",
+      "valid": true,
+      "output": {
+        "kind": "plan",
+        "summary": "Test plan.",
+        "actions": [
+          {
+            "type": "send_eth",
+            "recipient": {
+              "kind": "address",
+              "value": "0x2222222222222222222222222222222222222222"
+            },
+            "amount": "1"
+          }
+        ],
+        "assumptions": []
+      }
+    },
+    {
+      "name": "leading zero amount",
+      "valid": false,
+      "output": {
+        "kind": "plan",
+        "summary": "Test plan.",
+        "actions": [
+          {
+            "type": "send_eth",
+            "recipient": {
+              "kind": "name",
+              "value": "alice"
+            },
+            "amount": "01"
+          }
+        ],
+        "assumptions": []
+      }
+    },
+    {
+      "name": "19 decimal places",
+      "valid": false,
+      "output": {
+        "kind": "plan",
+        "summary": "Test plan.",
+        "actions": [
+          {
+            "type": "send_eth",
+            "recipient": {
+              "kind": "name",
+              "value": "alice"
+            },
+            "amount": "0.0000000000000000001"
+          }
+        ],
+        "assumptions": []
+      }
+    },
+    {
+      "name": "negative amount",
+      "valid": false,
+      "output": {
+        "kind": "plan",
+        "summary": "Test plan.",
+        "actions": [
+          {
+            "type": "send_eth",
+            "recipient": {
+              "kind": "name",
+              "value": "alice"
+            },
+            "amount": "-1"
+          }
+        ],
+        "assumptions": []
+      }
+    },
+    {
+      "name": "trailing dot",
+      "valid": false,
+      "output": {
+        "kind": "plan",
+        "summary": "Test plan.",
+        "actions": [
+          {
+            "type": "send_eth",
+            "recipient": {
+              "kind": "name",
+              "value": "alice"
+            },
+            "amount": "1."
+          }
+        ],
+        "assumptions": []
+      }
+    },
+    {
+      "name": "number instead of string",
+      "valid": false,
+      "output": {
+        "kind": "plan",
+        "summary": "Test plan.",
+        "actions": [
+          {
+            "type": "send_eth",
+            "recipient": {
+              "kind": "name",
+              "value": "alice"
+            },
+            "amount": 1
+          }
+        ],
+        "assumptions": []
+      }
+    },
+    {
+      "name": "unknown action type",
+      "valid": false,
+      "output": {
+        "kind": "plan",
+        "summary": "Test plan.",
+        "actions": [
+          {
+            "type": "install_module",
+            "module": "0x00"
+          }
+        ],
+        "assumptions": []
+      }
+    },
+    {
+      "name": "five actions",
+      "valid": false,
+      "output": {
+        "kind": "plan",
+        "summary": "Test plan.",
+        "actions": [
+          {
+            "type": "send_eth",
+            "recipient": {
+              "kind": "name",
+              "value": "alice"
+            },
+            "amount": "0.01"
+          },
+          {
+            "type": "send_eth",
+            "recipient": {
+              "kind": "name",
+              "value": "alice"
+            },
+            "amount": "0.01"
+          },
+          {
+            "type": "send_eth",
+            "recipient": {
+              "kind": "name",
+              "value": "alice"
+            },
+            "amount": "0.01"
+          },
+          {
+            "type": "send_eth",
+            "recipient": {
+              "kind": "name",
+              "value": "alice"
+            },
+            "amount": "0.01"
+          },
+          {
+            "type": "send_eth",
+            "recipient": {
+              "kind": "name",
+              "value": "alice"
+            },
+            "amount": "0.01"
+          }
+        ],
+        "assumptions": []
+      }
+    },
+    {
+      "name": "no actions",
+      "valid": false,
+      "output": {
+        "kind": "plan",
+        "summary": "Test plan.",
+        "actions": [],
+        "assumptions": []
+      }
+    },
+    {
+      "name": "all on a deposit",
+      "valid": false,
+      "output": {
+        "kind": "plan",
+        "summary": "Test plan.",
+        "actions": [
+          {
+            "type": "vault_deposit",
+            "amount": "all"
+          }
+        ],
+        "assumptions": []
+      }
+    },
+    {
+      "name": "extra top-level kind",
+      "valid": false,
+      "output": {
+        "kind": "execute",
+        "actions": []
+      }
+    },
+    {
+      "name": "summary too long",
+      "valid": false,
+      "output": {
+        "kind": "plan",
+        "summary": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "actions": [
+          {
+            "type": "send_eth",
+            "recipient": {
+              "kind": "name",
+              "value": "alice"
+            },
+            "amount": "0.01"
+          }
+        ],
+        "assumptions": []
+      }
+    },
+    {
+      "name": "empty clarification",
+      "valid": false,
+      "output": {
+        "kind": "clarification",
+        "question": ""
+      }
+    }
+  ]
+}

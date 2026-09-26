@@ -33,7 +33,7 @@ import {
 import { createPasskeyCeremonyClient, type PasskeyCeremonyClient } from '@/wallet/passkey-ceremony';
 import { passkeyNativeAdapter } from '@/wallet/passkey-native-adapter';
 import { SEPOLIA_USDC_ADDRESS, sepoliaTransactionUrl, shortenAddress } from '@/wallet/sepolia';
-import { blockscoutTransactionActivityProvider } from '@/wallet/transaction-activity-blockscout';
+import { multiBaasTransactionActivityProvider } from '@/wallet/transaction-activity-multibaas';
 import { SWAP_POOL_ID } from '@/wallet/uniswap-sdk';
 import { buildSwapCalls, swapDeadline } from '@/wallet/uniswap-swap-calls';
 import {
@@ -289,7 +289,7 @@ export function SwapScreen({
       setPrepared(null);
       setStep('success');
       walletHomeLiveProvider.refresh();
-      blockscoutTransactionActivityProvider.refresh();
+      multiBaasTransactionActivityProvider.refresh();
     } catch (error) {
       if (currentInvocation === invocation.current) {
         setPrepared(null);

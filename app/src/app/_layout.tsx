@@ -45,6 +45,8 @@ function RootNavigator() {
         <Stack.Screen name="earn" />
         <Stack.Screen name="swap" />
         <Stack.Screen name="send" />
+        <Stack.Screen name="plan" />
+        <Stack.Screen name="assistant" />
         <Stack.Screen name="receive" />
         <Stack.Screen name="transactions" />
         <Stack.Screen name="settings" />

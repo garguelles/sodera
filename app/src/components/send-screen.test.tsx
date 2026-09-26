@@ -24,6 +24,7 @@ jest.mock('@/wallet/passkey-native-adapter', () => ({
     cancel: jest.fn(),
   },
 }));
+jest.mock('@/launcher/default-home', () => ({ defaultHomeClient: {} }));
 jest.mock('@/wallet/wallet-identity-native-storage', () => ({
   walletIdentityNativeStorage: { read: jest.fn(), write: jest.fn(), clear: jest.fn() },
 }));
