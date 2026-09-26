@@ -80,7 +80,7 @@ export function LauncherSettingsScreen({ client, preferencesStorage }: LauncherS
     favoritePackageNamesRef.current = next;
     setFavoritePackageNames(next);
     setError(null);
-    void preferencesRepository.save(next).catch((saveError) => {
+    void preferencesRepository.save({ favoritePackageNames: next }).catch((saveError) => {
       if (change !== latestPreferenceChange.current) return;
       favoritePackageNamesRef.current = previous;
       setFavoritePackageNames(previous);
