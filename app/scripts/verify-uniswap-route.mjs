@@ -26,7 +26,7 @@ import {
 } from '../src/wallet/sepolia.ts';
 import { SWAP_POOL_ID, SWAP_POOL_KEY } from '../src/wallet/uniswap-sdk.ts';
 import { buildSwapCalls, swapDeadline } from '../src/wallet/uniswap-swap-calls.ts';
-import { quoteSwap } from '../src/wallet/uniswap-quote.ts';
+import { formatPriceImpact, quoteSwap } from '../src/wallet/uniswap-quote.ts';
 
 if (!process.env.SEPOLIA_RPC_URL) {
   throw new Error('SEPOLIA_RPC_URL is required');
@@ -147,6 +147,13 @@ const [ethToUsdc, usdcToEth] = await Promise.all([
   quoteSwap({ direction: 'eth-to-usdc', amountIn: ethIn }, client),
   quoteSwap({ direction: 'usdc-to-eth', amountIn: usdcIn }, client),
 ]);
+for (const quote of [ethToUsdc, usdcToEth]) {
+  assert.equal(
+    quote.minAmountOut,
+    (quote.amountOut * 9_950n) / 10_000n,
+    `${quote.direction} minimum received is not 0.5% below the quote`,
+  );
+}
 const deadline = swapDeadline();
 
 // ETH -> USDC: one call, sent with exactly the input ETH.
@@ -254,12 +261,14 @@ console.log(
         amountIn: `${formatEther(ethIn)} ETH`,
         quotedOut: `${formatUnits(ethToUsdc.amountOut, 6)} USDC`,
         minimumOut: `${formatUnits(ethToUsdc.minAmountOut, 6)} USDC`,
+        priceImpact: formatPriceImpact(ethToUsdc.priceImpact),
         simulation: 'succeeded; minimum above quote reverted with V4TooLittleReceived',
       },
       usdcToEth: {
         amountIn: `${formatUnits(usdcIn, 6)} USDC`,
         quotedOut: `${formatEther(usdcToEth.amountOut)} ETH`,
         minimumOut: `${formatEther(usdcToEth.minAmountOut)} ETH`,
+        priceImpact: formatPriceImpact(usdcToEth.priceImpact),
         simulatedReceived: `${formatEther(ethReceived)} ETH`,
         allowancesAfterSwap: 'USDC->Permit2 0, Permit2->router 0',
       },

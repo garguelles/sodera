@@ -39,7 +39,7 @@ import { buildSwapCalls, swapDeadline } from '@/wallet/uniswap-swap-calls';
 import {
   SWAP_ASSET_DECIMALS,
   SWAP_DIRECTIONS,
-  SWAP_SLIPPAGE_BPS,
+  SWAP_SLIPPAGE_LABEL,
   formatSwapAmount,
   formatSwapRate,
   parseSwapAmount,
@@ -62,7 +62,7 @@ const QUOTE_DEBOUNCE_MS = 400;
 const REVIEW_TTL_MS = 60_000;
 const REVIEW_EXPIRED_MESSAGE = 'That quote expired. Review the swap again for a fresh price.';
 const currentTimeMs = () => Date.now();
-const SLIPPAGE_LABEL = `${Number(SWAP_SLIPPAGE_BPS) / 100}%`;
+const SLIPPAGE_LABEL = SWAP_SLIPPAGE_LABEL;
 
 const defaultCeremonyClient = createPasskeyCeremonyClient(passkeyNativeAdapter, {
   isForeground: waitForAppForeground,
