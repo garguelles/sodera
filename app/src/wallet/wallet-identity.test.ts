@@ -3,6 +3,8 @@ import type { Address } from 'viem';
 import {
   CURRENT_WALLET_IDENTITY_PINS,
   createWalletIdentityClient,
+  markPersistedWalletIdentityDeployed,
+  readPersistedWalletIdentity,
   type WalletIdentityStorage,
 } from './wallet-identity';
 import type { PasskeyCeremonyClient, RegisteredPrimaryPasskey } from './passkey-ceremony';
@@ -153,6 +155,25 @@ describe('WalletIdentityClient', () => {
       credential,
       account,
     });
+  });
+
+  it('opens wallets pinned to the previous viem version and migrates pins on the next write', async () => {
+    const storage = createStorage(JSON.stringify({
+      ...JSON.parse(manifest('accountDerived')),
+      pins: { ...CURRENT_WALLET_IDENTITY_PINS, viemVersion: '2.28.0' },
+    }));
+    const ceremonyClient = createCeremonyClient();
+    ceremonyClient.verifyPrimaryPasskey.mockResolvedValue({ ok: true });
+    const client = createWalletIdentityClient({
+      storage,
+      ceremonyClient,
+      deriveAccount: jest.fn().mockResolvedValue({ address: account, deployed: false }),
+    });
+
+    await expect(client.reopen()).resolves.toMatchObject({ status: 'ready', account });
+    await expect(readPersistedWalletIdentity(storage)).resolves.toMatchObject({ account });
+    await markPersistedWalletIdentityDeployed(storage, account);
+    expect(JSON.parse(storage.value!).pins).toEqual(CURRENT_WALLET_IDENTITY_PINS);
   });
 
   it('does not start creation when any Wallet Identity phase already exists', async () => {

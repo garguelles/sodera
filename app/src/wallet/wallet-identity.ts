@@ -27,8 +27,13 @@ export const CURRENT_WALLET_IDENTITY_PINS = Object.freeze({
   zeroDevSdkVersion: '5.5.10',
   zeroDevPasskeyValidatorPackageVersion: '5.6.0',
   zeroDevWebAuthnKeyPackageVersion: '5.5.0',
-  viemVersion: '2.28.0',
+  viemVersion: '2.35.0',
 } as const);
+
+const PREVIOUS_WALLET_IDENTITY_PINS = Object.freeze({
+  ...CURRENT_WALLET_IDENTITY_PINS,
+  viemVersion: '2.28.0',
+});
 
 type WalletIdentityPins = typeof CURRENT_WALLET_IDENTITY_PINS;
 type WalletIdentityPhase = 'registering' | 'credentialRegistered' | 'accountDerived' | 'accountDeployed';
@@ -340,7 +345,11 @@ function parseManifest(
       result: blocked('unsupportedPinnedVersions', 'Wallet Identity metadata uses an unsupported schema'),
     };
   }
-  if (JSON.stringify(candidate.pins) !== JSON.stringify(CURRENT_WALLET_IDENTITY_PINS)) {
+  const pins = JSON.stringify(candidate.pins);
+  if (
+    pins !== JSON.stringify(CURRENT_WALLET_IDENTITY_PINS) &&
+    pins !== JSON.stringify(PREVIOUS_WALLET_IDENTITY_PINS)
+  ) {
     return {
       ok: false,
       result: blocked(
@@ -349,6 +358,7 @@ function parseManifest(
       ),
     };
   }
+  candidate.pins = CURRENT_WALLET_IDENTITY_PINS;
   if (candidate.phase === 'registering') {
     return { ok: true, manifest: candidate as WalletIdentityManifest & { phase: 'registering' } };
   }

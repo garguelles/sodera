@@ -107,6 +107,24 @@ describe('TransactionsScreen', () => {
     expect(await screen.findByText('Activity may be incomplete')).toBeOnTheScreen();
     expect(screen.queryByText('No transactions yet')).not.toBeOnTheScreen();
   });
+
+  it('shows a submitted send without claiming it has a transaction hash yet', async () => {
+    const openTransaction = jest.fn();
+    await act(async () => {
+      render(<TransactionsScreen openTransaction={openTransaction} provider={createProvider({
+        status: 'ready', account,
+        items: [{
+          id: 'pending', transactionHash: null, userOperationHash: transactionHash,
+          status: 'submitted', direction: 'sent', asset: 'USDC', amount: '1.25',
+          counterparty, timestamp: '2026-09-26T12:00:00.000Z', blockNumber: 0,
+        }],
+      })} />);
+    });
+    expect(await screen.findByText('Submitted · awaiting confirmation')).toBeOnTheScreen();
+    expect(screen.getByText('Operation: 0x3333...3333')).toBeOnTheScreen();
+    expect(screen.queryByRole('link', { name: /Sent 1.25 USDC/ })).not.toBeOnTheScreen();
+    expect(openTransaction).not.toHaveBeenCalled();
+  });
 });
 
 function createProvider(

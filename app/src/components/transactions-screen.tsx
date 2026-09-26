@@ -74,7 +74,8 @@ export function TransactionsScreen({
     setRequest((current) => current + 1);
   };
 
-  const viewTransaction = async (transactionHash: string) => {
+  const viewTransaction = async (transactionHash: string | null) => {
+    if (!transactionHash) return;
     setLinkError('');
     try {
       await openTransaction(sepoliaTransactionUrl(transactionHash));
@@ -91,7 +92,7 @@ export function TransactionsScreen({
       <View style={styles.heading}>
         <Text style={styles.eyebrow}>ETHEREUM SEPOLIA</Text>
         <Text accessibilityRole="header" style={styles.title}>Transactions</Text>
-        <Text style={styles.subtitle}>Latest ETH and USDC transfers indexed by Blockscout.</Text>
+        <Text style={styles.subtitle}>Your Sepolia sends and indexed ETH and USDC transfers.</Text>
       </View>
     </View>
   );
@@ -168,9 +169,9 @@ function TransactionRow({ item, onPress }: { item: TransactionActivityItem; onPr
   const counterparty = `${sent ? 'To' : 'From'} ${shortenAddress(item.counterparty)}`;
   return (
     <Pressable
-      accessibilityLabel={`${sent ? 'Sent' : 'Received'} ${item.amount} ${item.asset}, ${counterparty}`}
-      accessibilityRole="link"
-      onPress={onPress}
+      accessibilityLabel={`${sent ? 'Sent' : 'Received'} ${item.amount} ${item.asset}, ${counterparty}${item.status ? `, ${item.status}` : ''}`}
+      accessibilityRole={item.transactionHash ? 'link' : undefined}
+      onPress={item.transactionHash ? onPress : undefined}
       style={({ pressed }) => [styles.row, pressed && styles.pressed]}>
       <View style={[styles.directionIcon, sent ? styles.sentIcon : styles.receivedIcon]}>
         <Text importantForAccessibility="no" style={[styles.directionIconText, !sent && styles.receivedIconText]}>{sent ? '↗' : '↙'}</Text>
@@ -179,6 +180,8 @@ function TransactionRow({ item, onPress }: { item: TransactionActivityItem; onPr
         <Text style={styles.rowTitle}>{sent ? 'Sent' : 'Received'} {item.asset}</Text>
         <Text selectable style={styles.counterparty}>{counterparty}</Text>
         <Text style={styles.timestamp}>{formatTimestamp(item.timestamp)}</Text>
+        {item.status ? <Text style={[styles.timestamp, item.status === 'failed' && styles.failed]}>{item.status === 'submitted' ? 'Submitted · awaiting confirmation' : item.status === 'failed' ? 'Failed' : 'Confirmed · awaiting indexing'}</Text> : null}
+        {item.userOperationHash && !item.transactionHash ? <Text selectable style={styles.timestamp}>Operation: {shortenAddress(item.userOperationHash)}</Text> : null}
       </View>
       <View style={styles.amountCopy}>
         <Text selectable style={[styles.amount, !sent && styles.receivedAmount]}>
@@ -235,6 +238,7 @@ const styles = StyleSheet.create({
   amountCopy: { maxWidth: '38%', alignItems: 'flex-end', gap: spacing.xs },
   amount: { ...typography.label, color: colors.platinum, fontVariant: ['tabular-nums'] },
   receivedAmount: { color: colors.emerald },
+  failed: { color: colors.negative },
   asset: { ...typography.labelSmall, color: colors.mutedText },
   linkError: { ...typography.bodySmall, color: colors.negative, paddingTop: spacing.xl, textAlign: 'center' },
   separator: { height: 1, marginLeft: 42 + spacing.md, backgroundColor: colors.border },

@@ -2,19 +2,18 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-
 
 import {
   SendScreen,
-  parseEthTransfer,
   shortenHash,
 } from './send-screen';
-import { sepoliaTransactionUrl } from '@/wallet/sepolia';
 import type {
   KernelOperationEvidence,
   KernelOperationReview,
   KernelPasskeyExecutionClient,
 } from '@/wallet/kernel-passkey-execution';
+import { parseSendTransfer } from '@/wallet/send-transfer';
 import type { PasskeyCeremonyClient, RegisteredPrimaryPasskey } from '@/wallet/passkey-ceremony';
 import { CURRENT_WALLET_IDENTITY_PINS, type WalletIdentityStorage } from '@/wallet/wallet-identity';
 
-jest.mock('expo-router', () => ({ router: { back: jest.fn() } }));
+jest.mock('expo-router', () => ({ router: { back: jest.fn(), replace: jest.fn() } }));
 jest.mock('@/onboarding/onboarding', () => ({ SODERA_FIXTURE_USERNAME: 'anon.sodera.eth' }));
 jest.mock('@/wallet/passkey-native-adapter', () => ({
   passkeyNativeAdapter: {
@@ -57,87 +56,64 @@ const review: KernelOperationReview = {
 };
 
 describe('SendScreen', () => {
-  it('validates address, exact units, and available balance', () => {
-    expect(() => parseEthTransfer({ recipient: 'nope', amount: '1', balance: 2n })).toThrow(
-      'Enter a valid Ethereum address',
-    );
-    expect(() => parseEthTransfer({ recipient, amount: '0', balance: 2n })).toThrow(
-      'Amount must be greater than zero',
-    );
-    expect(() => parseEthTransfer({ recipient, amount: '1', balance: 1n })).toThrow(
-      'Amount exceeds the available ETH balance',
-    );
-    expect(parseEthTransfer({ recipient, amount: '0.1', balance: 10n ** 18n })).toEqual({
-      recipient,
-      value: 100_000_000_000_000_000n,
-    });
-  });
-
-  it('prepares the entered transfer and submits only after review', async () => {
+  it('resolves a Sepolia subdomain, prepares ETH and shows submission before confirmation', async () => {
     const executionClient = createExecutionClient();
-    const onDone = jest.fn();
-    const copyTransactionHash = jest.fn().mockResolvedValue(undefined);
-    const openTransaction = jest.fn().mockResolvedValue(undefined);
+    const recordSend = jest.fn().mockResolvedValue(undefined);
+    const onOpenHistory = jest.fn();
+    const resolveRecipient = jest.fn().mockResolvedValue({ address: recipient, name: 'gargs.sodera.eth' });
     await render(
       <SendScreen
         ceremonyClient={createCeremonyClient()}
-        copyTransactionHash={copyTransactionHash}
         createExecutionClient={jest.fn().mockResolvedValue(executionClient)}
-        onDone={onDone}
-        openTransaction={openTransaction}
-        readBalance={jest.fn().mockResolvedValue(10n ** 18n)}
+        onOpenHistory={onOpenHistory}
+        recordSend={recordSend}
+        resolveRecipient={resolveRecipient}
+        readBalances={jest.fn().mockResolvedValue({ ETH: 10n ** 18n, USDC: 2_000_000n })}
         storage={createStorage()}
       />,
     );
-    await screen.findByText('1 ETH');
-
-    await enterTransfer(recipient, '0.1');
+    await screen.findByText('Who are you sending to?');
+    await act(async () => fireEvent.changeText(screen.getByLabelText('Recipient ENS name or address'), 'gargs.sodera.eth'));
     await press('Continue');
-
+    expect(resolveRecipient).toHaveBeenCalledWith('gargs.sodera.eth');
+    await press('Select ETH');
+    await act(async () => fireEvent.changeText(screen.getByLabelText('ETH amount'), '0.1'));
+    await press('Review transfer');
     expect(await screen.findByText('Does this look right?')).toBeOnTheScreen();
     expect(screen.getByText('0.1 ETH')).toBeOnTheScreen();
-    expect(screen.getByText(recipient)).toBeOnTheScreen();
+    expect(screen.getByText('gargs.sodera.eth')).toBeOnTheScreen();
     expect(screen.getByText('Sponsored')).toBeOnTheScreen();
     expect(screen.queryByText(operationHash)).not.toBeOnTheScreen();
     expect(executionClient.prepare).toHaveBeenCalledWith([
       { to: recipient, value: 100_000_000_000_000_000n, data: '0x' },
     ]);
-    expect(executionClient.execute).not.toHaveBeenCalled();
+    expect(executionClient.submit).not.toHaveBeenCalled();
 
     await press('More details');
     expect(screen.getByText(operationHash)).toBeOnTheScreen();
     expect(screen.getByRole('button', { name: 'Hide details' })).toBeOnTheScreen();
 
     await press('Confirm with passkey');
-
-    await waitFor(() => expect(executionClient.execute).toHaveBeenCalledWith(operationHash));
-    expect(await screen.findByText('ETH sent successfully')).toBeOnTheScreen();
-    expect(screen.getByText(shortenHash(transactionHash))).toBeOnTheScreen();
-    expect(screen.queryByText(transactionHash)).not.toBeOnTheScreen();
-
-    await press('Copy transaction hash');
-    expect(copyTransactionHash).toHaveBeenCalledWith(transactionHash);
-    expect(await screen.findByText('Copied')).toBeOnTheScreen();
-
-    await act(async () => {
-      fireEvent.press(screen.getByRole('link', { name: 'View on explorer' }));
-    });
-    expect(openTransaction).toHaveBeenCalledWith(sepoliaTransactionUrl(transactionHash));
-    expect(onDone).not.toHaveBeenCalled();
+    await waitFor(() => expect(executionClient.submit).toHaveBeenCalledWith(operationHash));
+    expect(await screen.findByText('Transaction submitted')).toBeOnTheScreen();
+    expect(screen.getByText(shortenHash(operationHash))).toBeOnTheScreen();
+    expect(recordSend).toHaveBeenCalledWith(expect.objectContaining({ status: 'submitted', asset: 'ETH', recipient }));
+    await press('View transaction history');
+    expect(onOpenHistory).toHaveBeenCalledTimes(1);
   });
 
-  it('requires a fresh preparation after returning to edit the transfer', async () => {
+  it('supports editing the transfer after review', async () => {
     await render(
       <SendScreen
         ceremonyClient={createCeremonyClient()}
         createExecutionClient={jest.fn().mockResolvedValue(createExecutionClient())}
-        readBalance={jest.fn().mockResolvedValue(10n ** 18n)}
+        resolveRecipient={jest.fn().mockResolvedValue({ address: recipient, name: null })}
+        readBalances={jest.fn().mockResolvedValue({ ETH: 10n ** 18n, USDC: 2_000_000n })}
         storage={createStorage()}
       />,
     );
-    await screen.findByText('1 ETH');
     await enterTransfer(recipient, '0.1');
-    await press('Continue');
+    await press('Review transfer');
     await screen.findByText('Does this look right?');
 
     await press('Back');
@@ -147,26 +123,54 @@ describe('SendScreen', () => {
     });
 
     expect(screen.queryByText('Does this look right?')).not.toBeOnTheScreen();
-    expect(screen.getByRole('button', { name: 'Continue' })).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Review transfer' })).toBeOnTheScreen();
   });
 
-  it('ignores duplicate confirmation taps while execution is in flight', async () => {
-    let resolveExecution!: (evidence: KernelOperationEvidence) => void;
+  it('reviews the exact USDC contract call and resolved root ENS address', async () => {
     const executionClient = createExecutionClient();
-    executionClient.execute = jest.fn().mockReturnValue(new Promise((resolve) => {
-      resolveExecution = resolve;
+    const call = parseSendTransfer({ recipient, asset: 'USDC', amount: '1.25', balance: 2_000_000n }).call;
+    executionClient.prepare = jest.fn().mockResolvedValue({
+      ...review,
+      calls: [{ to: call.to, valueWei: '0', data: call.data }],
+    });
+    await render(<SendScreen
+      ceremonyClient={createCeremonyClient()}
+      createExecutionClient={jest.fn().mockResolvedValue(executionClient)}
+      readBalances={jest.fn().mockResolvedValue({ ETH: 10n ** 18n, USDC: 2_000_000n })}
+      resolveRecipient={jest.fn().mockResolvedValue({ address: recipient, name: 'gargs.eth' })}
+      storage={createStorage()}
+    />);
+    await screen.findByText('Who are you sending to?');
+    await act(async () => fireEvent.changeText(screen.getByLabelText('Recipient ENS name or address'), 'gargs.eth'));
+    await press('Continue');
+    await press('Select USDC');
+    await act(async () => fireEvent.changeText(screen.getByLabelText('USDC amount'), '1.25'));
+    await press('Review transfer');
+    expect(await screen.findByText('Does this look right?')).toBeOnTheScreen();
+    expect(screen.getByText('1.25 USDC')).toBeOnTheScreen();
+    expect(screen.getByText('gargs.eth')).toBeOnTheScreen();
+    expect(screen.getByText(recipient)).toBeOnTheScreen();
+    expect(executionClient.prepare).toHaveBeenCalledWith([call]);
+  });
+
+  it('ignores duplicate confirmation taps while submission is in flight', async () => {
+    let resolveSubmission!: (hash: typeof operationHash) => void;
+    const executionClient = createExecutionClient();
+    executionClient.submit = jest.fn().mockReturnValue(new Promise((resolve) => {
+      resolveSubmission = resolve;
     }));
     await render(
       <SendScreen
         ceremonyClient={createCeremonyClient()}
         createExecutionClient={jest.fn().mockResolvedValue(executionClient)}
-        readBalance={jest.fn().mockResolvedValue(10n ** 18n)}
+        resolveRecipient={jest.fn().mockResolvedValue({ address: recipient, name: null })}
+        readBalances={jest.fn().mockResolvedValue({ ETH: 10n ** 18n, USDC: 2_000_000n })}
+        recordSend={jest.fn().mockResolvedValue(undefined)}
         storage={createStorage()}
       />,
     );
-    await screen.findByText('1 ETH');
     await enterTransfer(recipient, '0.1');
-    await press('Continue');
+    await press('Review transfer');
     const confirm = await screen.findByRole('button', { name: 'Confirm with passkey' });
     const onClick = confirm.props.onClick as (() => void) | undefined;
     expect(onClick).toEqual(expect.any(Function));
@@ -176,12 +180,12 @@ describe('SendScreen', () => {
       onClick?.();
     });
 
-    expect(executionClient.execute).toHaveBeenCalledTimes(1);
+    expect(executionClient.submit).toHaveBeenCalledTimes(1);
     await act(async () => {
-      resolveExecution(executionEvidence());
+      resolveSubmission(operationHash);
     });
 
-    expect(await screen.findByText('ETH sent successfully')).toBeOnTheScreen();
+    expect(await screen.findByText('Transaction submitted')).toBeOnTheScreen();
   });
 });
 
@@ -193,8 +197,10 @@ async function press(name: string) {
 
 async function enterTransfer(to: string, amount: string) {
   await act(async () => {
-    fireEvent.changeText(screen.getByLabelText('Recipient address'), to);
+    fireEvent.changeText(screen.getByLabelText('Recipient ENS name or address'), to);
   });
+  await press('Continue');
+  await press('Select ETH');
   await act(async () => {
     fireEvent.changeText(screen.getByLabelText('ETH amount'), amount);
   });
@@ -239,6 +245,8 @@ function createExecutionClient(): KernelPasskeyExecutionClient {
     deployed: true,
     prepare: jest.fn().mockResolvedValue(review),
     execute: jest.fn().mockResolvedValue(executionEvidence()),
+    submit: jest.fn().mockResolvedValue(operationHash),
+    waitForConfirmation: jest.fn().mockReturnValue(new Promise(() => undefined)),
   };
 }
 
@@ -260,7 +268,7 @@ function executionEvidence(): KernelOperationEvidence {
       zeroDevSdkVersion: '5.5.10',
       zeroDevPasskeyValidatorPackageVersion: '5.6.0',
       zeroDevWebAuthnKeyPackageVersion: '5.5.0',
-      viemVersion: '2.28.0',
+      viemVersion: '2.35.0',
     },
     receipt: { success: true, actualGasCostWei: '1', actualGasUsed: '1' },
     resultingState: {

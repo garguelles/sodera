@@ -1,6 +1,6 @@
 import { TransactionsScreen } from '@/components/transactions-screen';
-import { blockscoutTransactionActivityProvider } from '@/wallet/transaction-activity-blockscout';
+import { pendingSends } from '@/wallet/pending-sends';
 
 export default function TransactionsRoute() {
-  return <TransactionsScreen provider={blockscoutTransactionActivityProvider} />;
+  return <TransactionsScreen provider={pendingSends.provider} />;
 }

@@ -120,7 +120,7 @@ export type KernelOperationEvidence = {
     zeroDevSdkVersion: '5.5.10';
     zeroDevPasskeyValidatorPackageVersion: '5.6.0';
     zeroDevWebAuthnKeyPackageVersion: '5.5.0';
-    viemVersion: '2.28.0';
+    viemVersion: '2.35.0';
   };
   receipt: {
     success: true;
@@ -147,6 +147,8 @@ export type KernelPasskeyExecutionClient = {
   deployed: boolean;
   prepare(calls?: readonly KernelExecutionCall[]): Promise<KernelOperationReview>;
   execute(confirmedUserOperationHash: Hash): Promise<KernelOperationEvidence>;
+  submit(confirmedUserOperationHash: Hash): Promise<Hash>;
+  waitForConfirmation(userOperationHash: Hash): Promise<KernelOperationEvidence>;
 };
 
 export function readKernelExecutionConfig(): KernelExecutionConfig {
@@ -254,9 +256,14 @@ export async function createKernelPasskeyExecutionClient({
 
   let prepared: UserOperation<'0.7'> | undefined;
   let review: KernelOperationReview | undefined;
+  let submitted: {
+    userOperationHash: Hash;
+    nonceBefore: bigint;
+    signedAssertion: PrimaryPasskeyAssertionEvidence;
+  } | undefined;
   const deployed = await account.isDeployed();
 
-  return {
+  const executionClient: KernelPasskeyExecutionClient = {
     account: account.address,
     deployed,
     async prepare(calls = [PROOF_CALL]) {
@@ -299,6 +306,10 @@ export async function createKernelPasskeyExecutionClient({
       return nextReview;
     },
     async execute(confirmedUserOperationHash) {
+      const hash = await executionClient.submit(confirmedUserOperationHash);
+      return executionClient.waitForConfirmation(hash);
+    },
+    async submit(confirmedUserOperationHash) {
       if (!prepared || !review) throw new Error('Prepare and review an operation before execution');
       if (review.userOperationHash !== confirmedUserOperationHash) {
         throw new Error('The confirmed operation no longer matches the prepared UserOperation');
@@ -322,6 +333,14 @@ export async function createKernelPasskeyExecutionClient({
       if (userOperationHash !== confirmedUserOperationHash) {
         throw new Error('ZeroDev returned a different UserOperation hash');
       }
+      submitted = { userOperationHash, nonceBefore, signedAssertion };
+      return userOperationHash;
+    },
+    async waitForConfirmation(userOperationHash) {
+      if (!submitted || submitted.userOperationHash !== userOperationHash) {
+        throw new Error('No matching submitted UserOperation to confirm');
+      }
+      const { nonceBefore, signedAssertion } = submitted;
       const receipt = await bundlerClient.waitForUserOperationReceipt({ hash: userOperationHash });
       if (!receipt.success) {
         throw new Error(receipt.reason ?? 'The UserOperation failed validation or execution');
@@ -406,7 +425,7 @@ export async function createKernelPasskeyExecutionClient({
           zeroDevSdkVersion: '5.5.10',
           zeroDevPasskeyValidatorPackageVersion: '5.6.0',
           zeroDevWebAuthnKeyPackageVersion: '5.5.0',
-          viemVersion: '2.28.0',
+          viemVersion: '2.35.0',
         },
         receipt: {
           success: true,
@@ -429,6 +448,7 @@ export async function createKernelPasskeyExecutionClient({
       };
     },
   };
+  return executionClient;
 }
 
 function publicUserOperation(operation: UserOperation<'0.7'>) {
