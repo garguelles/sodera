@@ -79,7 +79,10 @@
     "verify:multibaas": "node --env-file-if-exists=.env.local ./scripts/verify-multibaas.mjs"
   },
   "jest": {
-    "preset": "jest-expo"
+    "preset": "jest-expo",
+    "setupFiles": [
+      "./jest.setup.js"
+    ]
   },
   "private": true
 }
