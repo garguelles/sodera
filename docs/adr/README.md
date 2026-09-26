@@ -2,7 +2,7 @@
 
 Records 0001-0008 extract the original embedded ADR-001 through ADR-008 from [sodera.md section 2](../sodera.md#2-locked-architecture-decisions), preserving their numbering correspondence and historical rationale. The source called these decisions locked but supplied no approval dates; extraction and current scope clarifications were approved during the current spec review, as recorded in [hackathon decisions](../hackathon-decisions.md), not on an inferred historical date. ADR-0010 records the later passkey pivot after PRA-184 found no supportable released raw-P256 Kernel path.
 
-The [hackathon decisions](../hackathon-decisions.md) and [hackathon specs index](../hackathon-specs.md) take precedence over conflicting v0.5 source requirements for the hackathon. Acceptance here records a decision, not verified implementation or production readiness.
+The [hackathon decisions](../hackathon-decisions.md) and [hackathon specs index](../hackathon-specs.md) take precedence over conflicting v0.5 source requirements for the hackathon. ADR-0011 selects the architecture for the deferred ENS subname feature. Acceptance here records a decision, not verified implementation or production readiness.
 
 | Original ID | Standalone Record | Status / Scope |
 | --- | --- | --- |
@@ -16,3 +16,4 @@ The [hackathon decisions](../hackathon-decisions.md) and [hackathon specs index]
 | ADR-008 | [ADR-0008: Play Integrity cannot gate assets](0008-play-integrity-cannot-gate-assets.md) | Retained |
 | New during spec review | [ADR-0009: Ethereum Sepolia as the single required hackathon testnet](0009-ethereum-sepolia-hackathon.md) | Accepted for hackathon; feasibility checks pending |
 | Post-investigation pivot | [ADR-0010: Platform passkey directly authorizes Kernel](0010-direct-kernel-passkey.md) | Accepted for hackathon; selected path verification remains in progress |
+| Post-hackathon ENSv2 design | [ADR-0011: User-owned ENSv2 subnames under sodera.eth](0011-ensv2-user-subnames.md) | Selected for deferred implementation; canonical Sepolia verification pending |
