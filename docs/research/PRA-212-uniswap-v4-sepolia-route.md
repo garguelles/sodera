@@ -54,15 +54,16 @@ Run from `app/`:
 pnpm verify:uniswap
 ```
 
-The script reads `SEPOLIA_RPC_URL` (see `app/.env.example`) and imports the pinned constants from `app/src/wallet/sepolia.ts`. It asserts the following:
+The script reads `SEPOLIA_RPC_URL` (see `app/.env.example`). It imports the app's own pinned constants (`sepolia.ts`), quote module (`uniswap-quote.ts`) and swap-call builder (`uniswap-swap-calls.ts`), so it checks the code the app runs. It asserts the following:
 
 1. The RPC reports chain ID `11155111`.
 2. Every contract above, and USDC, has runtime bytecode.
 3. The pool key's currencies are sorted, and `keccak256(abi.encode(SWAP_POOL_KEY))` equals `SWAP_POOL_ID`.
 4. StateView reports a nonzero `sqrtPriceX96` and nonzero active liquidity.
-5. The V4 Quoter returns a nonzero output for 0.001 ETH → USDC and for 1 USDC → ETH.
-6. An `eth_call` of the Universal Router ETH → USDC swap succeeds. The call uses the `V4_SWAP` command with the `SWAP_EXACT_IN_SINGLE`, `SETTLE_ALL` and `TAKE_ALL` actions, and a minimum output 0.5% below the quote. It runs from a simulation account with a state-overridden ETH balance.
+5. `quoteSwap` returns a nonzero output for 0.001 ETH → USDC and for 1 USDC → ETH.
+6. `buildSwapCalls` returns one call for ETH → USDC, sent to the Universal Router with exactly the input ETH. Its `eth_call` succeeds with a minimum output 0.5% below the quote. The call uses the `V4_SWAP` command with the `SWAP_EXACT_IN_SINGLE`, `SETTLE_ALL` and `TAKE_ALL` actions, and runs from a simulation account with a state-overridden ETH balance.
 7. The same swap with a minimum one unit above the quote reverts with `V4TooLittleReceived(uint256,uint256)`, selector `0x8b063d73`.
+8. `buildSwapCalls` returns three calls for USDC → ETH: USDC `approve` to Permit2, Permit2 `approve` to the Universal Router, and the swap. An `eth_simulateV1` run of that batch succeeds and pays the account at least the minimum ETH. It runs from a simulation account given a USDC balance by overriding FiatToken storage slot 9. Afterwards, both the USDC allowance to Permit2 and the Permit2 allowance to the router are zero.
 
 Observed on 2026-09-26 through `https://ethereum-sepolia-rpc.publicnode.com`:
 
@@ -73,13 +74,6 @@ Observed on 2026-09-26 through `https://ethereum-sepolia-rpc.publicnode.com`:
 - 1 USDC → 0.000031428307909673 ETH
 - ETH → USDC `eth_call`: succeeded
 - Minimum above quote: reverted with `V4TooLittleReceived`
+- 1 USDC → ETH batch (block `11784194`): every call succeeded, 0.000031428307909673 ETH was received (exactly the quote), and both allowances ended at zero
 
-During planning, the USDC → ETH batch was simulated separately with `eth_simulateV1`, from an account holding USDC. Every call succeeded, and the account received exactly the quoted ETH. The batch was:
-
-1. `USDC.approve(Permit2, amount)`
-2. `Permit2.approve(USDC, UniversalRouter, amount, expiration)`
-3. `UniversalRouter.execute` with `zeroForOne = false`
-
-The verify script will cover this direction once the swap-call builder lands.
-
-The script imports a TypeScript module, so it runs with `--experimental-strip-types`. The flag was verified on Node 22.14, 22.23, 24.12 and 25.8.
+The script imports TypeScript modules, so it runs with `--experimental-strip-types` and a small resolver hook (`app/scripts/lib/register-ts-resolver.mjs`) for their extensionless relative imports. It was verified on Node 22.14, 24.12 and 25.8.
