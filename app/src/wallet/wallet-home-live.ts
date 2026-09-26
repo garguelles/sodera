@@ -5,10 +5,11 @@ import { sepolia } from 'viem/chains';
 import { createMultiBaasClient, readMultiBaasConfigFromEnv } from './multibaas';
 import { createMultiBaasBalanceClient } from './multibaas-balance-client';
 import type { WalletHomeProvider } from './wallet-home';
-import { SEPOLIA_ETH_USD_FEED_ADDRESS, SEPOLIA_USDC_ADDRESS } from './sepolia';
+import { SEPOLIA_ETH_USD_FEED_ADDRESS, SEPOLIA_USDC_ADDRESS, shortenAddress } from './sepolia';
 import { readPersistedWalletIdentity, type WalletIdentityStorage } from './wallet-identity';
 import { walletIdentityNativeStorage } from './wallet-identity-native-storage';
-import { SODERA_FIXTURE_USERNAME } from '@/onboarding/onboarding';
+import { createEnsIdentityReader, type EnsIdentityReader } from '@/ens/identity-client';
+import { readOnboardingProfile, type OnboardingProfileStorage } from '@/onboarding/onboarding';
 
 export type SepoliaBalanceClient = {
   getChainId(): Promise<number>;
@@ -58,10 +59,14 @@ export const SEPOLIA_READ_ABI = [
 
 export function createWalletHomeLiveProvider({
   storage = walletIdentityNativeStorage,
+  profileStorage,
+  identityReader,
   client,
   now = Date.now,
 }: {
   storage?: WalletIdentityStorage;
+  profileStorage?: OnboardingProfileStorage;
+  identityReader?: EnsIdentityReader;
   client?: SepoliaBalanceClient;
   now?: () => number;
 } = {}) {
@@ -77,6 +82,21 @@ export function createWalletHomeLiveProvider({
     source: 'live',
     async load() {
       const identity = await readPersistedWalletIdentity(storage);
+      const profile = await readOnboardingProfile(profileStorage ?? {
+        read: () => ('readOnboardingProfile' in storage && typeof storage.readOnboardingProfile === 'function'
+          ? storage.readOnboardingProfile()
+          : Promise.resolve(null)),
+      }).catch(() => null);
+      let username = shortenAddress(identity.account);
+      if (profile?.claimMode === 'ens' && profile.account.toLowerCase() === identity.account.toLowerCase()) {
+        try {
+          if (await (identityReader ?? createEnsIdentityReader()).verify(profile.username, identity.account)) {
+            username = profile.username;
+          }
+        } catch {
+          username = shortenAddress(identity.account);
+        }
+      }
       const balanceClient = getClient();
       const [chainId, ethBalance, usdcBalanceResult] = await Promise.all([
         balanceClient.getChainId(),
@@ -98,7 +118,7 @@ export function createWalletHomeLiveProvider({
         status: 'ready',
         snapshot: {
           identity: {
-            username: SODERA_FIXTURE_USERNAME,
+            username,
             address: identity.account,
             avatarUrl: null,
           },

@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
-
 import { OnboardingScreen } from './onboarding-screen';
 import type { OnboardingProfileStorage, UsernameClaimClient } from '@/onboarding/onboarding';
+import type { EnsIdentityReader } from '@/ens/identity-client';
 import type { DefaultHomeClient } from '@/launcher/default-home';
 import type { KernelPasskeyExecutionClient } from '@/wallet/kernel-passkey-execution';
 import type { PasskeyCeremonyClient, RegisteredPrimaryPasskey } from '@/wallet/passkey-ceremony';
@@ -10,6 +10,10 @@ import {
   type WalletIdentityStorage,
 } from '@/wallet/wallet-identity';
 
+jest.mock('@expo/ui', () => {
+  const { TextInput, View } = jest.requireActual('react-native');
+  return { Host: View, TextInput };
+});
 jest.mock('@/wallet/passkey-native-adapter', () => ({
   passkeyNativeAdapter: {
     createCredential: jest.fn(),
@@ -28,6 +32,7 @@ jest.mock('@/onboarding/onboarding-native-storage', () => ({
 jest.mock('@/launcher/default-home', () => ({ defaultHomeClient: {} }));
 
 const account = '0x1111111111111111111111111111111111111111' as const;
+const claimId = '11111111-1111-4111-8111-111111111111';
 const credential: RegisteredPrimaryPasskey = {
   id: 'MDEyMzQ1Njc4OQ',
   publicKeyX: `0x${'11'.repeat(32)}`,
@@ -38,7 +43,7 @@ const credential: RegisteredPrimaryPasskey = {
 };
 
 describe('OnboardingScreen', () => {
-  it('creates the real Wallet Identity before completing the mock username claim', async () => {
+  it('claims a verified name before completing onboarding', async () => {
     const ceremonyClient = createCeremonyClient();
     const identityStorage = createIdentityStorage();
     const profileStorage = createProfileStorage();
@@ -53,6 +58,7 @@ describe('OnboardingScreen', () => {
         identityStorage={identityStorage}
         profileStorage={profileStorage}
         usernameClaimClient={usernameClaimClient}
+        identityReader={createIdentityReader()}
         homeClient={homeClient}
         onComplete={onComplete}
       />,
@@ -61,18 +67,21 @@ describe('OnboardingScreen', () => {
     await press('Create wallet');
     await press('Create with passkey');
 
-    expect(await screen.findByText('anon.sodera.eth')).toBeOnTheScreen();
+    expect(await screen.findByText('Claim your place.')).toBeOnTheScreen();
     expect(ceremonyClient.registerPrimaryPasskey).toHaveBeenCalledTimes(1);
     expect(createExecution).toHaveBeenCalledWith({
       ceremonyClient,
       credential,
     });
 
-    await press('Claim anon.sodera.eth');
+    fireEvent.changeText(screen.getByTestId('ens-username'), 'gargs');
+    await press('Check availability');
+    await press('Claim gargs.sodera.eth');
     expect(await screen.findByText('Make Sodera your Home.')).toBeOnTheScreen();
-    expect(usernameClaimClient.claim).toHaveBeenCalledWith({
+    expect(usernameClaimClient.submit).toHaveBeenCalledWith({
       account,
-      username: 'anon.sodera.eth',
+      credential,
+      label: 'gargs',
     });
 
     await press('Set Sodera as Home');
@@ -81,7 +90,7 @@ describe('OnboardingScreen', () => {
     jest.mocked(homeClient.isDefaultHome).mockResolvedValue(true);
     await press("I've selected Sodera");
     expect(onComplete).toHaveBeenCalledWith(
-      expect.objectContaining({ account, username: 'anon.sodera.eth', claimMode: 'mock' }),
+      expect.objectContaining({ account, username: 'gargs.sodera.eth', claimMode: 'ens', claimId }),
     );
   });
 
@@ -94,6 +103,7 @@ describe('OnboardingScreen', () => {
         identityStorage={createIdentityStorage(readyIdentity())}
         profileStorage={createProfileStorage()}
         usernameClaimClient={createUsernameClaimClient()}
+        identityReader={createIdentityReader()}
         homeClient={createHomeClient()}
         onComplete={jest.fn()}
       />,
@@ -107,13 +117,47 @@ describe('OnboardingScreen', () => {
     expect(ceremonyClient.verifyPrimaryPasskey).toHaveBeenCalledWith(credential);
   });
 
-  it('resumes existing completed profiles at Home selection and keeps dismissal retryable', async () => {
+  it('activates an undeployed wallet with an explicitly reviewed passkey operation before allowing a claim', async () => {
+    const execution = { ...kernelExecutionClient(), deployed: false,
+      prepare: jest.fn().mockResolvedValue({ account, calls: [{ to: account, valueWei: '0' }],
+        userOperationHash: `0x${'11'.repeat(32)}`, maximumNetworkFeeWei: '100', sponsored: true }),
+      execute: jest.fn().mockResolvedValue({ account }),
+    };
+    await render(<OnboardingScreen client={createCeremonyClient()}
+      createExecutionClient={jest.fn().mockResolvedValue(execution)}
+      identityStorage={createIdentityStorage(readyIdentity())} profileStorage={createProfileStorage()}
+      usernameClaimClient={createUsernameClaimClient()} identityReader={createIdentityReader()}
+      homeClient={createHomeClient()} onComplete={jest.fn()} />);
+    await press('Continue wallet setup');
+    expect(await screen.findByText('Ready for your name.')).toBeOnTheScreen();
+    await press('Prepare wallet activation');
+    expect(await screen.findByText(/UserOperation:/)).toBeOnTheScreen();
+    await press('Authorize wallet activation');
+    expect(execution.execute).toHaveBeenCalledWith(`0x${'11'.repeat(32)}`);
+    expect(await screen.findByText('Claim your place.')).toBeOnTheScreen();
+  });
+
+  it('recovers a saved pending claim after restart without submitting again', async () => {
+    const usernameClaimClient = createUsernameClaimClient();
+    const profileStorage = createProfileStorage(JSON.stringify({ schemaVersion: 2, phase: 'claimPending',
+      account, username: 'gargs.sodera.eth', claimId }));
+    await render(<OnboardingScreen client={createCeremonyClient()}
+      identityStorage={createIdentityStorage(readyIdentity())} profileStorage={profileStorage}
+      usernameClaimClient={usernameClaimClient} identityReader={createIdentityReader()}
+      homeClient={createHomeClient()} onComplete={jest.fn()} />);
+    expect(await screen.findByText('Make Sodera your Home.')).toBeOnTheScreen();
+    expect(usernameClaimClient.submit).not.toHaveBeenCalled();
+    expect(usernameClaimClient.status).toHaveBeenCalledWith({ id: claimId, account, label: 'gargs' });
+  });
+
+  it('resumes existing confirmed profiles at Home selection and keeps dismissal retryable', async () => {
     const profileStorage = createProfileStorage();
     await profileStorage.write(JSON.stringify({
-      schemaVersion: 1,
+      schemaVersion: 2,
       account,
-      username: 'anon.sodera.eth',
-      claimMode: 'mock',
+      username: 'gargs.sodera.eth',
+      claimMode: 'ens',
+      claimId,
       completedAt: '2026-09-13T00:00:00.000Z',
     }));
     const homeClient = createHomeClient();
@@ -158,6 +202,7 @@ describe('OnboardingScreen', () => {
         identityStorage={identityStorage}
         profileStorage={createProfileStorage()}
         usernameClaimClient={createUsernameClaimClient()}
+        identityReader={createIdentityReader()}
         homeClient={createHomeClient()}
         onComplete={jest.fn()}
       />,
@@ -190,11 +235,11 @@ describe('OnboardingScreen', () => {
     expect(ceremonyClient.registerPrimaryPasskey).not.toHaveBeenCalled();
   });
 
-  it('keeps a failed mock claim retryable and ignores duplicate taps', async () => {
+  it('keeps a failed claim retryable and ignores duplicate taps', async () => {
     let rejectClaim: ((error: Error) => void) | undefined;
-    const claim = jest.fn(
+    const submit = jest.fn(
       () =>
-        new Promise<void>((_, reject) => {
+        new Promise<Awaited<ReturnType<UsernameClaimClient['submit']>>>((_, reject) => {
           rejectClaim = reject;
         }),
     );
@@ -204,23 +249,26 @@ describe('OnboardingScreen', () => {
         createExecutionClient={jest.fn().mockResolvedValue(kernelExecutionClient())}
         identityStorage={createIdentityStorage(readyIdentity())}
         profileStorage={createProfileStorage()}
-        usernameClaimClient={{ claim }}
+        usernameClaimClient={{ submit, status: jest.fn() }}
+        identityReader={createIdentityReader()}
         homeClient={createHomeClient()}
         onComplete={jest.fn()}
       />,
     );
 
     await press('Continue wallet setup');
-    const button = await screen.findByRole('button', { name: 'Claim anon.sodera.eth' });
+    fireEvent.changeText(screen.getByTestId('ens-username'), 'gargs');
+    await press('Check availability');
+    const button = await screen.findByRole('button', { name: 'Claim gargs.sodera.eth' });
     const firstPress = fireEvent.press(button);
     await flushMicrotasks();
-    expect(screen.getByRole('button')).toBeDisabled();
-    const secondPress = fireEvent.press(screen.getByRole('button'));
-    expect(claim).toHaveBeenCalledTimes(1);
-    rejectClaim?.(new Error('Mock claim unavailable'));
+    expect(screen.getByRole('button', { name: 'Claim gargs.sodera.eth' })).toBeDisabled();
+    const secondPress = fireEvent.press(screen.getByRole('button', { name: 'Claim gargs.sodera.eth' }));
+    expect(submit).toHaveBeenCalledTimes(1);
+    rejectClaim?.(new Error('Claim unavailable'));
     await Promise.all([firstPress, secondPress]);
-    expect(await screen.findByText('Mock claim unavailable')).toBeOnTheScreen();
-    expect(screen.getByRole('button', { name: 'Claim anon.sodera.eth' })).toBeEnabled();
+    expect(await screen.findByText('Claim unavailable')).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Claim gargs.sodera.eth' })).toBeEnabled();
   });
 });
 
@@ -255,7 +303,7 @@ function createCeremonyClient(): PasskeyCeremonyClient {
 function kernelExecutionClient(): KernelPasskeyExecutionClient {
   return {
     account,
-    deployed: false,
+    deployed: true,
     prepare: jest.fn(),
     execute: jest.fn(),
     submit: jest.fn(),
@@ -301,5 +349,12 @@ function createProfileStorage(initialValue: string | null = null): OnboardingPro
 }
 
 function createUsernameClaimClient(): UsernameClaimClient {
-  return { claim: jest.fn().mockResolvedValue(undefined) };
+  return {
+    submit: jest.fn().mockResolvedValue({ id: claimId, status: 'queued', name: 'gargs.sodera.eth' }),
+    status: jest.fn().mockResolvedValue({ status: 'confirmed', name: 'gargs.sodera.eth' }),
+  };
+}
+
+function createIdentityReader(): EnsIdentityReader {
+  return { availability: jest.fn().mockResolvedValue(true), verify: jest.fn().mockResolvedValue(true) };
 }

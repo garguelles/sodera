@@ -19,6 +19,7 @@ describe('LauncherScreen', () => {
       fireEvent.press(home.getByRole('button', { name: 'Open Dera' }));
     });
     expect(onOpenAssistant).toHaveBeenCalled();
+    expect(home.getByText('ADDRESS ONLY')).toBeOnTheScreen();
     await home.rerender(<LauncherScreen homeContent={null} onOpenPhone={jest.fn()} onOpenSettings={jest.fn()} onOpenWallet={jest.fn()} />);
     expect(home.queryByRole('button', { name: 'Open Dera' })).not.toBeOnTheScreen();
     await home.unmount();
@@ -31,7 +32,8 @@ describe('LauncherScreen', () => {
     const home = await render(
       <LauncherScreen
         accountAddress="0x1234567890123456789012345678901234567890"
-        username="anon.sodera.eth"
+        username="gargs.sodera.eth"
+        ensVerified
         homeContent={<Text>Market watch</Text>}
         onOpenPhone={onOpenPhone}
         onOpenWallet={onOpenWallet}
@@ -41,10 +43,9 @@ describe('LauncherScreen', () => {
 
     expect(home.getByText('Market watch')).toBeOnTheScreen();
     expect(home.getByText('0x1234...7890')).toBeOnTheScreen();
-    expect(home.getByText('anon.sodera.eth')).toBeOnTheScreen();
-    expect(home.getByText('𝕏 @anon_builder')).toBeOnTheScreen();
-    expect(home.getByText('github/anon')).toBeOnTheScreen();
-    expect(home.getByText('sodera.xyz')).toBeOnTheScreen();
+    expect(home.getByText('gargs.sodera.eth')).toBeOnTheScreen();
+    expect(home.getByText('ETHEREUM SEPOLIA')).toBeOnTheScreen();
+    expect(home.getByText('ENS VERIFIED')).toBeOnTheScreen();
     expect(home.queryByLabelText('Search apps')).not.toBeOnTheScreen();
     fireEvent.press(home.getByRole('button', { name: 'Open Phone' }));
     fireEvent.press(home.getByRole('button', { name: 'Open Wallet' }));

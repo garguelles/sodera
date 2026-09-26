@@ -6,6 +6,9 @@ jest.mock('@/launcher/default-home', () => ({ defaultHomeClient: {} }));
 jest.mock('./wallet-identity-native-storage', () => ({
   walletIdentityNativeStorage: { read: jest.fn(), write: jest.fn(), clear: jest.fn() },
 }));
+jest.mock('@/onboarding/onboarding-native-storage', () => ({
+  onboardingNativeStorage: { read: jest.fn().mockResolvedValue(null), write: jest.fn() },
+}));
 
 const account = '0x1111111111111111111111111111111111111111' as const;
 const now = new Date('2026-09-13T12:00:00.000Z').getTime();
@@ -31,7 +34,7 @@ describe('wallet Home live provider', () => {
     await expect(provider.load()).resolves.toMatchObject({
       status: 'ready',
       snapshot: {
-        identity: { username: 'anon.sodera.eth', address: account },
+        identity: { username: '0x1111...1111', address: account },
         portfolio: {
           balances: [
             { symbol: 'ETH', amount: '0.82 ETH', valueUsdCents: 205000 },
@@ -57,8 +60,23 @@ describe('wallet Home live provider', () => {
     );
   });
 
+  it('only displays a confirmed name while ENS ownership and resolution match', async () => {
+    const profileStorage = { read: jest.fn().mockResolvedValue(JSON.stringify({
+      schemaVersion: 2, account, username: 'gargs.sodera.eth', claimMode: 'ens',
+      claimId: '11111111-1111-4111-8111-111111111111', completedAt: '2026-09-13T00:00:00.000Z',
+    })), write: jest.fn() };
+    const identityReader = { availability: jest.fn(), verify: jest.fn().mockResolvedValue(true) };
+    const provider = createWalletHomeLiveProvider({ storage: createStorage(), profileStorage, identityReader,
+      client: { getChainId: async () => 11155111, getBalance: async () => 0n, readContract: async () => 0n },
+    });
+    await expect(provider.load()).resolves.toMatchObject({ snapshot: { identity: { username: 'gargs.sodera.eth' } } });
+    identityReader.verify.mockResolvedValue(false);
+    await expect(provider.load()).resolves.toMatchObject({ snapshot: { identity: { username: '0x1111...1111' } } });
+    expect(identityReader.verify).toHaveBeenCalledWith('gargs.sodera.eth', account);
+  });
+
   it.each([
-    ['a failed read', { round: Promise.reject(new Error('unavailable')) }],
+    ['a failed read', { round: () => Promise.reject(new Error('unavailable')) }],
     ['unexpected decimals', { decimals: 18 }],
     ['a non-positive answer', { round: Promise.resolve([1n, 0n, 0n, BigInt(now / 1_000), 1n]) }],
     [
@@ -172,11 +190,11 @@ function createReadContractMock({
   round = Promise.resolve(currentRound),
 }: {
   decimals?: number;
-  round?: Promise<unknown>;
+  round?: Promise<unknown> | (() => Promise<unknown>);
 } = {}) {
   return jest.fn(({ functionName }: { functionName: string }) => {
     if (functionName === 'balanceOf') return Promise.resolve(12_345_678n);
     if (functionName === 'decimals') return Promise.resolve(decimals);
-    return round;
+    return typeof round === 'function' ? round() : round;
   });
 }

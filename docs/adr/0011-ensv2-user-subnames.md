@@ -1,6 +1,6 @@
 # ADR-0011: User-owned ENSv2 subnames under sodera.eth
 
-Status: selected architecture; the child registry and one controlled user-owned subname are live on Sepolia ENSv2. Real-name onboarding remains to be implemented; renewal is deferred until after the hackathon. See [live deployment evidence](../research/ensv2-sepolia-namespace-check.md#controlled-user-claim).
+Status: selected architecture; the child registry and one controlled user-owned subname are live on Sepolia ENSv2. Real-name onboarding is integrated in the app and awaits fresh-device end-to-end verification; renewal is deferred until after the hackathon. See [live deployment evidence](../research/ensv2-sepolia-namespace-check.md#controlled-user-claim).
 
 Date: 2026-09-26
 
@@ -8,7 +8,7 @@ Date: 2026-09-26
 
 The [ENS Labs subnames guide](https://ens.domains/blog/post/exploring-subnames-ensv2) distinguishes resolver-only subnames (all names controlled by one owner) from tokenized subnames (each name has its own owner, expiry, and resolver pointer). Sodera promises that each user's Kernel smart account controls its own identity. Resolver-only records under a Sodera-controlled parent cannot provide that ownership, even if they resolve to the user's address. The dedicated ETHOnline deployment examined in [PRA-206](../research/PRA-206-ensv2-namespace.md) is different from the [current ENSv2 Sepolia deployment](https://docs.ens.domains/learn/deployments/#sepolia-ensv2-beta); its registration and contract addresses cannot be reused.
 
-The app still displays the non-resolving `anon.sodera.eth` fixture on Home. A separately controlled device flow has issued a real user-owned subname; the next implementation will integrate confirmed ENS identity into onboarding and Home. See the [implementation plan](../plans/ens-onboarding-and-renewal.md).
+The app's old `anon.sodera.eth` fixture is treated as unverified legacy data. A separately controlled device flow issued a real user-owned subname; onboarding, launcher Home and Wallet Home now use confirmed ENS ownership and resolution, pending full fresh-device flow verification. See the [implementation plan](../plans/ens-onboarding-and-renewal.md).
 
 ## Decision
 

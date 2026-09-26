@@ -10,6 +10,7 @@ import { shortenAddress } from '@/wallet/sepolia';
 type LauncherScreenProps = {
   accountAddress?: string | null;
   username?: string | null;
+  ensVerified?: boolean;
   homeContent: ReactNode;
   onOpenWallet: () => void;
   onOpenPhone: () => void;
@@ -23,6 +24,7 @@ const { colors, radius, spacing, typography } = platinum;
 export function LauncherScreen({
   accountAddress,
   username,
+  ensVerified = false,
   homeContent,
   onOpenWallet,
   onOpenPhone,
@@ -93,9 +95,10 @@ export function LauncherScreen({
             </Pressable>
           </View>
           <View style={styles.identityFooter}>
-            <Text style={styles.identityChip}>𝕏 @anon_builder</Text>
-            <Text style={styles.identityChip}>github/anon</Text>
-            <Text style={styles.identityChipActive}>sodera.xyz</Text>
+            <Text style={styles.identityChip}>ETHEREUM SEPOLIA</Text>
+            <Text style={ensVerified ? styles.identityChipActive : styles.identityChip}>
+              {ensVerified ? 'ENS VERIFIED' : 'ADDRESS ONLY'}
+            </Text>
             <Pressable accessibilityRole="button" accessibilityLabel="Open profile wallet" onPress={onOpenWallet} style={styles.identityFooterArrow}>
               <Text style={styles.footerArrowText}>›</Text>
             </Pressable>
