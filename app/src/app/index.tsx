@@ -1,8 +1,11 @@
 import { router } from 'expo-router';
 
+import { readAgentConfigFromEnv } from '@/agent/agent-client';
 import { LauncherScreen } from '@/components/launcher-screen';
 import { LauncherHome } from '@/components/launcher-home';
 import { useOnboarding } from '@/onboarding/onboarding-context';
+
+const agentConfigured = readAgentConfigFromEnv() !== null;
 
 export default function HomeScreen() {
   const { access } = useOnboarding();
@@ -19,6 +22,7 @@ export default function HomeScreen() {
           onOpenActivity={() => router.push('/transactions')}
         />
       }
+      onOpenAssistant={agentConfigured && profile?.account ? () => router.push('/assistant') : undefined}
       onOpenWallet={() => router.push('/wallet')}
       onOpenPhone={() => router.push('/phone')}
       onOpenSettings={() => router.push('/settings')}

@@ -431,7 +431,7 @@ The agent is designed against the finished hackathon app as defined by the specs
 
 ### What the agent is
 
-The user types or dictates a sentence on the launcher home, for example "send 5 usdc to alice and put the rest in the vault". A backend service asks Claude to turn that sentence into a structured plan of catalogued actions, using read-only tools for balances, activity, name resolution, and quotes. The app validates the plan against a deterministic policy, encodes each action into Kernel calls, and hands them to the existing review screen and passkey ceremony as one batched operation. The model never signs, never produces calldata, and never chooses a contract address.
+The user types a sentence on the assistant page, opened from the launcher header, for example "send 5 usdc to alice and put the rest in the vault". A backend service asks Claude to turn that sentence into a structured plan of catalogued actions, using read-only tools for balances, activity, name resolution, and quotes. The app validates the plan against a deterministic policy, encodes each action into Kernel calls, and hands them to the existing review screen and passkey ceremony as one batched operation. The model never signs, never produces calldata, and never chooses a contract address.
 
 This is Curvegrid's "separate intent from authority" pattern: intent (sentence) to agent (proposal) to policy (deterministic checks) to human approval (review screen) to secure signer (passkey and Kernel) to Ethereum. The app already implements the last three stages for manual sends; the agent adds the first two in front of them.
 
@@ -725,11 +725,13 @@ Keep the prompt byte-stable across requests so the cache hits. Do not interpolat
 - A request whose intent mentions passkeys or recovery returns a clarification, never a plan.
 - `pnpm test` passes in `agent/`.
 
-## Section 6: Intent bar, plan card, and plan review
+## Section 6: Dera assistant page, plan card, and plan review
+
+Status: implemented on 2026-09-26. Supersedes the earlier home-widget design (Claude Design mocks 3a, 5a to 5f), whose card states carried over.
 
 ### Goal
 
-The launcher home gets an intent field. A sentence becomes a plan card, the plan is re-checked and encoded on the phone, and the existing review-then-passkey path executes it as one operation. An address book supplies names.
+A sparkle button on the launcher header opens the assistant page. The assistant is called Dera, from So**dera**. The user chats with the planner: each sentence becomes a plan card, a question, or a notice. A plan is re-checked and encoded on the phone, and the review-then-passkey path executes it as one operation. A placeholder address book supplies names until a real one or ENS lands.
 
 ### Dependencies
 
@@ -738,85 +740,114 @@ Section 5 deployed. Seams from the table above, stubbed where absent.
 ### Files
 
 Create:
-- `app/src/agent/schema.ts` — identical to `agent/src/schema.ts`.
-- `app/src/agent/policy.ts` — identical rules; `evaluatePolicy` with the app's `actionEnabled` flags derived from which seams are real.
-- `app/src/agent/agent-client.ts` — `createAgentClient({ baseUrl, token, fetcher })` with `propose(request)`; error mapping to short messages.
-- `app/src/agent/agent-context.ts` — `buildAgentContext({ walletHomeProvider, sponsorship, addressBook, vault })` assembling `AgentContext` from the existing providers.
-- `app/src/agent/plan-encoder.ts` — `encodePlan(plan: EnrichedPlan, seams): Promise<{ calls: KernelExecutionCall[]; lines: ReviewLine[] }>`.
-- `app/src/agent/address-book.ts` — local JSON store via `expo-file-system`; `list`, `upsert`, `remove`; names are lowercase, unique, 1 to 32 characters.
-- `app/src/components/intent-bar.tsx` — the field, submit button, microphone button when `expo-speech-recognition` is available (optional; text only is acceptable for the hackathon, in which case omit the button rather than stub it).
-- `app/src/components/plan-card.tsx` — renders `EnrichedPlan`, clarification, rejection, or error, with "Edit" and "Review & sign".
-- `app/src/components/plan-review-screen.tsx` — review and execute for a batched plan.
-- `app/src/app/plan.tsx` — route hosting the plan review, receiving the plan via a module-level store (`app/src/agent/pending-plan.ts`) rather than route params, because the plan contains bigints.
-- `app/src/components/address-book-screen.tsx` and `app/src/app/address-book.tsx` — minimal list and add form, linked from settings.
+- `app/src/agent/schema.ts`, `app/src/agent/policy.ts` — copies of `agent/src/schema.ts` and `agent/src/policy.ts`, identical apart from comments and import paths. `policy.test.ts` asserts the shared vectors and fails if either copy drifts.
+- `app/src/agent/violation-copy.ts` — a short title per violation code for the blocked card.
+- `app/src/agent/agent-client.ts` — `readAgentConfigFromEnv()` and `createAgentClient({ config, fetcher, timeoutMs })` with `propose(request)`. Failures throw `AgentUnavailableError` with `reason` `timeout`, `unreachable`, or `error`.
+- `app/src/agent/agent-context.ts` — `loadAgentContext({ account, balanceClient, addressBook, now })` reads balances and the ETH price through the MultiBaas balance client; `AGENT_CAPABILITIES` lists the encodable actions.
+- `app/src/agent/plan-encoder.ts` — `encodePlan(plan)` returns `{ calls, lines }` for ETH and USDC sends and throws `Not implemented` for swaps and the vault.
+- `app/src/agent/address-book.ts` — placeholder: a fixed list parsed from `EXPO_PUBLIC_AGENT_CONTACTS` (`alice=0x…,bob=0x…`). Nothing is stored on the phone and there is no screen. Names are lowercase, unique, 1 to 32 characters; malformed pairs are skipped.
+- `app/src/agent/use-agent-planner.ts` — the conversation: a list of turns (sentence plus answer), `submit`, `reset`, and `markSigned`.
+- `app/src/agent/pending-plan.ts` — hands the plan and its turn id to the review route, because the plan carries bigints, and reports which turn was signed.
+- `app/src/wallet/usdc-transfer.ts` — the USDC transfer seam (built).
+- `app/src/identity/resolve-recipient.ts` — the ENS seam, stubbed: addresses only.
+- `app/src/components/assistant-screen.tsx` and `app/src/app/assistant.tsx` — the assistant page.
+- `app/src/components/intent-bar.tsx` — the composer at the bottom of the page.
+- `app/src/components/plan-card.tsx` — the answer card in each state.
+- `app/src/components/plan-review-screen.tsx` and `app/src/app/plan.tsx` — review and execute for a batched plan.
 - Tests for each module and component.
 
 Modify:
-- `app/src/components/launcher-home.tsx` — add `IntentBar` above `MarketCard`, render `PlanCard` beneath it while a plan is pending.
-- `app/src/app/index.tsx` — pass `onOpenPlan` that routes to `/plan`.
-- `app/src/app/_layout.tsx` — register `plan` and `address-book` screens inside the protected group.
-- `app/.env.example`, `app/README.md` — `EXPO_PUBLIC_AGENT_BASE_URL`, `EXPO_PUBLIC_AGENT_APP_TOKEN`.
-- `app/src/components/launcher-settings-screen.tsx` — entry to the address book.
+- `app/src/components/launcher-screen.tsx` — `onOpenAssistant` shows a sparkle button to the left of settings.
+- `app/src/app/index.tsx` — passes `onOpenAssistant` when the agent is configured and the wallet account is known.
+- `app/src/app/_layout.tsx` — registers `assistant` and `plan` inside the protected group.
+- `app/src/wallet/wallet-home-live.ts` — exports `readEthUsdPrice` (the Chainlink staleness rules) and `createDefaultBalanceClient` for the agent context.
+- `agent/src/policy.ts` — balance messages in the blocked card's detail form (see Design).
+- `app/.env.example`, `app/README.md` — `EXPO_PUBLIC_AGENT_BASE_URL`, `EXPO_PUBLIC_AGENT_APP_TOKEN`, `EXPO_PUBLIC_AGENT_CONTACTS`.
 
 ### Design
 
-**Intent bar.** A single-line `TextInput` with placeholder "Ask your wallet", max 500 characters, and a submit button labelled "Plan". While a request is in flight the button shows a spinner and the field is read-only. Submitting an empty field does nothing. The field keeps its text after a response so "Edit" is just focusing it. Accessibility label "Wallet intent".
+Platinum Fluid tokens from `app/src/constants/theme.ts`. The assistant accent (sparkle icon, highlighted border, question card) is indigo: `colors.ethereum` (`#8b9eff`), the closest existing token.
 
-**Request.** On submit: `buildAgentContext` (balances from `walletHomeLiveProvider.load()`, price from the same snapshot, vault position via the seam or `null`, sponsorship via the seam or `null`, address book from the store, capabilities from `actionEnabled`), then `agentClient.propose`. A 20-second client timeout maps to "The assistant took too long. Try again or use Send."
+**Entry point.** A 38 px round sparkle button in the launcher header, to the left of the settings button, accessibility label "Open Dera". It shows only when both `EXPO_PUBLIC_AGENT_BASE_URL` and `EXPO_PUBLIC_AGENT_APP_TOKEN` are set and the wallet account is known; otherwise the launcher is unchanged. The home screen has no intent field.
 
-**Plan card states.**
-- `plan`: summary text, one line per action in the form "1. Send 5.00 USDC to alice (0x1234…abcd)", assumptions in a smaller muted list, the sponsorship line when known, then "Edit" and "Review & sign".
-- `clarification`: the question, and "Edit" only.
-- `rejected`: the first violation message, plus "Open Send" or "Open Swap" as a fallback button when the violation is action-specific, and "Edit".
-- `declined` and network errors: short message, "Edit", and "Open Send".
-- If the app's own `evaluatePolicy` disagrees with the service's `enriched` plan, show the app's violation and log a warning; the app's result wins.
+**Page layout.** A header with a round Back button, the sparkle and "DERA" in the middle, and on the right a "New chat" button that appears once there is a conversation. Below it, the scrolling conversation, and pinned to the bottom the composer (the intent bar), which rises with the keyboard. The conversation scrolls to the newest turn.
 
-**Encoder (`plan-encoder.ts`).** For each action in order:
-- `send_eth`: `{ to: resolved, value: parseEther(amount), data: '0x' }`; line "Send {amount} ETH to {name or short address}".
+**Empty state.** Centred: a sparkle in an indigo circle, "Ask Dera", the line "Dera turns what you say into a plan. You review and sign every step with your passkey.", then "TRY SAYING" and outlined chips. Tapping a chip fills the composer and focuses it; it does not send. Chips appear only for available actions: "send 0.01 eth to {name}" and "send 2 usdc to {name}" today, with "swap 50 usdc to eth" and "deposit 100 usdc" once swaps and the vault land. `{name}` is the first contact, or "alice".
+
+**Conversation.** Each turn is the user's sentence as a right-aligned bubble followed by the answer card. There is no Edit: the user replies in the composer, and the server's transcript makes that a follow-up. Only the newest answer is actionable. Earlier cards stay readable but lose their buttons, so an outdated plan cannot be signed. "New chat" clears the turns and the next request is sent with `reset: true`. After a plan is signed and the user returns, that plan's card shows "Signed and confirmed" in place of its button.
+
+**Composer.** A rounded field with a sparkle, a single-line `TextInput` (max 500 characters, accessibility label "Wallet intent"), and a "Plan" button that turns platinum once there is text. Empty submits do nothing. The field clears when a sentence is sent.
+
+| State | Placeholder | Border | Button |
+| --- | --- | --- | --- |
+| Empty conversation | "Ask Dera" | Default | "Plan" |
+| Planning | — (read-only) | Default | "…", disabled |
+| After a plan, block, or notice | "Follow up, e.g. \"make it 0.02 instead\"" | Default | "Plan" |
+| After a question | "Reply here" | Indigo highlight | "Plan" |
+
+**Request.** On send: `loadAgentContext` (ETH and USDC balances and the Chainlink price through MultiBaas, contacts from the placeholder, vault and sponsorship `null` until their seams land, capabilities from `AGENT_CAPABILITIES`), then `agentClient.propose`. `reset` is true for the first request of a conversation and after any failure. The client waits up to 45 seconds; normal plans take 3 to 8 seconds, and broad requests with several tool calls have taken over 20.
+
+**Answer card states.** All share one container: `colors.surface`, `radius.xl`, 1 px border.
+
+- **Planning.** Eyebrow "PLANNING…" in indigo and, on the right, a muted caption that cycles every 1.5 seconds through "checking balances", "resolving names", "building plan". The caption is decoration; the server does not stream. Below it, three skeleton bars and a skeleton button.
+- **Plan.** Header "PLAN · N ACTION" (plural "ACTIONS") and an emerald "checked on device" pill with a shield icon, shown because the phone's own `evaluatePolicy` passed. Each action is a numbered row: a platinum circle with the number, a title ("Send 0.01 ETH to alice"), and a muted line ("address book · 0x1234…abcd" for a contact, the short address alone for a typed one). A divider, then "ASSUMPTIONS" with a bullet each, only when there are any. A "gas" row with an emerald "SPONSORED" pill when the sponsorship seam reports an operation left, otherwise a muted "shown at review". One full-width button, "Review & sign".
+- **Question.** Indigo-tinted card: eyebrow "NEEDS ONE DETAIL" with a question-mark icon, the question as a heading, and the indigo caption "reply below". The sentence is not repeated; it is the bubble above.
+- **Blocked.** Eyebrow "BLOCKED · SAFETY CHECK" in `colors.negative` with a prohibition icon, the first violation's title as the heading ("You don't have enough ETH."), its message as the body ("You have 1.24 ETH. This plan needs 100 ETH."), a faint "checked by the planner and again on this phone", and "Open Swap" when swaps are unavailable, otherwise "Open Send". It appears when the phone's check or the service's check fails. Requests the model can see are over a balance or the $250 cap usually get a question instead.
+- **Planner offline.** Eyebrow "PLANNER OFFLINE" with a cloud-off icon, "Can't reach the planner right now.", "Your wallet works as usual.", and "Open Send". Used for network failures, HTTP errors, and invalid responses.
+- **Planner took too long.** Eyebrow "PLANNER TOOK TOO LONG" with an hourglass, "The planner took too long to answer.", "Try a shorter request. Your wallet works as usual.", and "Open Send". Used only for the client timeout, so a slow planner is not reported as offline.
+- **Declined.** The offline layout with the eyebrow "CAN'T HELP WITH THAT" and the service's message as the heading.
+- If the phone's `evaluatePolicy` rejects a plan the service accepted, the card shows the blocked state with the phone's violation and logs a warning; the phone's result wins.
+
+**Policy messages.** Titles live in `violation-copy.ts`. The balance messages in both policies are the detail line: `insufficient_eth` is "You have {balance} ETH. This plan needs {needed} ETH.", with " and keeps 0.0005 ETH for fees" when only the reserve is short; `insufficient_usdc` is "You have {balance} USDC. This plan needs {needed} USDC."
+
+**Encoder (`plan-encoder.ts`).** For each action in order, using the recipient the policy resolved and pinned:
+- `send_eth`: `{ to, value: amountBase, data: '0x' }`; line "Send {amount} ETH to {name or short address}".
 - `send_usdc`: `encodeUsdcTransfer({ to, amountMicro })`; line "Send {amount} USDC to …".
-- `swap`: `quoteSwap` then `encodeSwap(quote, { recipient: account })`; lines "Swap {amountIn} for at least {minimumAmountOut}" and "Quote expires {time}". If the quote expired before execution, the review screen must re-quote and re-prepare; a changed minimum output invalidates the review, matching the fee-change rule in the decisions doc.
-- `vault_deposit` and `vault_withdraw`: the vault seam; lines accordingly.
-Recipient resolution uses the address book first, then `resolveRecipient`; the resolved address is pinned into the encoded call and shown in the review, so the ENS-bound-address rule from PRA-200 holds.
+- `swap`, `vault_deposit`, `vault_withdraw`: throw `Not implemented` until PRA-212 and PRA-216 provide encoders; `AGENT_CAPABILITIES` keeps them disabled, so the policy blocks them first. When swaps land: `quoteSwap` then `encodeSwap(quote, { recipient: account })`, with lines "Swap {amountIn} for at least {minimumAmountOut}" and "Quote expires {time}"; an expired quote means re-quote and re-prepare, and a changed minimum output invalidates the review.
 
-**Plan review screen.** Extract the review and execute stages from `send-screen.tsx` into `PlanReviewScreen({ plan, calls, lines })`:
-1. `createExecutionClient` and assert the account matches the persisted wallet.
-2. `client.prepare(calls)`; assert `review.calls` equals the encoded calls one-for-one (to, valueWei, data), exactly as the send screen asserts its single call.
-3. Render the summary lines, the calls count, chain, sponsorship status from `review.sponsored`, and maximum network fee from `review.maximumNetworkFeeWei` when not sponsored.
-4. "Confirm with passkey" runs `execute(review.userOperationHash)`, then the same success handling as the send screen: `markPersistedWalletIdentityDeployed`, `walletHomeLiveProvider.refresh()`. ETH sends appear in the activity feed with their amounts because section 1 decodes them from the chain.
-5. Success shows the transaction hash with copy and explorer link, and "Done" returns home with the intent field cleared and the plan card dismissed.
-Any thrown error returns to the plan card with the message and keeps the sentence.
+**Plan review screen.** A separate screen modelled on the send screen's review, confirm, and success steps; the send screen is unchanged.
+1. Encode the pending plan, read the wallet identity, `createExecutionClient`, and assert the account matches.
+2. `client.prepare(calls)`; `assertCallsMatch` requires `review.calls` to equal the encoded calls one-for-one (to, value, data), in order.
+3. Show the numbered lines, From, Network, the network fee ("Sponsored" from `review.sponsored`, otherwise the maximum fee), and wallet setup when the first operation deploys the account.
+4. "Confirm with passkey" runs `execute(review.userOperationHash)`, marks the identity deployed, refreshes the wallet home, and marks the plan complete. ETH sends then appear in the activity feed with their amounts because section 1 decodes them from the chain.
+5. Success shows the transaction hash with Copy and "View on explorer"; "Done" returns to the assistant, where the plan shows as signed. Any failure shows the error and "Back to plan".
 
-**Address book.** Screen with the list and an add form (name, address or ENS name resolved on save via the seam). Names are what the model sees, so keep them short. Entries are shared with the model as names only; the address stays on the phone until the plan is encoded.
+**Address book (placeholder).** No screen and no storage for the hackathon: contacts come from `EXPO_PUBLIC_AGENT_CONTACTS`. ENS is not implemented in the app (the `resolveRecipient` seam accepts addresses only), so the phone's check blocks a plan addressed to an ENS name even though the service can resolve it. Names go to the model; addresses stay on the phone until the plan is encoded. A real address book or ENS replaces the module without changing its `list()` signature.
 
 ### Tests
 
-- `policy.test.ts` in the app asserts the same vectors file as the service.
-- `agent-client.test.ts`: headers, timeout, error mapping, response kinds.
-- `agent-context.test.ts`: assembles the snapshot from mocked providers; `null` for absent seams; capabilities reflect stubs.
-- `plan-encoder.test.ts`: each action to calls and lines with fake seams; recipient resolution order; disabled actions throw before encoding.
-- `address-book.test.ts`: normalisation, uniqueness, persistence round trip.
-- `intent-bar.test.tsx`, `plan-card.test.tsx`: states and buttons; the field keeps its text after a clarification.
-- `plan-review-screen.test.tsx`: mirrors `send-screen.test.tsx` structure with a fake execution client; asserts the call-equality guard, the sponsored line, and error return to the card.
-- `launcher-home.test.tsx`: the bar renders, submission calls the client, and the card appears.
+- `policy.test.ts`: the shared schema and policy vectors, and that `app/src/agent/schema.ts` and `policy.ts` match `agent/src/` apart from comments and import paths.
+- `agent-client.test.ts`: headers, error reasons (unreachable, HTTP, invalid data, timeout), and optional settings.
+- `agent-context.test.ts`: the snapshot from a fake balance client; `null` price when the feed is stale; capabilities.
+- `plan-encoder.test.ts`: ETH and USDC calls and lines in plan order; unimplemented actions throw.
+- `address-book.test.ts`: parsing, lowercasing, deduplication, malformed pairs, unset setting.
+- `violation-copy.test.ts`: every violation code has a short title.
+- `intent-bar.test.tsx`: empty submits do nothing; read-only and busy while planning; placeholders.
+- `plan-card.test.tsx`: each state's eyebrow, heading, and buttons; SPONSORED versus "shown at review"; Open Swap versus Open Send; offline versus took too long.
+- `assistant-screen.test.tsx`: empty state and chips; the conversation keeps turns and only the newest plan offers "Review & sign"; follow-ups send `reset: false`; a question switches the composer to "Reply here" without repeating the sentence; New chat clears and resets; a signed plan shows "Signed"; the timeout card appears in the conversation.
+- `plan-review-screen.test.tsx`: prepare, the call-equality guard, confirm with passkey, completion; a mismatched operation and a missing plan both stop before the passkey.
+- `launcher-screen.test.tsx`: the assistant button shows only with `onOpenAssistant`.
 
 ### Acceptance criteria
 
-- On a device with a funded account and alice in the address book, "send 0.01 eth to alice" produces a plan, review, one passkey ceremony, and a successful operation visible in the activity feed with amount and recipient.
-- "send some eth to alice" produces a clarification and no review.
-- "send 100 eth to alice" produces a clarification that names the balance and asks for a smaller amount, and no review.
-- "make it 0.02 instead" after a plan updates the amount.
-- With the agent variables unset, the intent bar is hidden and the rest of the home is unchanged.
+- On a device with a funded account and alice in `EXPO_PUBLIC_AGENT_CONTACTS`, the sparkle button opens the assistant, and "send 0.01 eth to alice" produces a plan, review, one passkey ceremony, a successful operation visible in the activity feed with amount and recipient, and the plan marked signed in the conversation.
+- "send some eth to alice" produces a question and no review; replying with an amount produces a plan.
+- "send 100 eth to alice" produces a question that names the balance and asks for a smaller amount.
+- "make it 0.02 instead" after a plan produces a new plan, and only the new one can be signed.
+- Requests the model can see are over the $250 cap produce a question offering a smaller amount. The blocked card appears only when a proposed plan fails the phone's check; `assistant-screen.test.tsx` and `plan-card.test.tsx` cover it.
+- With the agent service stopped, a request shows the planner offline card; a request slower than 45 seconds shows the took-too-long card; the rest of the app keeps working.
+- With the agent variables unset, the sparkle button is hidden and the launcher is unchanged.
 - `pnpm lint` and `pnpm test --runInBand` pass.
 
 ## Section 7: Digest card
 
 ### Goal
 
-A card on the launcher home that states what changed since the user last opened it and suggests one action, written by the same service. Tapping the suggestion pre-fills the intent bar and runs the section 6 flow.
+A card that states what changed since the user last opened it and suggests one action, written by the same service. Where it appears is open (see Files). Tapping the suggestion opens the assistant with the sentence in the composer and runs the section 6 flow.
 
 ### Dependencies
 
-Section 5 for the service. Section 6 for the intent bar and plan flow. Section 1 for activity data.
+Section 5 for the service. Section 6 for the assistant page and plan flow. Section 1 for activity data.
 
 ### Files
 
@@ -829,7 +860,7 @@ Create:
 Modify:
 - `agent/src/server.ts` — `POST /agent/digest`.
 - `agent/src/schema.ts` and `app/src/agent/schema.ts` — `DigestSchema`.
-- `app/src/components/launcher-home.tsx` — `DigestCard` under the intent bar.
+- The screen that hosts `DigestCard`. Placement is open: it was designed to sit under the home intent bar, which section 6 replaced with the assistant page.
 - `app/src/launcher/*` — persist `lastDigestAt` with the launcher preferences (extend the schema version of `launcher-preferences.ts` to 2 with a nullable `lastDigestAt`, keeping version 1 parsing).
 
 ### Design
@@ -846,12 +877,12 @@ export const DigestSchema = z.object({
 
 Use `client.messages.parse` with `output_config.format = zodOutputFormat(DigestSchema)` and `effort: 'low'`, no tools, a separate cached system prompt (`agent/src/prompts/digest.md`). The suggested intent must be a sentence the section 6 flow can plan, in the catalogue, and only when it makes sense: idle USDC above 10 with the vault available suggests a deposit; nothing suggests nothing. The model may return `null`.
 
-Card: eyebrow "YOUR WALLET · SODERA", headline, detail, and a button with the suggestion text when present. Refresh at most once per 30 minutes and on the first open of the day; store `lastDigestAt`. Loading, error, and retry states mirror `MarketCard`. If the agent variables are unset, the card is hidden.
+Card: eyebrow "YOUR WALLET · SODERA", headline, detail, and a button with the suggestion text when present. Refresh at most once per 30 minutes and on the first open of the day; store `lastDigestAt`. Loading and error states mirror the plan card's planning and planner offline states. If the agent variables are unset, the card is hidden.
 
 ### Tests
 
 - `digest.test.ts`: message construction, schema parse, `null` suggestion path, refusal mapping.
-- `digest-card.test.tsx`: renders headline and detail, tapping the suggestion fills the intent bar (assert through the `onSuggest` callback), 30-minute throttle honoured.
+- `digest-card.test.tsx`: renders headline and detail, tapping the suggestion opens the assistant with the sentence (assert through the `onSuggest` callback), 30-minute throttle honoured.
 - `launcher-preferences.test.ts`: version 2 schema with `lastDigestAt`, and version 1 data still parses.
 
 ### Acceptance criteria
@@ -880,7 +911,7 @@ MultiBaas rows are resolved by the section 1 script and applied in `multibaas.ts
 | Pinned Uniswap route and quoter for `quote_swap` | PRA-212 | Section 5 tool, section 6 encoder |
 | Sponsorship allowance source | PRA-195, PRA-199 | Policy `sponsorship` rule, plan card line |
 | Shared review component from PRA-198 | PRA-198 | Section 6 review screen |
-| Speech input library compatibility with SDK 57 | Section 6, optional | Intent bar microphone button |
+| Speech input library compatibility with SDK 57 | Section 6, optional | Assistant composer microphone button |
 
 ## Sources
 

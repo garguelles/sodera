@@ -14,11 +14,21 @@ type LauncherScreenProps = {
   onOpenWallet: () => void;
   onOpenPhone: () => void;
   onOpenSettings: () => void;
+  /** Shows the assistant button left of settings when the agent is configured. */
+  onOpenAssistant?: () => void;
 };
 
 const { colors, radius, spacing, typography } = platinum;
 
-export function LauncherScreen({ accountAddress, username, homeContent, onOpenWallet, onOpenPhone, onOpenSettings }: LauncherScreenProps) {
+export function LauncherScreen({
+  accountAddress,
+  username,
+  homeContent,
+  onOpenWallet,
+  onOpenPhone,
+  onOpenSettings,
+  onOpenAssistant,
+}: LauncherScreenProps) {
   const touchStart = useRef<{ x: number; y: number } | null>(null);
 
   const handleTouchStart = (event: GestureResponderEvent) => {
@@ -41,13 +51,24 @@ export function LauncherScreen({ accountAddress, username, homeContent, onOpenWa
           <View style={styles.mark}><View style={styles.markCore} /></View>
           <Text style={styles.wordmark}>SODERA</Text>
         </View>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Open launcher settings"
-          onPress={onOpenSettings}
-          style={({ pressed }) => [styles.settingsButton, pressed && styles.pressed]}>
-          <SymbolView name={{ ios: 'gearshape', android: 'settings', web: 'settings' }} size={20} tintColor={colors.secondaryText} />
-        </Pressable>
+        <View style={styles.headerActions}>
+          {onOpenAssistant ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Open Dera"
+              onPress={onOpenAssistant}
+              style={({ pressed }) => [styles.settingsButton, pressed && styles.pressed]}>
+              <SymbolView name={{ ios: 'sparkles', android: 'auto_awesome', web: 'auto_awesome' }} size={20} tintColor={colors.ethereum} />
+            </Pressable>
+          ) : null}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Open launcher settings"
+            onPress={onOpenSettings}
+            style={({ pressed }) => [styles.settingsButton, pressed && styles.pressed]}>
+            <SymbolView name={{ ios: 'gearshape', android: 'settings', web: 'settings' }} size={20} tintColor={colors.secondaryText} />
+          </Pressable>
+        </View>
       </View>
       <ScrollView style={styles.content} contentContainerStyle={styles.contentInner} contentInsetAdjustmentBehavior="automatic">
         <View style={styles.identity}>
@@ -135,6 +156,7 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.canvas },
   header: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.md, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   brand: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   mark: { width: 24, height: 24, borderRadius: radius.full, backgroundColor: colors.glassRaised, alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 15px rgba(244, 245, 247, 0.3)' },
   markCore: { width: 13, height: 13, borderRadius: radius.full, backgroundColor: colors.platinum },
   wordmark: { ...typography.label, color: colors.platinum, letterSpacing: 3 },

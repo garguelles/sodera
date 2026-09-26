@@ -85,6 +85,30 @@ describe('evaluatePolicy details', () => {
     });
   });
 
+  it('explains the ETH reserve when only the reserve is short', () => {
+    const context = createContext({ balances: { eth: '0.01', usdc: '100' } });
+    const result = evaluatePolicy(
+      {
+        kind: 'plan',
+        summary: 'x',
+        assumptions: [],
+        actions: [{ type: 'send_eth', recipient: { kind: 'name', value: 'alice' }, amount: '0.0099' }],
+      },
+      context,
+      { account: ACCOUNT, valueCapUsd: 250, resolveName: addressBookResolver(context) },
+    );
+    expect(result).toEqual({
+      ok: false,
+      violations: [
+        {
+          code: 'insufficient_eth',
+          actionIndex: null,
+          message: 'You have 0.01 ETH. This plan needs 0.0099 ETH and keeps 0.0005 ETH for fees.',
+        },
+      ],
+    });
+  });
+
   it('shows the user-facing messages from the plan', () => {
     const context = createContext();
     const result = evaluatePolicy(
@@ -102,7 +126,7 @@ describe('evaluatePolicy details', () => {
       ok: false,
       violations: [
         { code: 'recipient_unresolved', actionIndex: 0, message: "I don't know who bob is." },
-        { code: 'insufficient_usdc', actionIndex: 0, message: 'Not enough USDC. You have 100.' },
+        { code: 'insufficient_usdc', actionIndex: 0, message: 'You have 100 USDC. This plan needs 500 USDC.' },
         { code: 'value_cap', actionIndex: null, message: 'Plans above $250 need the manual screens.' },
       ],
     });

@@ -69,10 +69,7 @@ export function createWalletHomeLiveProvider({
   let defaultClient: SepoliaBalanceClient | undefined;
   const getClient = () => {
     if (client) return client;
-    if (defaultClient) return defaultClient;
-    defaultClient = createMultiBaasBalanceClient({
-      client: createMultiBaasClient({ config: readMultiBaasConfigFromEnv() }),
-    });
+    defaultClient ??= createDefaultBalanceClient();
     return defaultClient;
   };
 
@@ -162,6 +159,22 @@ async function readEthValueUsdCents(
   balance: bigint,
   now: () => number,
 ) {
+  const price = await readEthUsdPrice(client, now);
+  if (!price) return 0;
+  const divisor = WEI_PER_ETH * 10n ** BigInt(price.decimals);
+  const cents = (balance * price.answer * 100n + divisor / 2n) / divisor;
+  if (cents > BigInt(Number.MAX_SAFE_INTEGER)) return 0;
+  return Number(cents);
+}
+
+/**
+ * The Chainlink ETH/USD answer when it is usable: 8 decimals, positive, and neither stale nor
+ * from the future. Returns null otherwise, including on read failures.
+ */
+export async function readEthUsdPrice(
+  client: SepoliaBalanceClient,
+  now: () => number = Date.now,
+): Promise<{ answer: bigint; decimals: number } | null> {
   try {
     const [decimals, roundData] = await Promise.all([
       client.readContract({
@@ -175,7 +188,7 @@ async function readEthValueUsdCents(
         functionName: 'latestRoundData',
       }),
     ]);
-    if (decimals !== ETH_USD_DECIMALS || !isChainlinkRoundData(roundData)) return 0;
+    if (decimals !== ETH_USD_DECIMALS || !isChainlinkRoundData(roundData)) return null;
 
     const [, answer, , updatedAt] = roundData;
     const nowSeconds = BigInt(Math.floor(now() / 1_000));
@@ -185,20 +198,23 @@ async function readEthValueUsdCents(
       updatedAt > nowSeconds + ETH_USD_MAX_FUTURE_SECONDS ||
       nowSeconds - updatedAt > ETH_USD_MAX_AGE_SECONDS
     ) {
-      return 0;
+      return null;
     }
-
-    const divisor = WEI_PER_ETH * 10n ** BigInt(decimals);
-    const cents = (balance * answer * 100n + divisor / 2n) / divisor;
-    if (cents > BigInt(Number.MAX_SAFE_INTEGER)) return 0;
-    return Number(cents);
+    return { answer, decimals: ETH_USD_DECIMALS };
   } catch {
-    return 0;
+    return null;
   }
 }
 
 function isChainlinkRoundData(value: unknown): value is readonly [bigint, bigint, bigint, bigint, bigint] {
   return Array.isArray(value) && value.length === 5 && value.every((item) => typeof item === 'bigint');
+}
+
+/** Wallet balance and price reads through MultiBaas, configured from the EXPO_PUBLIC_ settings. */
+export function createDefaultBalanceClient(): SepoliaBalanceClient {
+  return createMultiBaasBalanceClient({
+    client: createMultiBaasClient({ config: readMultiBaasConfigFromEnv() }),
+  });
 }
 
 export const walletHomeLiveProvider = createWalletHomeLiveProvider();

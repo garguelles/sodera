@@ -6,9 +6,9 @@ import {
   type Action,
   type ActionType,
   type AgentContext,
-} from './schema.ts';
+} from './schema';
 
-// Keep this file identical in behaviour to app/src/agent/policy.ts. Both suites assert
+// Copy of agent/src/policy.ts; keep them identical apart from import paths. Both suites assert
 // docs/plans/agent-policy-vectors.json.
 
 export type ViolationCode =
