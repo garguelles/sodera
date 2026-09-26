@@ -11,6 +11,8 @@
     "@expo-google-fonts/jetbrains-mono": "^0.4.1",
     "@expo/ui": "~57.0.16",
     "@noble/curves": "1.9.7",
+    "@uniswap/sdk-core": "7.19.4",
+    "@uniswap/v4-sdk": "2.4.1",
     "@zerodev/passkey-validator": "5.6.0",
     "@zerodev/sdk": "5.5.10",
     "@zerodev/webauthn-key": "5.5.0",

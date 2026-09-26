@@ -1,2 +1,3 @@
 allowBuilds:
+  keccak: false
   unrs-resolver: false

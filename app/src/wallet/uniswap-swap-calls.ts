@@ -1,69 +1,26 @@
-import { encodeAbiParameters, encodeFunctionData, erc20Abi, maxUint128, type Hex } from 'viem';
+import { Actions, V4Planner } from '@uniswap/v4-sdk';
+import { encodeFunctionData, erc20Abi, maxUint128, parseAbi, type Hex } from 'viem';
 
 import type { KernelExecutionCall } from './kernel-passkey-execution';
 import {
   SEPOLIA_PERMIT2_ADDRESS,
   SEPOLIA_UNISWAP_UNIVERSAL_ROUTER_ADDRESS,
   SEPOLIA_USDC_ADDRESS,
-  SWAP_POOL_KEY,
 } from './sepolia';
+import { SWAP_POOL_KEY } from './uniswap-sdk';
 import { SWAP_DIRECTIONS, type SwapDirection } from './uniswap-quote';
 
 export const SWAP_DEADLINE_SECONDS = 600;
 
 const V4_SWAP_COMMAND = '0x10';
-// SWAP_EXACT_IN_SINGLE (0x06), SETTLE_ALL (0x0c), TAKE_ALL (0x0f); TAKE_ALL pays the Kernel account.
-const EXACT_IN_SINGLE_ACTIONS = '0x060c0f';
 const MAX_UINT48 = 2n ** 48n - 1n;
 
-const poolKeyComponents = [
-  { name: 'currency0', type: 'address' },
-  { name: 'currency1', type: 'address' },
-  { name: 'fee', type: 'uint24' },
-  { name: 'tickSpacing', type: 'int24' },
-  { name: 'hooks', type: 'address' },
-] as const;
-const exactInputSingleParameters = [
-  {
-    type: 'tuple',
-    components: [
-      { name: 'poolKey', type: 'tuple', components: poolKeyComponents },
-      { name: 'zeroForOne', type: 'bool' },
-      { name: 'amountIn', type: 'uint128' },
-      { name: 'amountOutMinimum', type: 'uint128' },
-      { name: 'hookData', type: 'bytes' },
-    ],
-  },
-] as const;
-const currencyAmountParameters = [{ type: 'address' }, { type: 'uint256' }] as const;
-
-const universalRouterAbi = [
-  {
-    type: 'function',
-    name: 'execute',
-    stateMutability: 'payable',
-    inputs: [
-      { name: 'commands', type: 'bytes' },
-      { name: 'inputs', type: 'bytes[]' },
-      { name: 'deadline', type: 'uint256' },
-    ],
-    outputs: [],
-  },
-] as const;
-const permit2AllowanceAbi = [
-  {
-    type: 'function',
-    name: 'approve',
-    stateMutability: 'nonpayable',
-    inputs: [
-      { name: 'token', type: 'address' },
-      { name: 'spender', type: 'address' },
-      { name: 'amount', type: 'uint160' },
-      { name: 'expiration', type: 'uint48' },
-    ],
-    outputs: [],
-  },
-] as const;
+const universalRouterAbi = parseAbi([
+  'function execute(bytes commands, bytes[] inputs, uint256 deadline) payable',
+]);
+const permit2Abi = parseAbi([
+  'function approve(address token, address spender, uint160 amount, uint48 expiration)',
+]);
 
 export function swapDeadline(nowMs = Date.now()) {
   return BigInt(Math.floor(nowMs / 1000) + SWAP_DEADLINE_SECONDS);
@@ -90,6 +47,22 @@ export function buildSwapCalls({
   const [currencyIn, currencyOut] = zeroForOne
     ? [SWAP_POOL_KEY.currency0, SWAP_POOL_KEY.currency1]
     : [SWAP_POOL_KEY.currency1, SWAP_POOL_KEY.currency0];
+
+  // Swap the exact input in the pinned pool, pay it from the Kernel account, and send the output
+  // back to the Kernel account (TAKE_ALL pays the caller). addTrade would emit the multi-hop form.
+  const planner = new V4Planner();
+  planner.addAction(Actions.SWAP_EXACT_IN_SINGLE, [
+    {
+      poolKey: SWAP_POOL_KEY,
+      zeroForOne,
+      amountIn: amountIn.toString(),
+      amountOutMinimum: minAmountOut.toString(),
+      hookData: '0x',
+    },
+  ]);
+  planner.addAction(Actions.SETTLE_ALL, [currencyIn, amountIn.toString()]);
+  planner.addAction(Actions.TAKE_ALL, [currencyOut, minAmountOut.toString()]);
+
   const swap: KernelExecutionCall = {
     to: SEPOLIA_UNISWAP_UNIVERSAL_ROUTER_ADDRESS,
     // SETTLE_ALL pays exactly amountIn; any extra ETH would stay in the router for anyone to sweep.
@@ -97,11 +70,7 @@ export function buildSwapCalls({
     data: encodeFunctionData({
       abi: universalRouterAbi,
       functionName: 'execute',
-      args: [
-        V4_SWAP_COMMAND,
-        [encodeV4SwapInput({ zeroForOne, amountIn, minAmountOut, currencyIn, currencyOut })],
-        deadline,
-      ],
+      args: [V4_SWAP_COMMAND, [planner.finalize() as Hex], deadline],
     }),
   };
   if (zeroForOne) return [swap];
@@ -120,7 +89,7 @@ export function buildSwapCalls({
       to: SEPOLIA_PERMIT2_ADDRESS,
       value: 0n,
       data: encodeFunctionData({
-        abi: permit2AllowanceAbi,
+        abi: permit2Abi,
         functionName: 'approve',
         args: [
           SEPOLIA_USDC_ADDRESS,
@@ -132,38 +101,4 @@ export function buildSwapCalls({
     },
     swap,
   ];
-}
-
-function encodeV4SwapInput({
-  zeroForOne,
-  amountIn,
-  minAmountOut,
-  currencyIn,
-  currencyOut,
-}: {
-  zeroForOne: boolean;
-  amountIn: bigint;
-  minAmountOut: bigint;
-  currencyIn: Hex;
-  currencyOut: Hex;
-}) {
-  return encodeAbiParameters(
-    [{ type: 'bytes' }, { type: 'bytes[]' }],
-    [
-      EXACT_IN_SINGLE_ACTIONS,
-      [
-        encodeAbiParameters(exactInputSingleParameters, [
-          {
-            poolKey: SWAP_POOL_KEY,
-            zeroForOne,
-            amountIn,
-            amountOutMinimum: minAmountOut,
-            hookData: '0x',
-          },
-        ]),
-        encodeAbiParameters(currencyAmountParameters, [currencyIn, amountIn]),
-        encodeAbiParameters(currencyAmountParameters, [currencyOut, minAmountOut]),
-      ],
-    ],
-  );
 }

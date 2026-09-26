@@ -23,16 +23,17 @@ import {
   SEPOLIA_UNISWAP_V4_QUOTER_ADDRESS,
   SEPOLIA_UNISWAP_V4_STATE_VIEW_ADDRESS,
   SEPOLIA_USDC_ADDRESS,
-  SWAP_POOL_ID,
-  SWAP_POOL_KEY,
 } from '../src/wallet/sepolia.ts';
+import { SWAP_POOL_ID, SWAP_POOL_KEY } from '../src/wallet/uniswap-sdk.ts';
 import { buildSwapCalls, swapDeadline } from '../src/wallet/uniswap-swap-calls.ts';
-import { quoteSwap } from '../src/wallet/uniswap-quote.ts';
+import { formatPriceImpact, quoteSwap } from '../src/wallet/uniswap-quote.ts';
 
 if (!process.env.SEPOLIA_RPC_URL) {
   throw new Error('SEPOLIA_RPC_URL is required');
 }
 
+// The pool pinned in docs/research/PRA-212-uniswap-v4-sepolia-route.md.
+const EXPECTED_POOL_ID = '0xc743656d27fde4e2d5895e878557aaa56dd48c8656d25e9db35ba10b1fe3d824';
 const V4_TOO_LITTLE_RECEIVED_SELECTOR = '0x8b063d73';
 const SIMULATION_ACCOUNT = '0x000000000000000000000000000000000000dEaD';
 // FiatTokenV2_2 keeps balances in `balanceAndBlacklistStates` at storage slot 9.
@@ -82,7 +83,45 @@ assert.ok(
 const derivedPoolId = keccak256(
   encodeAbiParameters([{ type: 'tuple', components: poolKeyComponents }], [SWAP_POOL_KEY]),
 );
-assert.equal(derivedPoolId, SWAP_POOL_ID, 'Pool key does not hash to the pinned pool ID');
+assert.equal(derivedPoolId, EXPECTED_POOL_ID, 'Pool key does not hash to the pinned pool ID');
+assert.equal(SWAP_POOL_ID, EXPECTED_POOL_ID, 'SDK pool ID does not match the pinned pool ID');
+
+// Captured from the hand-encoded builder used for the first live swaps; refactors must reproduce it byte for byte.
+const GOLDEN_DEADLINE = 1_790_400_000n;
+const GOLDEN_SWAP_CALLS = {
+  'eth-to-usdc': {
+    amountIn: 1_000_000_000_000_000n,
+    minAmountOut: 31_000_000n,
+    calls: [
+      [
+        SEPOLIA_UNISWAP_UNIVERSAL_ROUTER_ADDRESS,
+        1_000_000_000_000_000n,
+        '0x6d882bf9c0eaf4eb7c290b0eaa71b7a86a5f5ed40a6f1c1f7ca2b78ae7a09490',
+      ],
+    ],
+  },
+  'usdc-to-eth': {
+    amountIn: 1_000_000n,
+    minAmountOut: 31_000_000_000_000n,
+    calls: [
+      [SEPOLIA_USDC_ADDRESS, 0n, '0x4c30657a233b56f2373066dd8805303dafd8450b0fc5afa5256eafd5ca5add94'],
+      [SEPOLIA_PERMIT2_ADDRESS, 0n, '0x48752cba2c25ca83ce35b9020ff2ac7145422fe712a762824ea4f3db9e6173ba'],
+      [
+        SEPOLIA_UNISWAP_UNIVERSAL_ROUTER_ADDRESS,
+        0n,
+        '0xa88181a1fb023fe7f3a65d6c58e9b325716b40822357f8a6fc5bc97cd6705e6d',
+      ],
+    ],
+  },
+};
+for (const [direction, { amountIn, minAmountOut, calls }] of Object.entries(GOLDEN_SWAP_CALLS)) {
+  const built = buildSwapCalls({ direction, amountIn, minAmountOut, deadline: GOLDEN_DEADLINE });
+  assert.deepEqual(
+    built.map((call) => [call.to, call.value, keccak256(call.data)]),
+    calls,
+    `${direction} calldata differs from the golden encoding`,
+  );
+}
 
 const [liquidity, [sqrtPriceX96]] = await Promise.all([
   client.readContract({
@@ -108,6 +147,13 @@ const [ethToUsdc, usdcToEth] = await Promise.all([
   quoteSwap({ direction: 'eth-to-usdc', amountIn: ethIn }, client),
   quoteSwap({ direction: 'usdc-to-eth', amountIn: usdcIn }, client),
 ]);
+for (const quote of [ethToUsdc, usdcToEth]) {
+  assert.equal(
+    quote.minAmountOut,
+    (quote.amountOut * 9_950n) / 10_000n,
+    `${quote.direction} minimum received is not 0.5% below the quote`,
+  );
+}
 const deadline = swapDeadline();
 
 // ETH -> USDC: one call, sent with exactly the input ETH.
@@ -208,18 +254,21 @@ console.log(
       chainId: sepolia.id,
       blockNumber: blockNumber.toString(),
       poolId: SWAP_POOL_ID,
+      goldenCalldata: 'matches the hand-encoded builder in both directions',
       activeLiquidity: liquidity.toString(),
       poolPriceUsdcPerEth: usdcPerEth.toFixed(2),
       ethToUsdc: {
         amountIn: `${formatEther(ethIn)} ETH`,
         quotedOut: `${formatUnits(ethToUsdc.amountOut, 6)} USDC`,
         minimumOut: `${formatUnits(ethToUsdc.minAmountOut, 6)} USDC`,
+        priceImpact: formatPriceImpact(ethToUsdc.priceImpact),
         simulation: 'succeeded; minimum above quote reverted with V4TooLittleReceived',
       },
       usdcToEth: {
         amountIn: `${formatUnits(usdcIn, 6)} USDC`,
         quotedOut: `${formatEther(usdcToEth.amountOut)} ETH`,
         minimumOut: `${formatEther(usdcToEth.minAmountOut)} ETH`,
+        priceImpact: formatPriceImpact(usdcToEth.priceImpact),
         simulatedReceived: `${formatEther(ethReceived)} ETH`,
         allowancesAfterSwap: 'USDC->Permit2 0, Permit2->router 0',
       },

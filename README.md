@@ -33,17 +33,19 @@ See the application READMEs for verification, native development, Digital Asset 
 
 ## Uniswap Integration
 
-Sodera's wallet swaps ETH ⇄ USDC on Ethereum Sepolia through Uniswap v4. The user's passkey-controlled Kernel smart account (ERC-4337, sponsored gas) calls the Uniswap contracts directly. Calldata is built with `viem`, with no Uniswap SDK or API. One passkey confirmation executes the whole swap, including the approvals for USDC → ETH.
+Sodera's wallet swaps ETH ⇄ USDC on Ethereum Sepolia through Uniswap v4. The user's passkey-controlled Kernel smart account (ERC-4337, sponsored gas) calls the Uniswap contracts directly. The Uniswap SDK (`@uniswap/sdk-core`, `@uniswap/v4-sdk`) supplies the currencies, the pool key, the trade math (minimum received, rate and price impact) and the `V4Planner` swap encoding. `viem` makes the V4 Quoter call, encodes the approvals and handles RPC. The Uniswap Trading API is not used. One passkey confirmation executes the whole swap, including the approvals for USDC → ETH.
 
 | What | Where |
 | --- | --- |
-| Pinned pool and Uniswap contract addresses | [`app/src/wallet/sepolia.ts`](app/src/wallet/sepolia.ts) |
-| Quotes (V4 Quoter), amount parsing, 0.5% minimum received | [`app/src/wallet/uniswap-quote.ts`](app/src/wallet/uniswap-quote.ts) |
-| Universal Router `V4_SWAP` calls and exact-amount Permit2 approvals | [`app/src/wallet/uniswap-swap-calls.ts`](app/src/wallet/uniswap-swap-calls.ts) |
+| Uniswap contract addresses | [`app/src/wallet/sepolia.ts`](app/src/wallet/sepolia.ts) |
+| SDK currencies, and the pinned pool key and ID (`Pool.getPoolKey` / `Pool.getPoolId`) | [`app/src/wallet/uniswap-sdk.ts`](app/src/wallet/uniswap-sdk.ts) |
+| V4 Quoter quotes as SDK trades (minimum received, rate, price impact), and amount parsing | [`app/src/wallet/uniswap-quote.ts`](app/src/wallet/uniswap-quote.ts) |
+| `V4Planner` swap encoding for the Universal Router `V4_SWAP` command, and exact-amount Permit2 approvals | [`app/src/wallet/uniswap-swap-calls.ts`](app/src/wallet/uniswap-swap-calls.ts) |
 | Swap screen, review, and passkey execution | [`app/src/components/swap-screen.tsx`](app/src/components/swap-screen.tsx) |
 | Live verification script (`pnpm verify:uniswap` from `app/`) | [`app/scripts/verify-uniswap-route.mjs`](app/scripts/verify-uniswap-route.mjs) |
 | Route research, contracts, and evidence | [`docs/research/PRA-212-uniswap-v4-sepolia-route.md`](docs/research/PRA-212-uniswap-v4-sepolia-route.md) |
 | Build plan and design decisions | [`docs/plans/uniswap-swaps.md`](docs/plans/uniswap-swaps.md) |
+| Uniswap SDK adoption plan | [`docs/plans/uniswap-sdk-adoption.md`](docs/plans/uniswap-sdk-adoption.md) |
 | Developer feedback for Uniswap | [`FEEDBACK.md`](FEEDBACK.md) |
 
 Uniswap contracts used on Sepolia:
