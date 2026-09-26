@@ -49,7 +49,7 @@ Both contracts are 1inch's own Sepolia deployments. The evidence is in [the rese
    2. `USDC.approve(Aqua, 0)`;
    3. `WETH.approve(Aqua, 0)`.
 7. **Reading positions.**
-   - `Aqua.rawBalances(maker, router, strategyHash, token)` gives the current virtual balance of each token. A `tokensCount` of 0 means the position is closed.
+   - `Aqua.rawBalances(maker, router, strategyHash, token)` gives the current virtual balance of each token. A `tokensCount` of 255 (`0xff`) means the position is docked; 0 means it was never shipped.
    - *Earned vs holding* is the value of the current virtual balances minus the value of the opening amounts, both at the current Chainlink price. That is fees minus impermanent loss; round-trip trading makes it positive.
 8. **Persistence.** One `expo-sqlite/kv-store` record holds the open position: order bytes, strategy hash, opening amounts, and open time. This follows `app/src/wallet/pending-sends.ts`. On-chain balances stay the source of truth.
 9. **Home.** The position appears as a `WalletHomePosition` (protocol "1inch Aqua"). USDC and WETH balances show *available* amounts, meaning the wallet balance minus what the position has committed. That way the portfolio total counts each token once.
