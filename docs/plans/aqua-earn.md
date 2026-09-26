@@ -87,7 +87,7 @@ All work lands on `feat/aqua-earn` as separate commits, in this order. There are
 2. On a device with a funded wallet:
    1. Open a 20 USDC position. The review shows the wrap, both approvals and `ship`.
    2. Etherscan shows `Shipped`, and the tokens are still in the wallet.
-   3. Run `pnpm demo:aqua-trade -- --maker <account> --rounds 3`. Aqua emits `Pulled` and `Pushed`.
+   3. Run `pnpm demo:aqua-trade --maker <account> --rounds 3`. Aqua emits `Pulled` and `Pushed`.
    4. Earn shows changed balances and a positive earned-vs-holding.
    5. Home shows the position and available balances.
    6. Close. Aqua emits `Docked`, and both approvals are 0.

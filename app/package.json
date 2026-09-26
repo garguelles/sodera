@@ -79,6 +79,7 @@
     "verify:webauthn-vectors": "node --env-file-if-exists=.env.local ./scripts/verify-webauthn-vectors.mjs",
     "verify:uniswap": "node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --disable-warning=ExperimentalWarning --import ./scripts/lib/register-ts-resolver.mjs --env-file-if-exists=.env.local ./scripts/verify-uniswap-route.mjs",
     "verify:aqua": "node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --disable-warning=ExperimentalWarning --import ./scripts/lib/register-ts-resolver.mjs --env-file-if-exists=.env.local ./scripts/verify-aqua-earn.mjs",
+    "demo:aqua-trade": "node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --disable-warning=ExperimentalWarning --import ./scripts/lib/register-ts-resolver.mjs --env-file-if-exists=.env.local ./scripts/aqua-demo-trade.mjs",
     "verify:multibaas": "node --env-file-if-exists=.env.local ./scripts/verify-multibaas.mjs"
   },
   "jest": {
