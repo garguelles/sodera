@@ -13,7 +13,7 @@ import { evaluatePolicy, serializeEnrichedPlan } from './policy.ts';
 import { propose, renderUserMessage, type Effort, type ProposeClient, type ProposeResult } from './propose.ts';
 import { createRateLimiter } from './rate-limit.ts';
 import { ProposeRequestSchema } from './schema.ts';
-import { createTools } from './tools.ts';
+import { createTools, resolveName, type ToolDependencies } from './tools.ts';
 import type { TranscriptStore } from './transcript.ts';
 import { TradingApiError } from './uniswap-trading.ts';
 import type { SwapQuoter } from './uniswap.ts';
@@ -129,7 +129,7 @@ export function createApp(deps: AppDependencies) {
       const calls: string[] = [];
       const toolResults: string[] = [];
       const ranges: { from: string; to: string }[] = [];
-      const tools = createTools({
+      const toolDeps: ToolDependencies = {
         account,
         context,
         multibaas: deps.multibaas,
@@ -140,7 +140,8 @@ export function createApp(deps: AppDependencies) {
         calls,
         toolResults,
         ranges,
-      });
+      };
+      const tools = createTools(toolDeps);
 
       const record = (outcome: string, result?: ProposeResult) =>
         log({
@@ -216,6 +217,13 @@ export function createApp(deps: AppDependencies) {
         return c.json({ ...result.output, source: ranges.at(-1) ?? null });
       }
 
+      // A follow-up can reuse a name resolved in an earlier turn without calling the tool again.
+      for (const action of result.output.actions) {
+        if ((action.type !== 'send_eth' && action.type !== 'send_usdc') || action.recipient.kind !== 'name') continue;
+        if (!resolvedNames.has(action.recipient.value.trim().toLowerCase())) {
+          await resolveName(toolDeps, { name: action.recipient.value });
+        }
+      }
       const policy = evaluatePolicy(result.output, context, {
         account,
         valueCapUsd: deps.valueCapUsd,
