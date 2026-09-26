@@ -284,6 +284,27 @@ describe('WalletIdentityClient', () => {
     expect(storage.value).toBe(stored);
   });
 
+  it('keeps the wallet resumable without displaying counterfactual calldata on RPC failure', async () => {
+    const stored = manifest('accountDerived');
+    const storage = createStorage(stored);
+    const ceremonyClient = createCeremonyClient();
+    ceremonyClient.verifyPrimaryPasskey.mockResolvedValue({ ok: true });
+    const client = createWalletIdentityClient({
+      storage,
+      ceremonyClient,
+      deriveAccount: jest.fn().mockRejectedValue(new Error(
+        'An unknown error occurred while executing getSenderAddress(0x1234567890). Details: Could not load bundle',
+      )),
+    });
+
+    await expect(client.reopen()).resolves.toMatchObject({
+      status: 'blocked',
+      reason: 'infrastructureUnavailable',
+      message: 'Sepolia could not derive this Smart Account address. Your wallet identity was preserved; check the RPC and retry.',
+    });
+    expect(storage.value).toBe(stored);
+  });
+
   it('rejects an application update that changes pinned account metadata', async () => {
     const stored = JSON.parse(manifest('accountDerived'));
     stored.pins.kernelVersion = 'future-default';

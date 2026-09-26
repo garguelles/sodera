@@ -43,7 +43,7 @@ Use `x86_64` instead of `arm64-v8a` for the Google Play emulator. Before accepti
 
 ### Local ENS passkey proof
 
-Start the API and PostgreSQL with `make start` from the repository root. For a connected Android debug build, forward the API over USB with `adb reverse tcp:8082 tcp:8082` (and Metro with `adb reverse tcp:8081 tcp:8081`). **Restart** any existing Metro process so it picks up the ENS URL, then run from `app/`:
+Start the API and PostgreSQL with `make start` from `api/`. For a connected Android debug build, forward the API over USB with `adb reverse tcp:8082 tcp:8082` (and Metro with `adb reverse tcp:8081 tcp:8081`). **Restart** any existing Metro process so it picks up the ENS URL, then run from `app/`:
 
 ```bash
 EXPO_PUBLIC_API_URL=http://127.0.0.1:8082 pnpm exec expo start --dev-client

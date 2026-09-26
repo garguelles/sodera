@@ -32,7 +32,7 @@ pnpm install
 pnpm dev
 ```
 
-For namespace setup, run the standalone owner tool from `ens/`; see its [README](ens/README.md). For the combined ENS/Uniswap API plus local PostgreSQL, run `make start` from this repository's root; see [`api/README.md`](api/README.md). See the application READMEs for verification, native development, Digital Asset Links, and deployment instructions.
+For namespace setup, run the standalone owner tool from `ens/`; see its [README](ens/README.md). For the combined ENS/Uniswap API plus local PostgreSQL, run `make start` from `api/`; see [`api/README.md`](api/README.md). See the application READMEs for verification, native development, Digital Asset Links, and deployment instructions.
 
 ## Uniswap Integration
 

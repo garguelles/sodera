@@ -13,7 +13,7 @@ The designated issuer **public address** is `0x9eF8EAad2fB225D19ECecC125B0Da54B8
 
 ## Development
 
-From the repository root, with Podman installed:
+From `api/`, with Podman installed:
 
 ```bash
 make start
@@ -22,7 +22,7 @@ make status
 
 `make start` builds and starts the **combined API** at `http://127.0.0.1:8082` and persistent PostgreSQL at `127.0.0.1:5433` in Podman, waits for their health checks, and returns to your terminal. ENS routes are under `/ens`, Uniswap routes under `/uniswap`. The local database password and IP-hash key in `compose.dev.yaml` are **development-only**. `make logs` follows service logs; `make stop` stops the stack but preserves the named database volume. Run `make start` again after changing API code to rebuild it.
 
-From `api/`, `pnpm typecheck`, `pnpm test`, `pnpm test:db`, and `pnpm build` verify the project; `test:db` uses the running Podman PostgreSQL for concurrency/replay tests. For production, deploy the Dockerfile as **one Railway API service** with a separate Railway PostgreSQL service with durable storage. Reference its `DATABASE_URL` in the API, and set `SEPOLIA_RPC_URL` and a newly generated, secret `ENS_CHALLENGE_IP_KEY` of at least 32 characters. Railway supplies `PORT`. Never configure the issuer private key on this service. Generate an HTTPS domain before setting `EXPO_PUBLIC_API_URL` in the mobile build. For local Android debug builds connected by USB, see the loopback instructions below.
+`pnpm typecheck`, `pnpm test`, `pnpm test:db`, and `pnpm build` verify the project; `test:db` uses the running Podman PostgreSQL for concurrency/replay tests. For production, deploy the Dockerfile as **one Railway API service** with a separate Railway PostgreSQL service with durable storage. Reference its `DATABASE_URL` in the API, and set `SEPOLIA_RPC_URL` and a newly generated, secret `ENS_CHALLENGE_IP_KEY` of at least 32 characters. Railway supplies `PORT`. Never configure the issuer private key on this service. Generate an HTTPS domain before setting `EXPO_PUBLIC_API_URL` in the mobile build. For local Android debug builds connected by USB, see the loopback instructions below.
 
 The ENS availability endpoint applies the app's canonical username policy, distinguishes product-reserved from chain-reserved/registered labels, verifies the current ENSv2 hierarchy and implementation on Sepolia, and reports whether the parent has at least one year left. It returns `503` when the hierarchy/RPC cannot be verified. It does not mint names, hold a signer, or expose a claim endpoint yet.
 
