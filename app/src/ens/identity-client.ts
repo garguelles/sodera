@@ -22,7 +22,7 @@ export function createEnsIdentityReader({
   const url = readSoderaApiUrl(baseUrl);
   const resolve = resolveAddress ?? (async (name: string) => {
     const rpc = process.env.EXPO_PUBLIC_SEPOLIA_RPC_URL;
-    if (!rpc) throw new Error('EXPO_PUBLIC_SEPOLIA_RPC_URL is required to verify ENS identity');
+    if (!rpc) throw new Error('Ethereum RPC URL is required to verify ENS identity');
     return createPublicClient({ chain: sepolia, transport: http(rpc) }).getEnsAddress({ name });
   });
   const read = async (label: string) => {

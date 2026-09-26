@@ -116,7 +116,7 @@ export function PasskeyProofScreen({
         authenticatorAttachment: result.credential.authenticatorAttachment,
         privateKeyExported: false,
       });
-      setStatus('Kernel account derived. Prepare the bounded Sepolia operation for review.');
+      setStatus('Kernel account derived. Prepare the bounded Ethereum operation for review.');
     } catch (error) {
       if (currentInvocation === invocation.current) {
         setExecutionState('failed');
@@ -236,8 +236,8 @@ export function PasskeyProofScreen({
       setExecutionState('confirmed');
       setStatus(
         deploymentPersisted
-          ? 'Confirmed: the UserOperation and independent Sepolia state checks succeeded.'
-          : 'Confirmed on Sepolia, but the local deployment marker could not be persisted. Reopen the existing wallet before another operation.',
+          ? 'Confirmed: the UserOperation and independent Ethereum state checks succeeded.'
+          : 'Confirmed on Ethereum, but the local deployment marker could not be persisted. Reopen the existing wallet before another operation.',
       );
     } catch (error) {
       if (currentInvocation === invocation.current) {
@@ -369,7 +369,7 @@ export function PasskeyProofScreen({
           </Text>
           <ActionButton
             disabled={busy || !credential || !executionClient}
-            label="Prepare Sepolia operation"
+            label="Prepare Ethereum operation"
             onPress={prepare}
           />
         </View>
@@ -437,7 +437,7 @@ export function PasskeyProofScreen({
             <Text style={styles.step}>6. Request a one-year ENS name</Text>
             <Text style={styles.body}>
               Review the username above before requesting a free, user-owned subname. This action
-              runs a fresh passkey ceremony and asks the issuer to register the name on Sepolia.
+              runs a fresh passkey ceremony and asks the issuer to register the name on Ethereum.
             </Text>
             <ActionButton
               disabled={busy || !credential || !executionClient || Boolean(claim) ||
@@ -474,7 +474,7 @@ function OperationReview({ review }: { review: KernelOperationReview }) {
   return (
     <View style={styles.review}>
       <ReviewRow label="Account" value={review.account} />
-      <ReviewRow label="Chain" value={`${review.chain} (${review.chainId})`} />
+      <ReviewRow label="Chain" value="Ethereum" />
       <ReviewRow label="EntryPoint" value={review.entryPoint} />
       <ReviewRow label="Validator" value={review.validator} />
       <ReviewRow label="Deploy account" value={review.deploymentRequired ? 'Yes' : 'No'} />

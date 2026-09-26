@@ -125,7 +125,7 @@ describe('OnboardingScreen', () => {
       homeClient={createHomeClient()} onComplete={jest.fn()} />);
     await press('Continue wallet setup');
     expect(await screen.findByText('Activate your wallet.')).toBeOnTheScreen();
-    expect(screen.getByText('Deploy wallet + 0 ETH operation on Sepolia')).toBeOnTheScreen();
+    expect(screen.getByText('Deploy wallet + 0 ETH operation')).toBeOnTheScreen();
     expect(screen.queryByText(/UserOperation:/)).not.toBeOnTheScreen();
     expect(execution.prepare).toHaveBeenCalledTimes(1);
     await press('Activate wallet');
@@ -158,7 +158,7 @@ describe('OnboardingScreen', () => {
 
     expect(await screen.findByText('Making it official.')).toBeOnTheScreen();
     expect(screen.getByLabelText('Registering Sodera name')).toBeOnTheScreen();
-    expect(screen.queryByText('Waiting for Sepolia')).not.toBeOnTheScreen();
+    expect(screen.queryByText(/Waiting for/)).not.toBeOnTheScreen();
     expect(screen.queryByRole('button', { name: 'Check registration status' })).not.toBeOnTheScreen();
     expect(usernameClaimClient.status).toHaveBeenCalled();
   });

@@ -111,7 +111,7 @@ describe('wallet Home live provider', () => {
       },
     });
 
-    await expect(provider.load()).rejects.toThrow('MultiBaas deployment is not Ethereum Sepolia');
+    await expect(provider.load()).rejects.toThrow('Wallet data is connected to the wrong network');
   });
 
   it('values a zero ETH balance at zero without requiring a price feed', async () => {

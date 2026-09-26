@@ -259,7 +259,7 @@ export function createWalletIdentityClient({
 function describeAccountDerivationError(error: unknown) {
   if (!(error instanceof Error)) return 'Smart Account infrastructure is unavailable';
   if (/getSenderAddress/.test(error.message)) {
-    return 'Sepolia could not derive this Smart Account address. Your wallet identity was preserved; check the RPC and retry.';
+      return 'Ethereum could not derive this Smart Account address. Your wallet identity was preserved; check the RPC and retry.';
   }
   return error.message.replace(/https?:\/\/\S+/g, '[redacted RPC URL]');
 }

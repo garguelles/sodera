@@ -141,7 +141,7 @@ function WalletSnapshot({
           value={formatUsd(getPortfolioTotalUsdCents(result.snapshot))}
           visible={amountsVisible}
         />
-        <Text style={styles.network}>Ethereum Sepolia</Text>
+        <Text style={styles.network}>Ethereum</Text>
         <View style={styles.actions}>
           {(['send', 'receive', 'swap'] as const).map((action) => (
             <Pressable

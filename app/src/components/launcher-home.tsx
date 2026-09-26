@@ -56,7 +56,7 @@ export function LauncherHome({ onOpenEarn, onOpenSwap, onOpenActivity }: Launche
         </View>
         <View style={styles.activityCopy}>
           <Text style={styles.activityTitle}>Activity</Text>
-          <Text style={styles.activityDescription}>Your Sepolia transaction history</Text>
+          <Text style={styles.activityDescription}>Your transaction history</Text>
         </View>
         <Text style={styles.activityArrow}>›</Text>
       </Pressable>
@@ -147,7 +147,7 @@ function MarketPulse() {
           <Text style={styles.retryText}>Try again ↗</Text>
         </Pressable>
       ) : null}
-      <Text style={styles.marketFootnote}>Global market prices · Wallet uses Sepolia testnet</Text>
+      <Text style={styles.marketFootnote}>Global market prices · Wallet on Ethereum</Text>
     </View>
   );
 }

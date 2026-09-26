@@ -300,7 +300,7 @@ describe('WalletIdentityClient', () => {
     await expect(client.reopen()).resolves.toMatchObject({
       status: 'blocked',
       reason: 'infrastructureUnavailable',
-      message: 'Sepolia could not derive this Smart Account address. Your wallet identity was preserved; check the RPC and retry.',
+      message: 'Ethereum could not derive this Smart Account address. Your wallet identity was preserved; check the RPC and retry.',
     });
     expect(storage.value).toBe(stored);
   });

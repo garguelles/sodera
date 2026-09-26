@@ -44,7 +44,7 @@ describe('LauncherScreen', () => {
     expect(home.getByText('Market watch')).toBeOnTheScreen();
     expect(home.getByText('0x1234...7890')).toBeOnTheScreen();
     expect(home.getByText('gargs.sodera.eth')).toBeOnTheScreen();
-    expect(home.getByText('ETHEREUM SEPOLIA')).toBeOnTheScreen();
+    expect(home.getByText('ETHEREUM')).toBeOnTheScreen();
     expect(home.getByText('ENS VERIFIED')).toBeOnTheScreen();
     expect(home.queryByLabelText('Search apps')).not.toBeOnTheScreen();
     fireEvent.press(home.getByRole('button', { name: 'Open Phone' }));

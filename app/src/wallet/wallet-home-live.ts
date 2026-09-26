@@ -108,8 +108,8 @@ export function createWalletHomeLiveProvider({
           args: [identity.account],
         }),
       ]);
-      if (chainId !== sepolia.id) throw new Error('MultiBaas deployment is not Ethereum Sepolia');
-      if (typeof usdcBalanceResult !== 'bigint') throw new Error('Invalid Sepolia USDC balance');
+      if (chainId !== sepolia.id) throw new Error('Wallet data is connected to the wrong network');
+      if (typeof usdcBalanceResult !== 'bigint') throw new Error('Invalid USDC balance');
 
       const ethValueUsdCents =
         ethBalance === 0n ? 0 : await readEthValueUsdCents(balanceClient, ethBalance, now);

@@ -205,7 +205,7 @@ export function createMultiBaasTransactionActivityProvider({
 
 function createSepoliaTransactionReader(): UserOperationTransactionReader {
   const rpcUrl = process.env.EXPO_PUBLIC_SEPOLIA_RPC_URL;
-  if (!rpcUrl) throw new Error('EXPO_PUBLIC_SEPOLIA_RPC_URL is required for transaction details');
+  if (!rpcUrl) throw new Error('Ethereum RPC URL is required for transaction details');
   return createPublicClient({ chain: sepolia, transport: http(rpcUrl) });
 }
 

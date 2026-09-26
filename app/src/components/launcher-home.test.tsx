@@ -41,7 +41,7 @@ describe('LauncherHome', () => {
 
     expect(await screen.findByText('$84,002.00')).toBeOnTheScreen();
     expect(screen.getByText('$2,673.55')).toBeOnTheScreen();
-    expect(screen.getByText('Global market prices · Wallet uses Sepolia testnet')).toBeOnTheScreen();
+    expect(screen.getByText('Global market prices · Wallet on Ethereum')).toBeOnTheScreen();
     fireEvent.press(screen.getByRole('button', { name: 'Explore Earn' }));
     fireEvent.press(screen.getByRole('button', { name: 'Explore Swap' }));
     fireEvent.press(screen.getByRole('button', { name: 'View activity' }));

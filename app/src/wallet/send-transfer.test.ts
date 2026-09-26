@@ -29,7 +29,7 @@ describe('Sepolia recipients', () => {
 
   it('rejects an unresolvable subdomain rather than sending to its parent', async () => {
     getEnsAddress.mockResolvedValue(null);
-    await expect(resolveSepoliaRecipient('missing.sodera.eth')).rejects.toThrow('has no address on Sepolia ENS');
+    await expect(resolveSepoliaRecipient('missing.sodera.eth')).rejects.toThrow('has no Ethereum address');
     expect(getEnsAddress).toHaveBeenCalledWith({ name: 'missing.sodera.eth' });
   });
 

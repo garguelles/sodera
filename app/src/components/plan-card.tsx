@@ -153,7 +153,7 @@ function PlanResultCard({
         <View style={styles.assumptions}>
           <Text style={styles.mutedEyebrow}>ASSUMPTIONS</Text>
           {plan.assumptions.map((assumption) => (
-            <Text key={assumption} style={styles.assumption}>· {assumption}</Text>
+            <Text key={assumption} style={styles.assumption}>· {assumption === 'Network: Ethereum Sepolia' ? 'Network: Ethereum' : assumption}</Text>
           ))}
         </View>
       ) : null}

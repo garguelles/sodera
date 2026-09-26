@@ -156,7 +156,7 @@ export function readKernelExecutionConfig(): KernelExecutionConfig {
   const bundlerRpcUrl = process.env.EXPO_PUBLIC_ZERODEV_SEPOLIA_BUNDLER_RPC;
   if (!executionRpcUrl || !bundlerRpcUrl) {
     throw new Error(
-      'EXPO_PUBLIC_SEPOLIA_RPC_URL and EXPO_PUBLIC_ZERODEV_SEPOLIA_BUNDLER_RPC are required',
+      'Ethereum RPC and wallet bundler URLs are required',
     );
   }
   assertKernelExecutionConfig({ executionRpcUrl, bundlerRpcUrl });
@@ -197,7 +197,7 @@ export async function createKernelPasskeyExecutionClient({
     readSupportedEntryPoints(config.bundlerRpcUrl),
   ]);
   if (executionChainId !== SEPOLIA_CHAIN_ID || bundlerChainId !== SEPOLIA_CHAIN_ID) {
-    throw new Error('Both configured RPC services must identify as Ethereum Sepolia');
+    throw new Error('The configured RPC services must use the same supported Ethereum network');
   }
   if (!supportedEntryPoints.some((address) => address.toLowerCase() === ENTRY_POINT_V0_7_ADDRESS.toLowerCase())) {
     throw new Error('The ZeroDev Bundler does not advertise the pinned EntryPoint v0.7');
@@ -213,7 +213,7 @@ export async function createKernelPasskeyExecutionClient({
   });
   const entryPoint = getEntryPoint('0.7');
   if (entryPoint.address !== ENTRY_POINT_V0_7_ADDRESS) {
-    throw new Error('The EntryPoint v0.7 address does not match the Sepolia pin');
+    throw new Error('The EntryPoint v0.7 address does not match the configured network');
   }
   const validator = await toPasskeyValidator(publicClient, {
     webAuthnKey,

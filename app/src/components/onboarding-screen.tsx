@@ -375,7 +375,7 @@ export function OnboardingScreen({
                 <Text style={styles.eyebrow}>WALLET MEETS HOME</Text>
                 <Text style={styles.title}>Your wallet, right at home.</Text>
                 <Text style={styles.description}>
-                  Create a passkey-controlled Sepolia wallet, then make it yours with a Sodera name.
+                  Create a passkey-controlled wallet, then make it yours with a Sodera name.
                 </Text>
               </View>
               <View style={styles.actions}>
@@ -396,21 +396,21 @@ export function OnboardingScreen({
                 <Text style={styles.title}>{executionClient ? 'Activate your wallet.' : resumeWallet ? 'Finish your wallet.' : 'Create your wallet.'}</Text>
                 <Text style={styles.description}>
                   {executionClient
-                    ? 'One passkey confirmation deploys your smart account and sends a zero-value Sepolia operation.'
-                    : 'Android will ask you to create a passkey. It directly controls your testnet smart account.'}
+                    ? 'One passkey confirmation deploys your smart account and sends a zero-value operation.'
+                    : 'Android will ask you to create a passkey. It directly controls your smart account.'}
                 </Text>
               </View>
               <View style={styles.detailCard}>
                 {executionClient ? (
                   <>
                     <Text style={styles.detailTitle}>Wallet activation</Text>
-                    <Text style={styles.detailBody}>Deploy wallet + 0 ETH operation on Sepolia</Text>
-                    <Text style={styles.detailBody}>Network fee: {activationReview?.sponsored ? 'Sponsored' : 'Requires Sepolia ETH if not sponsored'}</Text>
+                    <Text style={styles.detailBody}>Deploy wallet + 0 ETH operation</Text>
+                    <Text style={styles.detailBody}>Network fee: {activationReview?.sponsored ? 'Sponsored' : 'Requires ETH if not sponsored'}</Text>
                   </>
                 ) : (
                   <>
                     <Text style={styles.detailTitle}>No password. No seed phrase.</Text>
-                    <Text style={styles.detailBody}>This testnet wallet is tied to your passkey. Recovery is not available in this build.</Text>
+                    <Text style={styles.detailBody}>This wallet is tied to your passkey.</Text>
                   </>
                 )}
               </View>
@@ -435,7 +435,7 @@ export function OnboardingScreen({
                 <Text style={styles.eyebrow}>YOUR SODERA NAME</Text>
                 <Text style={styles.title}>Claim your place.</Text>
                 <Text style={styles.description}>
-                  Pick an available name owned by your passkey-controlled wallet. Registration lasts one year on Sepolia.
+                  Pick an available name owned by your passkey-controlled wallet. Registration lasts one year.
                 </Text>
               </View>
               <View style={styles.nameCard}>

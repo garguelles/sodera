@@ -14,7 +14,7 @@ describe('Kernel passkey execution configuration', () => {
     delete process.env.EXPO_PUBLIC_ZERODEV_SEPOLIA_BUNDLER_RPC;
 
     expect(readKernelExecutionConfig).toThrow(
-      'EXPO_PUBLIC_SEPOLIA_RPC_URL and EXPO_PUBLIC_ZERODEV_SEPOLIA_BUNDLER_RPC are required',
+      'Ethereum RPC and wallet bundler URLs are required',
     );
   });
 

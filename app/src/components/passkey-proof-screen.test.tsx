@@ -74,10 +74,10 @@ describe('PasskeyProofScreen', () => {
 
     expect(screen.getByRole('button', { name: 'Authorize and submit' })).toBeDisabled();
     await press('Create Wallet');
-    await screen.findByText('Kernel account derived. Prepare the bounded Sepolia operation for review.');
+    await screen.findByText('Kernel account derived. Prepare the bounded Ethereum operation for review.');
     expect(createExecution).toHaveBeenCalledWith({ ceremonyClient: client, credential });
 
-    await press('Prepare Sepolia operation');
+    await press('Prepare Ethereum operation');
     expect(await screen.findByText(operationHash)).toBeOnTheScreen();
     expect(executionClient.execute).not.toHaveBeenCalled();
     expect(screen.getByRole('button', { name: 'Authorize and submit' })).toBeDisabled();
@@ -89,7 +89,7 @@ describe('PasskeyProofScreen', () => {
     await waitFor(() => expect(executionClient.execute).toHaveBeenCalledWith(operationHash));
     expect(
       await screen.findByText(
-        'Confirmed: the UserOperation and independent Sepolia state checks succeeded.',
+        'Confirmed: the UserOperation and independent Ethereum state checks succeeded.',
       ),
     ).toBeOnTheScreen();
   });
@@ -108,8 +108,8 @@ describe('PasskeyProofScreen', () => {
     );
 
     await press('Create Wallet');
-    await screen.findByText('Kernel account derived. Prepare the bounded Sepolia operation for review.');
-    await press('Prepare Sepolia operation');
+    await screen.findByText('Kernel account derived. Prepare the bounded Ethereum operation for review.');
+    await press('Prepare Ethereum operation');
     await screen.findByText(operationHash);
     await press('Confirm exact operation');
     await screen.findByRole('button', { name: 'Exact operation confirmed' });
@@ -136,8 +136,8 @@ describe('PasskeyProofScreen', () => {
     );
 
     await press('Create Wallet');
-    await screen.findByText('Kernel account derived. Prepare the bounded Sepolia operation for review.');
-    await press('Prepare Sepolia operation');
+    await screen.findByText('Kernel account derived. Prepare the bounded Ethereum operation for review.');
+    await press('Prepare Ethereum operation');
     await screen.findByText(operationHash);
     await press('Confirm exact operation');
     await screen.findByRole('button', { name: 'Exact operation confirmed' });
@@ -145,7 +145,7 @@ describe('PasskeyProofScreen', () => {
 
     expect(
       await screen.findByText(
-        'Confirmed on Sepolia, but the local deployment marker could not be persisted. Reopen the existing wallet before another operation.',
+        'Confirmed on Ethereum, but the local deployment marker could not be persisted. Reopen the existing wallet before another operation.',
       ),
     ).toBeOnTheScreen();
     expect(screen.getByRole('button', { name: 'Authorize and submit' })).toBeDisabled();

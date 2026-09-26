@@ -187,7 +187,7 @@ export function PlanReviewScreen({
 
           <View style={styles.card}>
             <DetailRow label="From" value={`Your wallet (${shortenAddress(review.account)})`} />
-            <DetailRow label="Network" value="Ethereum Sepolia" />
+            <DetailRow label="Network" value="Ethereum" />
             <DetailRow
               label="Network fee"
               value={review.sponsored ? 'Sponsored' : `${formatEther(BigInt(review.maximumNetworkFeeWei))} ETH maximum`}
@@ -216,7 +216,7 @@ export function PlanReviewScreen({
       {step === 'success' && transactionHash ? (
         <ScrollView contentContainerStyle={styles.centeredContent}>
           <Text accessibilityRole="header" style={styles.centeredTitle}>Plan completed</Text>
-          <Text style={styles.centeredBody}>Your operation is confirmed on Ethereum Sepolia.</Text>
+          <Text style={styles.centeredBody}>Your operation is confirmed on Ethereum.</Text>
           <View style={styles.card}>
             <Text style={styles.eyebrow}>TRANSACTION</Text>
             <Text selectable style={styles.hash}>{`${transactionHash.slice(0, 10)}...${transactionHash.slice(-8)}`}</Text>

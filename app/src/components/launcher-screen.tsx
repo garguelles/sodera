@@ -88,14 +88,14 @@ export function LauncherScreen({
                   <Text style={styles.identityAddress}>{shortenAddress(accountAddress)}</Text>
                   <SymbolView name={{ ios: 'square.on.square', android: 'content_copy', web: 'content_copy' }} size={12} tintColor={colors.faintText} />
                 </Pressable>
-              ) : <Text style={styles.identityAddress}>Sepolia smart wallet</Text>}
+              ) : <Text style={styles.identityAddress}>Smart wallet</Text>}
             </View>
             <Pressable accessibilityRole="button" accessibilityLabel="View smart account" onPress={onOpenWallet} style={styles.identityArrow}>
               <Text style={styles.arrowText}>›</Text>
             </Pressable>
           </View>
           <View style={styles.identityFooter}>
-            <Text style={styles.identityChip}>ETHEREUM SEPOLIA</Text>
+            <Text style={styles.identityChip}>ETHEREUM</Text>
             <Text style={ensVerified ? styles.identityChipActive : styles.identityChip}>
               {ensVerified ? 'ENS VERIFIED' : 'ADDRESS ONLY'}
             </Text>
