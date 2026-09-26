@@ -49,7 +49,6 @@ function RootNavigator() {
         <Stack.Screen name="transactions" />
         <Stack.Screen name="settings" />
         <Stack.Screen name="passkey-proof" />
-        <Stack.Screen name="explore" />
       </Stack.Protected>
     </Stack>
   );
