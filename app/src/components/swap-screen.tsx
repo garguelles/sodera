@@ -63,6 +63,9 @@ import { walletIdentityNativeStorage } from '@/wallet/wallet-identity-native-sto
 import { waitForAppForeground } from '@/wallet/wait-for-app-foreground';
 
 const QUOTE_DEBOUNCE_MS = 400;
+const REVIEW_TTL_MS = 60_000;
+const REVIEW_EXPIRED_MESSAGE = 'That quote expired. Review the swap again for a fresh price.';
+const currentTimeMs = () => Date.now();
 const SLIPPAGE_LABEL = `${Number(SWAP_SLIPPAGE_BPS) / 100}%`;
 
 const defaultCeremonyClient = createPasskeyCeremonyClient(passkeyNativeAdapter, {
@@ -104,6 +107,7 @@ type PreparedSwap = {
   deadline: bigint;
   review: KernelOperationReview;
   client: KernelPasskeyExecutionClient;
+  preparedAt: number;
 };
 type CompletedSwap = { quote: SwapQuote; transactionHash: Hash };
 
@@ -237,18 +241,38 @@ export function SwapScreen({
         throw new Error('The prepared swap does not match the requested calls');
       }
       if (currentInvocation !== invocation.current) return;
-      setPrepared({ quote: freshQuote, calls, deadline, review, client });
+      setPrepared({ quote: freshQuote, calls, deadline, review, client, preparedAt: currentTimeMs() });
       setStatus('');
       setStep('review');
     } catch (error) {
-      if (currentInvocation === invocation.current) setStatus(describeError(error));
+      if (currentInvocation === invocation.current) setStatus(describeSwapError(error));
     } finally {
       if (currentInvocation === invocation.current) setBusy(false);
     }
   };
 
+  const expireReview = () => {
+    setPrepared(null);
+    setStep((current) => (current === 'review' ? 'entry' : current));
+    setStatus(REVIEW_EXPIRED_MESSAGE);
+  };
+
+  useEffect(() => {
+    if (step !== 'review' || !prepared) return;
+    const timer = setTimeout(
+      expireReview,
+      Math.max(0, prepared.preparedAt + REVIEW_TTL_MS - currentTimeMs()),
+    );
+    return () => clearTimeout(timer);
+  }, [prepared, step]);
+
   const execute = async () => {
     if (!wallet || !prepared || executionInFlight.current) return;
+    // Timers pause while the app sleeps, so recheck the age at confirmation time.
+    if (currentTimeMs() - prepared.preparedAt > REVIEW_TTL_MS) {
+      expireReview();
+      return;
+    }
     executionInFlight.current = true;
     const currentInvocation = ++invocation.current;
     const approvedSwap = prepared;
@@ -272,7 +296,7 @@ export function SwapScreen({
       if (currentInvocation === invocation.current) {
         setPrepared(null);
         setStep('entry');
-        setStatus(describeError(error));
+        setStatus(describeSwapError(error));
       }
     } finally {
       executionInFlight.current = false;
@@ -450,7 +474,9 @@ export function SwapScreen({
           >
             <Text style={styles.primaryButtonText}>Confirm with passkey</Text>
           </Pressable>
-          <Text style={styles.reassurance}>Your passkey confirms only this swap.</Text>
+          <Text style={styles.reassurance}>
+            Your passkey confirms only this swap. The quote expires after one minute.
+          </Text>
         </ScrollView>
       ) : null}
 
@@ -723,6 +749,36 @@ async function readSepoliaSwapBalances(account: Address): Promise<SwapBalances> 
     }),
   ]);
   return { ETH: eth, USDC: usdc };
+}
+
+const SWAP_ERROR_MESSAGES: { pattern: RegExp; message: string }[] = [
+  {
+    pattern: /0x8b063d73|V4TooLittleReceived/i,
+    message: `The price moved past your ${SLIPPAGE_LABEL} limit, so nothing was swapped. Review again for a fresh quote.`,
+  },
+  {
+    pattern: /0x5bf6f916|0xbfb22adf|0xd81b2f2e|DeadlinePassed|AllowanceExpired/i,
+    message: 'The swap deadline passed before it was confirmed, so nothing was swapped. Review again.',
+  },
+  {
+    pattern: /sponsor|paymaster|gas policy|\bAA3\d\b/i,
+    message:
+      'Gas sponsorship is unavailable for this swap right now, possibly because the daily limit is used up. Nothing was swapped.',
+  },
+  {
+    pattern: /transfer amount exceeds balance|insufficient (funds|balance)/i,
+    message: 'Your balance changed and no longer covers this swap. Nothing was swapped.',
+  },
+];
+
+function describeSwapError(error: unknown) {
+  const details: string[] = [];
+  for (let current = error; current instanceof Error; current = current.cause) {
+    const { details: detail, data } = current as { details?: unknown; data?: unknown };
+    details.push(current.message, String(detail ?? ''), String(data ?? ''));
+  }
+  const text = details.join(' ');
+  return SWAP_ERROR_MESSAGES.find(({ pattern }) => pattern.test(text))?.message ?? describeError(error);
 }
 
 function describeError(error: unknown) {
