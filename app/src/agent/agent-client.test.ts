@@ -21,6 +21,19 @@ describe('agent client', () => {
     expect(JSON.parse(init.body)).toEqual(request);
   });
 
+  it('accepts answers with their facts and source', async () => {
+    const answer = {
+      kind: 'answer',
+      text: 'You sent 42.5 USDC to alice.',
+      facts: [{ label: 'Sent to alice', value: '42.5 USDC' }],
+      source: { from: '2026-09-01', to: '2026-09-27' },
+    };
+    await expect(createAgentClient({ config, fetcher: respond(200, answer) }).propose(request)).resolves.toEqual(answer);
+    await expect(
+      createAgentClient({ config, fetcher: respond(200, { ...answer, source: undefined }) }).propose(request),
+    ).rejects.toThrow('invalid data');
+  });
+
   it('treats network failures, HTTP errors, bad data, and timeouts as the planner being unavailable', async () => {
     const offline = createAgentClient({ config, fetcher: jest.fn().mockRejectedValue(new TypeError('Network request failed')) });
     await expect(offline.propose(request)).rejects.toThrow(new AgentUnavailableError('The planner could not be reached'));

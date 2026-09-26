@@ -24,7 +24,9 @@ export type ViolationCode =
   | 'vault_insufficient'
   | 'value_cap'
   | 'sponsorship'
-  | 'no_authority_ops';
+  | 'no_authority_ops'
+  /** An answer quoted a figure that no tool result or snapshot line contains. */
+  | 'ungrounded';
 
 export type Violation = { code: ViolationCode; actionIndex: number | null; message: string };
 

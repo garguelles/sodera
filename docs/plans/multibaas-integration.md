@@ -2,7 +2,7 @@
 
 Status: approved scope, not yet implemented. Branch: `feat/curvegrid`. No Linear ticket; commits use `{type}: {description}`.
 
-This document is one large ticket split into sub-tickets numbered 1 to 7. Section 2, an asset flows card, was removed; the other numbers are unchanged. Sections 1, 3, and 4 integrate MultiBaas. Sections 5 to 7 add the wallet agent. Each section is written so that a fresh model can implement it without the conversation that produced this plan. Read "Shared context" and "Prerequisites" before any MultiBaas section, and additionally "Wallet agent" before sections 5 to 7. Sections 3 and 4 depend on the client module and verification script delivered by section 1 and are otherwise independent of each other. Section 6 depends on section 5. Section 7 depends on section 5 and reuses section 6's intent flow.
+This document is one large ticket split into sub-tickets numbered 1 to 7. Section 2, an asset flows card, was removed; the other numbers are unchanged. Sections 1, 3, and 4 integrate MultiBaas. Sections 5 to 7 add the wallet agent. Each section is written so that a fresh model can implement it without the conversation that produced this plan. Read "Shared context" and "Prerequisites" before any MultiBaas section, and additionally "Wallet agent" before sections 5 to 7. Sections 3 and 4 depend on the client module and verification script delivered by section 1 and are otherwise independent of each other. Section 6 depends on section 5. Section 7 depends on section 5 and reuses section 6's intent flow; it is dropped, because the Transactions screen already shows what changed. Section 8 lets the agent answer questions about activity and depends on sections 1, 5, and 6.
 
 Priority: sections 1 and 3 are the MultiBaas deliverable and are frontend-only. Sections 5, 6, and 7 are the agent deliverable; section 5 adds the project's only backend, the `agent/` service. Section 4 is low priority. It is retained so the design is not lost, would add its endpoints to the `agent/` service, and is not scheduled.
 
@@ -892,6 +892,195 @@ Card: eyebrow "YOUR WALLET · SODERA", headline, detail, and a button with the s
 - Tapping a suggestion runs the intent flow to a plan card without retyping.
 - `pnpm test` passes in `agent/`; `pnpm lint` and `pnpm test --runInBand` pass in `app/`.
 
+## Section 8: Dera answers questions about activity
+
+### Goal
+
+Let Dera answer questions about the wallet's history, such as "how much have I sent alice this month?", "who do I pay most?", "what did I spend on gas this week?", and "how much came in versus went out?". Today Dera can only return a plan or a clarification, and its one history tool returns the last 20 rows with no date or counterparty filter and no totals. This section adds a third output kind, `answer`, and a tool that computes totals with MultiBaas aggregation queries so the model reports numbers instead of adding them up.
+
+### Dependencies
+
+Sections 1, 5, and 6 (all shipped). No new MultiBaas contracts: it queries the USDC `Transfer` and EntryPoint `UserOperationEvent` events already synced.
+
+### Outcome
+
+On the Dera page, "how much USDC did I send this month?" returns an answer card with the total and a breakdown by recipient, with no review or signing step. Follow-ups such as "and last month?" work through the existing transcript. Requests to act still return plans exactly as before.
+
+### Files
+
+Modify in `agent/`:
+- `agent/src/schema.ts` — add `AnswerSchema` to the shared block and to `AgentOutputSchema`.
+- `agent/src/output-format.ts` — add the `answer` branch to the hand-written JSON schema.
+- `agent/src/multibaas.ts` — allow `aggregator` on select fields and `groupBy` on `EventQuery`.
+- `agent/src/tools.ts` — add the `summarize_activity` tool.
+- `agent/src/app.ts` — return `answer` outputs directly and skip `evaluatePolicy` for them; run the grounding check.
+- `agent/src/grounding.ts` — the grounding check.
+- `agent/src/prompts/system.md` — describe when to answer, when to plan, and that every number must come from a tool result or the snapshot.
+- `agent/package.json` and new `agent/scripts/verify-activity-queries.ts` — `pnpm verify:activity`, a live check of the query shapes below.
+- Tests: `schema.test.ts`, `output-format.test.ts`, `tools.test.ts`, `app.test.ts`.
+- `agent/README.md` — add the answer response kind and a smoke test question.
+
+Modify in `app/`:
+- `app/src/agent/schema.ts` — same shared block as the service.
+- `app/src/agent/agent-client.ts` — add `answer` to `ProposeResponseSchema`.
+- `app/src/agent/use-agent-planner.ts` — add `{ phase: 'answer'; intent; answer: Answer }`.
+- `app/src/components/plan-card.tsx` — render the `answer` phase.
+- `app/src/components/assistant-screen.tsx` — treat an answer turn like a plan turn for the composer (follow-up mode).
+- Tests for each of the above.
+
+Modify in `docs/plans/`:
+- `agent-schema-vectors.json` — answer vectors that parse and fail.
+
+### Output schema
+
+Add inside the shared schema markers in both `schema.ts` files:
+
+```ts
+export const AnswerSchema = z.object({
+  kind: z.literal('answer'),
+  text: z.string().min(1).max(400),
+  facts: z
+    .array(z.object({ label: z.string().min(1).max(40), value: z.string().min(1).max(60) }))
+    .max(4),
+});
+
+export const AgentOutputSchema = z.discriminatedUnion('kind', [ProposalSchema, ClarificationSchema, AnswerSchema]);
+```
+
+`text` is one to three plain sentences. `facts` are the key numbers shown large on the card, for example `{ label: "Sent to alice", value: "42.5 USDC" }`. Add the same branch to `AGENT_OUTPUT_JSON_SCHEMA` in `output-format.ts` using only the constructs listed in that file's header comment.
+
+Response type gains `| { kind: 'answer'; text: string; facts: { label: string; value: string }[]; source: { from: string; to: string } | null }`. The service sets `source` to the range of the last `summarize_activity` call in the request, or `null` when the answer came from the snapshot.
+
+### Tool: `summarize_activity`
+
+Read-only, same error handling as the other tools (`runSafely`).
+
+Input:
+
+```ts
+z.object({
+  from: z.string().describe('First UTC day included, as YYYY-MM-DD.'),
+  to: z.string().describe('First UTC day after the range, as YYYY-MM-DD.'),
+  counterparty: z.string().min(1).max(255).optional().describe('Name or 0x address to limit transfers to.'),
+})
+```
+
+Ranges are whole UTC days because the deployment's `triggered_at` filter accepts only `YYYY-MM-DD` (confirmed 2026-09-27: ISO timestamps, Postgres timestamps, and epoch strings return HTTP 400 or do not filter). Reject a malformed date, a range where `from >= to`, or one longer than 366 days with `{ error }`. Resolve `counterparty` with the existing `resolveName` logic (address book, then ENS); return `{ error: 'unknown counterparty' }` if it fails.
+
+It runs five MultiBaas event queries in parallel, each filtered by a `triggered_at` range (`greaterthanorequal` from, `lessthan` to) in addition to the filters below:
+
+1. **Sent USDC by recipient**: `Transfer`, `contract_address` = USDC, `input[0]` = account (lowercase). Select `input[1]` as `counterparty` and `input[2]` as `total` with `aggregator: 'add'`, `groupBy: 'counterparty'`. Add `input[1]` = counterparty when given.
+2. **Received USDC by sender**: the same with `input[0]` and `input[1]` swapped.
+3. **Gas by payer**: `UserOperationEvent`, `contract_address` = EntryPoint, `input[1]` = account. Select `input[2]` as `paymaster` and `input[5]` (`actualGasCost`, wei) as `gas` with `aggregator: 'add'`, `groupBy: 'paymaster'`. A zero paymaster means the account paid; any other paymaster means the operation was sponsored.
+4. **Recent rows**: sent and received transfer queries with the range and counterparty filters, limit 10 each, merged newest first and cut to 10, for "when did I last…" questions.
+
+When `counterparty` is set, the gas query is skipped and `gas` is `null`, because gas is not tied to a counterparty.
+
+Limit each aggregated query to 50 rows (the deployment maximum); if any returns 50, set `truncated: true`. Compute totals in `bigint` from the grouped rows and format them with `formatUnits`. Map counterparty addresses to address book names where they match.
+
+Output:
+
+```json
+{
+  "range": { "firstDay": "2026-09-01", "lastDay": "2026-09-27" },
+  "coverage": "USDC transfers and account operations, by UTC day. ETH transfers are not included.",
+  "usdc": {
+    "sent": "142.5",
+    "received": "300",
+    "net": "157.5",
+    "byCounterparty": [
+      { "address": "0x…", "name": "alice", "sent": "42.5", "received": "0" }
+    ]
+  },
+  "gas": { "paidEth": "0.00041", "sponsoredEth": "0.0012" },
+  "recent": [ { "direction": "sent", "amount": "10", "counterparty": "0x…", "name": "alice", "timestamp": "…" } ],
+  "truncated": false
+}
+```
+
+Sort `byCounterparty` by `sent + received` descending and keep the top 10. Keep `get_activity` unchanged.
+
+`range` in the output is `{ firstDay, lastDay }`, both included, not the exclusive `to` the query uses; the model otherwise states the day after the range as its end. Gas figures are rounded half up to 6 decimals with `roundUnits` (exported from `propose.ts`), because 18-decimal wei values are unreadable on the card.
+
+### Snapshot figures (`renderUserMessage`)
+
+The grounding check rejects any figure the model computes, so the service computes the ones people ask for and puts them in the snapshot. The ETH line becomes `- ETH balance: 0.44157679561013403 (about 0.441577 ETH, about $1148.76)` and, when the ETH price is known, a `- Total value: about $1218.76 (ETH at the price below, plus USDC and the vault)` line follows the USDC balance. Dollar values use `bigint` arithmetic on the balance and the price.
+
+### Grounding check (`app.ts`)
+
+The model must not make up numbers. For an `answer`, collect every tool result string produced during the request plus the rendered user message. Extract each number in `facts[].value` (regex `\d+(?:\.\d+)?`) and require it to appear in that collected text. If any fact fails, respond `{ kind: 'rejected', summary: null, violations: [{ code: 'ungrounded', actionIndex: null, message: "Some figures in the answer didn't match your wallet data. Try a narrower question." }] }` and log outcome `ungrounded`. `ungrounded` is added to `ViolationCode` in both `policy.ts` files (type only; policy never emits it). The app titles it "Dera couldn't back up that answer." and shows no Open Send button, since a question has nothing to hand to a manual screen. `text` is not checked, because it may paraphrase; the facts carry the figures shown large.
+
+Numbers are compared in canonical form (no thousands separators or trailing fractional zeros), so `42.50` matches `42.5`. To support this, `runSafely` appends each result string to a `toolResults: string[]` array passed in `ToolDependencies`, alongside the existing `calls`, and `summarize_activity` pushes its range onto `ranges`.
+
+### System prompt changes
+
+Replace the opening "You prepare transaction plans" framing with "You help the user understand and act on their Sodera wallet". Add:
+
+- A third return form: `{"kind": "answer", "text": ..., "facts": [...]}` for questions about balances or history. Answers never contain actions.
+- Call `summarize_activity` for any question about totals, counterparties, gas, or a period. Compute `from` and `to` as UTC days from the snapshot time: "this month" is the first of the current month to the day after today, "last week" is the seven days before today.
+- Every number in an answer must come from a tool result or the snapshot. Say plainly when the data does not cover the question, such as ETH transfers, and name the coverage.
+- Balance questions ("how much USDC do I have?") are answered from the snapshot without a tool.
+- If a question and an action are mixed ("how much did I send alice, and send her 5 more"), return the plan and answer the question in the summary.
+- Never add, subtract, multiply, or round figures; quote the snapshot's rounded ETH, dollar value, and total value instead.
+- A fact's value is an amount with its unit ("42.5 USDC", "$1148.76"). Who or what it relates to goes in the label, as an address book name or a shortened address such as 0xE03A…3543, never a full address.
+- State periods with the tool result's `range.firstDay` and `range.lastDay`.
+
+Keep the prompt byte-stable.
+
+### App design
+
+- `use-agent-planner.ts`: `response.kind === 'answer'` sets `{ phase: 'answer', intent, answer }`. No policy call.
+- `plan-card.tsx` `answer` phase: the text, then up to four facts as label and value rows, values in JetBrains Mono, and a footnote "From MultiBaas · {range}" when `source` is set. No approve or review button. Use `platinum` tokens only. Fact rows wrap: the label keeps at least 40% of the width and the value shrinks and aligns right, so a long value cannot squeeze the label.
+- `plan-card.tsx` `plan` phase: show the plan's summary above the actions. Mixed requests put their answer in the summary, which the card did not show before.
+- `assistant-screen.tsx`: after an answer the composer is in follow-up mode, as after a plan.
+- Accessibility label: the full text followed by each fact as "label, value".
+
+### Tests
+
+- `schema.test.ts` (both apps): answer vectors parse; an answer with actions, more than four facts, or an empty text fails.
+- `output-format.test.ts`: the answer branch agrees with the vectors.
+- `tools.test.ts`: `summarize_activity` query bodies (range filter, aggregator, `groupBy`, lowercase account, counterparty filter); totals, net, and name mapping from fake grouped rows; zero versus non-zero paymaster split; `truncated` when a query returns 50 rows; invalid range and unknown counterparty errors.
+- `app.test.ts`: an answer skips policy and returns `answer`; an answer whose fact is not in any tool result returns `rejected` with outcome `ungrounded`; an answer from snapshot figures passes.
+- `use-agent-planner` and `plan-card.test.tsx`: answer phase renders text and facts, has no review button, and the composer enters follow-up mode.
+
+### Verification
+
+`pnpm verify:activity` in `agent/`, reading `MULTIBAAS_BASE_URL`, `MULTIBAAS_API_KEY`, and a `VERIFY_ACCOUNT` with past USDC activity. It asserts, and the implementation applies what it finds:
+
+1. A `YYYY-MM-DD` `triggered_at` filter includes and excludes by day, and a timestamp with a time is still rejected (if it starts being accepted, finer ranges become possible).
+2. Grouped `add` totals on the `uint256` value equal the sum of the ungrouped rows.
+3. `UserOperationEvent` input 2 is a lowercase paymaster address and input 5 is a positive wei string.
+4. The tool runs end to end over the last 366 days.
+
+Passed on 2026-09-27 against the deployment with `VERIFY_ACCOUNT=0xFbf2213c7F5DE314729293fF1B541F8591637658`.
+
+### Device testing (2026-09-27)
+
+Run on an Android phone against the local agent and the deployment. Questions that worked first time: USDC sent this month, gas this month as a follow-up, ETH balance, ETH received (answered that ETH transfers are not covered), USDC sent to a named contact.
+
+| Found | Cause | Fix |
+| --- | --- | --- |
+| "what is my eth worth in usd?" was blocked as ungrounded | The model multiplied balance by price; the product appears in no source | Snapshot carries rounded ETH, its dollar value, and total value |
+| "who do I pay most?" stretched the card to twice its height | A full address was a fact value; the label column shrank to one character wide | Facts hold amounts only; fact rows wrap with a minimum label width |
+| Gas shown as `0.0014565694377116 ETH` | Tool returned exact wei formatted to 18 decimals | Gas rounded to 6 decimals |
+| Blocked answer said "The planner's answer couldn't be read." with Open Send | Grounding reused the `schema` code | New `ungrounded` code with its own title and no button |
+| Mixed question and action showed no answer | Plan card did not render `summary` | Plan card shows the summary |
+| "last week" text said Sep 19 to Sep 26, card said Sep 19 to Sep 25 | Tool returned the exclusive `to`; the model read it as the last day | Tool returns `firstDay` and `lastDay` |
+
+All six were re-run on the device after the fixes and now match the card.
+
+### Acceptance criteria
+
+- `pnpm verify:activity` passes against the deployment.
+- On a device with USDC history, "how much USDC did I send this month?" shows an answer card whose total matches the Transactions screen.
+- "who do I pay most?" lists recipients by address book name where known.
+- "what did I spend on gas this week?" separates self-paid and sponsored gas.
+- "and last month?" as a follow-up answers for the previous month.
+- "send 5 usdc to alice" still returns a plan and review flow unchanged.
+- "what is my eth worth in usd?" answers with the snapshot's dollar value.
+- "how much usdc do I have, and send 1 usdc to alice" shows the balance in the plan card's summary.
+- `pnpm test`, `pnpm typecheck` pass in `agent/`; `pnpm lint` and `pnpm test --runInBand` pass in `app/`.
+
 ## Open verifications
 
 MultiBaas rows are resolved by the section 1 script and applied in `multibaas.ts`. Agent rows are resolved where stated.
@@ -905,6 +1094,7 @@ MultiBaas rows are resolved by the section 1 script and applied in `multibaas.ts
 | Address case sensitivity in `input` filters | 1.1 step 7 | sections 1, 4 |
 | Non-browser requests succeed without CORS registration | 1.1 step 9 | all |
 | USDC indexer keeps up under the free-tier 2 events per second cap | prerequisites step 6 | sections 1, 4 |
+| `triggered_at` filter value format (`YYYY-MM-DD` only), `add` aggregation on `uint256`, `UserOperationEvent` input indexes | Confirmed 2026-09-27 by `pnpm verify:activity` | Section 8 |
 | Where the webhook HMAC secret is shown | section 4 setup step 3 | section 4 (low priority) |
 | Exact `event.emitted` payload layout | section 4 setup step 4 | section 4 (low priority) |
 | `toolRunner` forwards `output_config.format` | Confirmed live on 2026-09-26 with the hand-written schema | Section 5 |

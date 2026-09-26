@@ -3,7 +3,7 @@ import { getAddress } from 'viem';
 
 import type { EnrichedPlan } from '@/agent/policy';
 
-import { PLANNING_STEP_MS, PlanCard } from './plan-card';
+import { describeRange, PLANNING_STEP_MS, PlanCard } from './plan-card';
 
 const ALICE = getAddress('0x2222222222222222222222222222222222222222');
 const plan: EnrichedPlan = {
@@ -50,6 +50,7 @@ describe('PlanCard', () => {
 
     expect(screen.getByText('PLAN · 1 ACTION')).toBeOnTheScreen();
     expect(screen.getByLabelText('Checked on device')).toBeOnTheScreen();
+    expect(screen.getByText('Send 0.01 ETH to alice.')).toBeOnTheScreen();
     expect(screen.getByText('Send 0.01 ETH to alice')).toBeOnTheScreen();
     expect(screen.getByText('address book · 0x2222...2222')).toBeOnTheScreen();
     expect(screen.getByText('· Network: Ethereum Sepolia')).toBeOnTheScreen();
@@ -66,6 +67,62 @@ describe('PlanCard', () => {
     );
     expect(screen.getByText('SPONSORED')).toBeOnTheScreen();
     expect(screen.queryByText('ASSUMPTIONS')).not.toBeOnTheScreen();
+  });
+
+  it('shows an answer with its figures and source, and nothing to sign', async () => {
+    await render(
+      <PlanCard
+        state={{
+          phase: 'answer',
+          intent: 'how much did I send alice this month?',
+          answer: {
+            text: 'You sent 42.5 USDC to alice this month.',
+            facts: [
+              { label: 'Sent to alice', value: '42.5 USDC' },
+              { label: 'Received from alice', value: '0 USDC' },
+            ],
+            source: { from: '2026-09-01', to: '2026-09-27' },
+          },
+        }}
+        {...handlers()}
+      />,
+    );
+    expect(screen.getByText('ANSWER')).toBeOnTheScreen();
+    expect(screen.getByText('You sent 42.5 USDC to alice this month.')).toBeOnTheScreen();
+    expect(screen.getByText('42.5 USDC')).toBeOnTheScreen();
+    expect(screen.getByText('From MultiBaas · Sep 1 – Sep 26, 2026 UTC')).toBeOnTheScreen();
+    expect(
+      screen.getByLabelText(
+        'You sent 42.5 USDC to alice this month. Sent to alice, 42.5 USDC. Received from alice, 0 USDC. From MultiBaas, Sep 1 – Sep 26, 2026 UTC',
+      ),
+    ).toBeOnTheScreen();
+    expect(screen.queryByRole('button')).not.toBeOnTheScreen();
+  });
+
+  it('explains an unbacked answer without offering a manual screen', async () => {
+    await render(
+      <PlanCard
+        state={{
+          phase: 'blocked',
+          intent: 'what is my eth worth?',
+          violations: [{ code: 'ungrounded', actionIndex: null, message: "Some figures in the answer didn't match your wallet data." }],
+        }}
+        {...handlers()}
+      />,
+    );
+    expect(screen.getByText("Dera couldn't back up that answer.")).toBeOnTheScreen();
+    expect(screen.queryByRole('button')).not.toBeOnTheScreen();
+  });
+
+  it('omits the source line for answers from the wallet snapshot', async () => {
+    await render(
+      <PlanCard
+        state={{ phase: 'answer', intent: 'x', answer: { text: 'You have 100 USDC.', facts: [], source: null } }}
+        {...handlers()}
+      />,
+    );
+    expect(screen.getByText('You have 100 USDC.')).toBeOnTheScreen();
+    expect(screen.queryByText(/From MultiBaas/)).not.toBeOnTheScreen();
   });
 
   it('asks for one detail', async () => {
@@ -138,5 +195,13 @@ describe('PlanCard in a conversation', () => {
     await render(<PlanCard signed state={{ phase: 'plan', intent: 'x', plan }} {...handlers()} />);
     expect(screen.getByLabelText('Signed')).toBeOnTheScreen();
     expect(screen.queryByRole('button', { name: 'Review & sign' })).not.toBeOnTheScreen();
+  });
+});
+
+describe('describeRange', () => {
+  it('shows the last included day, and the start year only when it differs', () => {
+    expect(describeRange({ from: '2026-09-26', to: '2026-09-27' })).toBe('Sep 26, 2026 UTC');
+    expect(describeRange({ from: '2025-12-01', to: '2026-01-08' })).toBe('Dec 1, 2025 – Jan 7, 2026 UTC');
+    expect(describeRange({ from: 'nope', to: '2026-01-08' })).toBeNull();
   });
 });

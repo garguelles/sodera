@@ -133,6 +133,28 @@ describe('AssistantScreen', () => {
     expect(propose.mock.calls[1][0].reset).toBe(true);
   });
 
+  it('answers questions without a review step and keeps the conversation open', async () => {
+    const { propose, onOpenPlan } = await setup([
+      {
+        kind: 'answer',
+        text: 'You sent 42.5 USDC to alice this month.',
+        facts: [{ label: 'Sent to alice', value: '42.5 USDC' }],
+        source: { from: '2026-09-01', to: '2026-09-27' },
+      },
+      plan('0.01'),
+    ]);
+    await say('how much did I send alice this month?');
+
+    expect(screen.getByText('You sent 42.5 USDC to alice this month.')).toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: 'Review & sign' })).not.toBeOnTheScreen();
+    expect(screen.getByPlaceholderText('Follow up, e.g. "make it 0.02 instead"')).toBeOnTheScreen();
+    expect(onOpenPlan).not.toHaveBeenCalled();
+
+    await say('send 0.01 eth to alice');
+    expect(propose.mock.calls[1][0]).toMatchObject({ reset: false });
+    expect(screen.getAllByRole('button', { name: 'Review & sign' })).toHaveLength(1);
+  });
+
   it('shows the timeout card inside the conversation', async () => {
     const { onOpenSend } = await setup([new AgentUnavailableError('The planner took too long to answer', 'timeout')]);
     await say('give me a summary');

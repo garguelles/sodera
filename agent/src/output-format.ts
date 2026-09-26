@@ -72,6 +72,28 @@ export const AGENT_OUTPUT_JSON_SCHEMA = {
       required: ['kind', 'question'],
       additionalProperties: false,
     },
+    {
+      type: 'object',
+      properties: {
+        kind: { type: 'string', const: 'answer' },
+        text: { type: 'string', description: 'One to three plain sentences, at most 400 characters.' },
+        facts: {
+          type: 'array',
+          description: 'Up to four key figures, each copied from a tool result or the snapshot.',
+          items: {
+            type: 'object',
+            properties: {
+              label: { type: 'string', description: 'At most 40 characters, such as "Sent to alice".' },
+              value: { type: 'string', description: 'At most 60 characters, such as "42.5 USDC".' },
+            },
+            required: ['label', 'value'],
+            additionalProperties: false,
+          },
+        },
+      },
+      required: ['kind', 'text', 'facts'],
+      additionalProperties: false,
+    },
   ],
 } as const;
 

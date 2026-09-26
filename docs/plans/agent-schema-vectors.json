@@ -336,6 +336,68 @@
         "kind": "clarification",
         "question": ""
       }
+    },
+    {
+      "name": "answer with facts",
+      "valid": true,
+      "output": {
+        "kind": "answer",
+        "text": "You sent 42.5 USDC to alice this month.",
+        "facts": [
+          {
+            "label": "Sent to alice",
+            "value": "42.5 USDC"
+          }
+        ]
+      }
+    },
+    {
+      "name": "answer without facts",
+      "valid": true,
+      "output": {
+        "kind": "answer",
+        "text": "You have no USDC activity this week.",
+        "facts": []
+      }
+    },
+    {
+      "name": "empty answer text",
+      "valid": false,
+      "output": {
+        "kind": "answer",
+        "text": "",
+        "facts": []
+      }
+    },
+    {
+      "name": "answer with more than four facts",
+      "valid": false,
+      "output": {
+        "kind": "answer",
+        "text": "Totals.",
+        "facts": [
+          {
+            "label": "Sent to alice",
+            "value": "42.5 USDC"
+          },
+          {
+            "label": "Sent to alice",
+            "value": "42.5 USDC"
+          },
+          {
+            "label": "Sent to alice",
+            "value": "42.5 USDC"
+          },
+          {
+            "label": "Sent to alice",
+            "value": "42.5 USDC"
+          },
+          {
+            "label": "Sent to alice",
+            "value": "42.5 USDC"
+          }
+        ]
+      }
     }
   ]
 }

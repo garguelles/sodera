@@ -18,9 +18,11 @@ export const MULTIBAAS_MAX_QUERY_LIMIT = 50;
 export type EventQuery = {
   events: {
     eventName: string;
-    select: { type: string; alias: string; inputIndex?: number }[];
+    select: { type: string; alias: string; inputIndex?: number; aggregator?: 'add' }[];
     filter?: unknown;
   }[];
+  /** Required when any select field has an aggregator; names a non-aggregated alias. */
+  groupBy?: string;
   orderBy?: string;
   order?: 'ASC' | 'DESC';
 };
