@@ -1,0 +1,779 @@
+{
+  "account": "0x1111111111111111111111111111111111111111",
+  "valueCapUsd": 250,
+  "baseContext": {
+    "chainId": 11155111,
+    "now": "2026-09-26T08:00:00.000Z",
+    "balances": {
+      "eth": "1",
+      "usdc": "100"
+    },
+    "prices": {
+      "ethUsd": "2000"
+    },
+    "vaultPosition": {
+      "assetsUsdc": "50"
+    },
+    "sponsorship": {
+      "remaining": 5,
+      "limit": 10,
+      "resetsAt": "2026-09-27T00:00:00.000Z"
+    },
+    "addressBook": [
+      {
+        "name": "alice",
+        "address": "0x2222222222222222222222222222222222222222"
+      }
+    ],
+    "capabilities": {
+      "send_eth": true,
+      "send_usdc": true,
+      "swap": true,
+      "vault_deposit": true,
+      "vault_withdraw": true
+    }
+  },
+  "vectors": [
+    {
+      "name": "valid ETH send to address book name",
+      "output": {
+        "kind": "plan",
+        "summary": "Test plan.",
+        "actions": [
+          {
+            "type": "send_eth",
+            "recipient": {
+              "kind": "name",
+              "value": "alice"
+            },
+            "amount": "0.01"
+          }
+        ],
+        "assumptions": []
+      },
+      "expect": {
+        "ok": true
+      }
+    },
+    {
+      "name": "unparseable output",
+      "output": {
+        "kind": "plan"
+      },
+      "expect": {
+        "ok": false,
+        "codes": [
+          "schema"
+        ]
+      }
+    },
+    {
+      "name": "clarification is not a plan",
+      "output": {
+        "kind": "clarification",
+        "question": "Who?"
+      },
+      "expect": {
+        "ok": false,
+        "codes": [
+          "schema"
+        ]
+      }
+    },
+    {
+      "name": "disabled action",
+      "output": {
+        "kind": "plan",
+        "summary": "Test plan.",
+        "actions": [
+          {
+            "type": "swap",
+            "direction": "eth_to_usdc",
+            "amountIn": "0.1"
+          }
+        ],
+        "assumptions": []
+      },
+      "expect": {
+        "ok": false,
+        "codes": [
+          "action_disabled"
+        ]
+      },
+      "context": {
+        "capabilities": {
+          "send_eth": true,
+          "send_usdc": true,
+          "swap": false,
+          "vault_deposit": true,
+          "vault_withdraw": true
+        }
+      }
+    },
+    {
+      "name": "enabled swap",
+      "output": {
+        "kind": "plan",
+        "summary": "Test plan.",
+        "actions": [
+          {
+            "type": "swap",
+            "direction": "eth_to_usdc",
+            "amountIn": "0.1"
+          }
+        ],
+        "assumptions": []
+      },
+      "expect": {
+        "ok": true
+      }
+    },
+    {
+      "name": "two swaps",
+      "output": {
+        "kind": "plan",
+        "summary": "Test plan.",
+        "actions": [
+          {
+            "type": "swap",
+            "direction": "eth_to_usdc",
+            "amountIn": "0.1"
+          },
+          {
+            "type": "swap",
+            "direction": "usdc_to_eth",
+            "amountIn": "5"
+          }
+        ],
+        "assumptions": []
+      },
+      "expect": {
+        "ok": false,
+        "codes": [
+          "too_many_actions"
+        ]
+      }
+    },
+    {
+      "name": "unknown name",
+      "output": {
+        "kind": "plan",
+        "summary": "Test plan.",
+        "actions": [
+          {
+            "type": "send_eth",
+            "recipient": {
+              "kind": "name",
+              "value": "bob"
+            },
+            "amount": "0.01"
+          }
+        ],
+        "assumptions": []
+      },
+      "expect": {
+        "ok": false,
+        "codes": [
+          "recipient_unresolved"
+        ]
+      }
+    },
+    {
+      "name": "name matched case-insensitively",
+      "output": {
+        "kind": "plan",
+        "summary": "Test plan.",
+        "actions": [
+          {
+            "type": "send_eth",
+            "recipient": {
+              "kind": "name",
+              "value": "Alice"
+            },
+            "amount": "0.01"
+          }
+        ],
+        "assumptions": []
+      },
+      "expect": {
+        "ok": true
+      }
+    },
+    {
+      "name": "invalid hex address",
+      "output": {
+        "kind": "plan",
+        "summary": "Test plan.",
+        "actions": [
+          {
+            "type": "send_eth",
+            "recipient": {
+              "kind": "address",
+              "value": "0x1234"
+            },
+            "amount": "0.01"
+          }
+        ],
+        "assumptions": []
+      },
+      "expect": {
+        "ok": false,
+        "codes": [
+          "recipient_unresolved"
+        ]
+      }
+    },
+    {
+      "name": "valid hex address",
+      "output": {
+        "kind": "plan",
+        "summary": "Test plan.",
+        "actions": [
+          {
+            "type": "send_usdc",
+            "recipient": {
+              "kind": "address",
+              "value": "0x3333333333333333333333333333333333333333"
+            },
+            "amount": "1"
+          }
+        ],
+        "assumptions": []
+      },
+      "expect": {
+        "ok": true
+      }
+    },
+    {
+      "name": "send to self",
+      "output": {
+        "kind": "plan",
+        "summary": "Test plan.",
+        "actions": [
+          {
+            "type": "send_eth",
+            "recipient": {
+              "kind": "address",
+              "value": "0x1111111111111111111111111111111111111111"
+            },
+            "amount": "0.01"
+          }
+        ],
+        "assumptions": []
+      },
+      "expect": {
+        "ok": false,
+        "codes": [
+          "recipient_self"
+        ]
+      }
+    },
+    {
+      "name": "USDC with 7 decimals",
+      "output": {
+        "kind": "plan",
+        "summary": "Test plan.",
+        "actions": [
+          {
+            "type": "send_usdc",
+            "recipient": {
+              "kind": "name",
+              "value": "alice"
+            },
+            "amount": "1.0000001"
+          }
+        ],
+        "assumptions": []
+      },
+      "expect": {
+        "ok": false,
+        "codes": [
+          "amount_precision"
+        ]
+      }
+    },
+    {
+      "name": "USDC with 6 decimals",
+      "output": {
+        "kind": "plan",
+        "summary": "Test plan.",
+        "actions": [
+          {
+            "type": "send_usdc",
+            "recipient": {
+              "kind": "name",
+              "value": "alice"
+            },
+            "amount": "1.000001"
+          }
+        ],
+        "assumptions": []
+      },
+      "expect": {
+        "ok": true
+      }
+    },
+    {
+      "name": "zero amount",
+      "output": {
+        "kind": "plan",
+        "summary": "Test plan.",
+        "actions": [
+          {
+            "type": "send_eth",
+            "recipient": {
+              "kind": "name",
+              "value": "alice"
+            },
+            "amount": "0"
+          }
+        ],
+        "assumptions": []
+      },
+      "expect": {
+        "ok": false,
+        "codes": [
+          "amount_zero"
+        ]
+      }
+    },
+    {
+      "name": "ETH send eating into the reserve",
+      "output": {
+        "kind": "plan",
+        "summary": "Test plan.",
+        "actions": [
+          {
+            "type": "send_eth",
+            "recipient": {
+              "kind": "name",
+              "value": "alice"
+            },
+            "amount": "0.0096"
+          }
+        ],
+        "assumptions": []
+      },
+      "expect": {
+        "ok": false,
+        "codes": [
+          "insufficient_eth"
+        ]
+      },
+      "context": {
+        "balances": {
+          "eth": "0.01",
+          "usdc": "100"
+        }
+      }
+    },
+    {
+      "name": "ETH send leaving exactly the reserve",
+      "output": {
+        "kind": "plan",
+        "summary": "Test plan.",
+        "actions": [
+          {
+            "type": "send_eth",
+            "recipient": {
+              "kind": "name",
+              "value": "alice"
+            },
+            "amount": "0.0995"
+          }
+        ],
+        "assumptions": []
+      },
+      "expect": {
+        "ok": true
+      },
+      "context": {
+        "balances": {
+          "eth": "0.1",
+          "usdc": "100"
+        }
+      }
+    },
+    {
+      "name": "USDC-only plan with no ETH",
+      "output": {
+        "kind": "plan",
+        "summary": "Test plan.",
+        "actions": [
+          {
+            "type": "send_usdc",
+            "recipient": {
+              "kind": "name",
+              "value": "alice"
+            },
+            "amount": "5"
+          }
+        ],
+        "assumptions": []
+      },
+      "expect": {
+        "ok": true
+      },
+      "context": {
+        "balances": {
+          "eth": "0",
+          "usdc": "100"
+        }
+      }
+    },
+    {
+      "name": "USDC send above balance",
+      "output": {
+        "kind": "plan",
+        "summary": "Test plan.",
+        "actions": [
+          {
+            "type": "send_usdc",
+            "recipient": {
+              "kind": "name",
+              "value": "alice"
+            },
+            "amount": "100.01"
+          }
+        ],
+        "assumptions": []
+      },
+      "expect": {
+        "ok": false,
+        "codes": [
+          "insufficient_usdc"
+        ]
+      }
+    },
+    {
+      "name": "send then deposit the remainder",
+      "output": {
+        "kind": "plan",
+        "summary": "Test plan.",
+        "actions": [
+          {
+            "type": "send_usdc",
+            "recipient": {
+              "kind": "name",
+              "value": "alice"
+            },
+            "amount": "40"
+          },
+          {
+            "type": "vault_deposit",
+            "amount": "60"
+          }
+        ],
+        "assumptions": []
+      },
+      "expect": {
+        "ok": true
+      }
+    },
+    {
+      "name": "send then deposit more than remains",
+      "output": {
+        "kind": "plan",
+        "summary": "Test plan.",
+        "actions": [
+          {
+            "type": "send_usdc",
+            "recipient": {
+              "kind": "name",
+              "value": "alice"
+            },
+            "amount": "40"
+          },
+          {
+            "type": "vault_deposit",
+            "amount": "61"
+          }
+        ],
+        "assumptions": []
+      },
+      "expect": {
+        "ok": false,
+        "codes": [
+          "insufficient_usdc"
+        ]
+      }
+    },
+    {
+      "name": "withdraw funds a later send",
+      "output": {
+        "kind": "plan",
+        "summary": "Test plan.",
+        "actions": [
+          {
+            "type": "vault_withdraw",
+            "amount": "50"
+          },
+          {
+            "type": "send_usdc",
+            "recipient": {
+              "kind": "name",
+              "value": "alice"
+            },
+            "amount": "140"
+          }
+        ],
+        "assumptions": []
+      },
+      "expect": {
+        "ok": true
+      },
+      "context": {
+        "prices": {
+          "ethUsd": "2000"
+        }
+      }
+    },
+    {
+      "name": "swap output is not spendable",
+      "output": {
+        "kind": "plan",
+        "summary": "Test plan.",
+        "actions": [
+          {
+            "type": "swap",
+            "direction": "eth_to_usdc",
+            "amountIn": "0.01"
+          },
+          {
+            "type": "send_usdc",
+            "recipient": {
+              "kind": "name",
+              "value": "alice"
+            },
+            "amount": "101"
+          }
+        ],
+        "assumptions": []
+      },
+      "expect": {
+        "ok": false,
+        "codes": [
+          "insufficient_usdc"
+        ]
+      }
+    },
+    {
+      "name": "withdraw above vault assets",
+      "output": {
+        "kind": "plan",
+        "summary": "Test plan.",
+        "actions": [
+          {
+            "type": "vault_withdraw",
+            "amount": "50.01"
+          }
+        ],
+        "assumptions": []
+      },
+      "expect": {
+        "ok": false,
+        "codes": [
+          "vault_insufficient"
+        ]
+      }
+    },
+    {
+      "name": "withdraw all",
+      "output": {
+        "kind": "plan",
+        "summary": "Test plan.",
+        "actions": [
+          {
+            "type": "vault_withdraw",
+            "amount": "all"
+          }
+        ],
+        "assumptions": []
+      },
+      "expect": {
+        "ok": true
+      }
+    },
+    {
+      "name": "value above cap",
+      "output": {
+        "kind": "plan",
+        "summary": "Test plan.",
+        "actions": [
+          {
+            "type": "send_eth",
+            "recipient": {
+              "kind": "name",
+              "value": "alice"
+            },
+            "amount": "0.2"
+          }
+        ],
+        "assumptions": []
+      },
+      "expect": {
+        "ok": false,
+        "codes": [
+          "value_cap"
+        ]
+      }
+    },
+    {
+      "name": "value at cap",
+      "output": {
+        "kind": "plan",
+        "summary": "Test plan.",
+        "actions": [
+          {
+            "type": "send_eth",
+            "recipient": {
+              "kind": "name",
+              "value": "alice"
+            },
+            "amount": "0.125"
+          }
+        ],
+        "assumptions": []
+      },
+      "expect": {
+        "ok": true
+      }
+    },
+    {
+      "name": "ETH send without a price",
+      "output": {
+        "kind": "plan",
+        "summary": "Test plan.",
+        "actions": [
+          {
+            "type": "send_eth",
+            "recipient": {
+              "kind": "name",
+              "value": "alice"
+            },
+            "amount": "0.01"
+          }
+        ],
+        "assumptions": []
+      },
+      "expect": {
+        "ok": false,
+        "codes": [
+          "value_cap"
+        ]
+      },
+      "context": {
+        "prices": {
+          "ethUsd": null
+        }
+      }
+    },
+    {
+      "name": "USDC send without an ETH price",
+      "output": {
+        "kind": "plan",
+        "summary": "Test plan.",
+        "actions": [
+          {
+            "type": "send_usdc",
+            "recipient": {
+              "kind": "name",
+              "value": "alice"
+            },
+            "amount": "5"
+          }
+        ],
+        "assumptions": []
+      },
+      "expect": {
+        "ok": true
+      },
+      "context": {
+        "prices": {
+          "ethUsd": null
+        }
+      }
+    },
+    {
+      "name": "no sponsored operations left",
+      "output": {
+        "kind": "plan",
+        "summary": "Test plan.",
+        "actions": [
+          {
+            "type": "send_usdc",
+            "recipient": {
+              "kind": "name",
+              "value": "alice"
+            },
+            "amount": "5"
+          }
+        ],
+        "assumptions": []
+      },
+      "expect": {
+        "ok": false,
+        "codes": [
+          "sponsorship"
+        ]
+      },
+      "context": {
+        "sponsorship": {
+          "remaining": 0,
+          "limit": 10,
+          "resetsAt": "2026-09-27T00:00:00.000Z"
+        }
+      }
+    },
+    {
+      "name": "unknown sponsorship skips the check",
+      "output": {
+        "kind": "plan",
+        "summary": "Test plan.",
+        "actions": [
+          {
+            "type": "send_usdc",
+            "recipient": {
+              "kind": "name",
+              "value": "alice"
+            },
+            "amount": "5"
+          }
+        ],
+        "assumptions": []
+      },
+      "expect": {
+        "ok": true
+      },
+      "context": {
+        "sponsorship": null
+      }
+    },
+    {
+      "name": "several violations are all reported",
+      "output": {
+        "kind": "plan",
+        "summary": "Test plan.",
+        "actions": [
+          {
+            "type": "send_eth",
+            "recipient": {
+              "kind": "name",
+              "value": "bob"
+            },
+            "amount": "5"
+          }
+        ],
+        "assumptions": []
+      },
+      "expect": {
+        "ok": false,
+        "codes": [
+          "recipient_unresolved",
+          "insufficient_eth",
+          "value_cap"
+        ]
+      }
+    }
+  ]
+}

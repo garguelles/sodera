@@ -1,6 +1,6 @@
 # Sodera
 
-Sodera is a seedless smart-account wallet and Android home launcher. The repository contains two isolated applications: `app/` is the Expo mobile application and `landing/` is the React landing site and passkey domain host.
+Sodera is a seedless smart-account wallet and Android home launcher. The repository contains three isolated applications: `app/` is the Expo mobile application, `landing/` is the React landing site and passkey domain host, and `agent/` is the Hono service that turns wallet requests into reviewable plans.
 
 ## Design
 

@@ -1,6 +1,6 @@
 # Sodera
 
-Sodera is a seedless smart-account wallet and Android home launcher. This repository contains two independently installable applications.
+Sodera is a seedless smart-account wallet and Android home launcher. This repository contains three independently installable applications.
 
 ## Applications
 
@@ -8,6 +8,7 @@ Sodera is a seedless smart-account wallet and Android home launcher. This reposi
 | --- | --- |
 | [`app/`](app/) | Expo SDK 57 mobile application and Android home launcher |
 | [`landing/`](landing/) | React landing site and passkey domain host for `sodera.xyz` |
+| [`agent/`](agent/) | Hono service that turns wallet requests into reviewable plans with Claude |
 
 Each application owns its package manifest, lockfile, dependencies, commands, and deployment configuration. There is no repository-root JavaScript workspace or install command.
 

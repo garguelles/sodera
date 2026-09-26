@@ -452,10 +452,10 @@ Everything in the MultiBaas "Shared context" above applies. In addition:
 #### Claude API facts (from the `claude-api` skill reference, TypeScript SDK)
 
 - Package `@anthropic-ai/sdk`; client `new Anthropic()` reads `ANTHROPIC_API_KEY` from the environment.
-- Model `claude-opus-5`. Thinking is adaptive by default; omit the `thinking` parameter. Depth is controlled by `output_config.effort` (`low`, `medium`, `high`, `xhigh`, `max`).
+- Model `claude-sonnet-5` ($2 / $10 per million input / output tokens), set through `AGENT_MODEL`. Chosen over `claude-opus-5` ($5 / $25) for cost: a plan is a short structured-output task, and Sonnet 5 supports adaptive thinking, `output_config.effort` (`low` to `max`), structured outputs, and the tool runner. `claude-haiku-4-5` is cheaper but has no effort control. Thinking runs adaptively when the `thinking` parameter is omitted.
 - Tool runner: `betaZodTool({ name, description, inputSchema, run })` from `@anthropic-ai/sdk/helpers/beta/zod`, passed to `client.beta.messages.toolRunner({ model, max_tokens, tools, messages, ... })`. The runner executes tools and loops until the model stops calling them. Cap with `max_iterations`.
-- Structured outputs: `output_config.format = zodOutputFormat(schema)` from `@anthropic-ai/sdk/helpers/zod`, and `client.messages.parse(...)` exposes `parsed_output`. Whether `toolRunner` accepts `output_config.format` must be verified at implementation; the fallback is described in section 5.
-- Refusals: safety classifiers can return `stop_reason: "refusal"` with HTTP 200. Opt into server-side fallbacks with `betas: ["server-side-fallback-2026-07-01"]` and `fallbacks: "default"` on `client.beta.messages.*`. Always check `stop_reason` before reading content.
+- Structured outputs: `toolRunner` accepts `output_config.format` and returns a plain `BetaMessage`, so the service parses the final text block with `AgentOutputSchema` itself (confirmed live on 2026-09-26). Do not use `betaZodOutputFormat` for `AgentOutputSchema`: its converter reuses sub-schemas through `$defs`, which the API rejects inside `anyOf` (`output_config.format.schema: For 'anyOf', '$defs' is not supported`), and it demotes `const` and `enum` to descriptions. The service sends the hand-written schema in `agent/src/output-format.ts` instead; a test keeps it in agreement with the shared vectors.
+- Refusals: a response can return `stop_reason: "refusal"` with HTTP 200. Always check `stop_reason` before reading content. Server-side fallbacks (`server-side-fallback-2026-07-01`) apply to the Opus 5 and Fable models; add them only if `AGENT_MODEL` is switched to one of those.
 - Errors are typed: `Anthropic.RateLimitError`, `Anthropic.AuthenticationError`, `Anthropic.BadRequestError`, `Anthropic.APIError`. Catch most specific first.
 - Prompt caching is prefix-based over `tools` then `system` then `messages`. Keep the tool list and system prompt byte-stable and put `cache_control: { type: "ephemeral" }` on the system block. Volatile data (the account snapshot) goes in the user message.
 - Prefill of assistant messages is not supported on this model family. Use the structured output format, not prefill, to force JSON.
@@ -561,15 +561,15 @@ A Node service that turns a sentence plus a context snapshot into a validated pr
 
 ### Outcome
 
-`POST /agent/propose` returns a policy-checked plan for "send 0.01 eth to alice" against a context whose address book contains alice, returns a clarification for "send some eth", and returns a policy violation for an amount above the balance. The endpoint refuses requests without the app token and rate-limits per account.
+`POST /agent/propose` returns a policy-checked plan for "send 0.01 eth to alice" against a context whose address book contains alice, returns a clarification for "send some eth", and returns a clarification that names the balance for an amount above it. The model sees the balances and asks for a smaller amount instead of proposing a plan the policy would reject; the policy still rejects any over-balance plan that reaches it. The endpoint refuses requests without the app token and rate-limits per account.
 
 ### Files
 
 Create the `agent/` app:
-- `agent/package.json` — `@sodera/agent`, `packageManager: pnpm@12.3.4`, `engines.node >= 22.12.0`, `type: module`. Dependencies: `@anthropic-ai/sdk`, `zod`, `viem`. Dev: `typescript ~6.0.3`, `@types/node`, `vitest`, `tsx`.
+- `agent/package.json` — `@sodera/agent`, `packageManager: pnpm@12.3.4`, `engines.node >= 22.12.0`, `type: module`. Dependencies: `hono`, `@hono/node-server`, `@hono/zod-validator`, `@anthropic-ai/sdk`, `zod`, `viem`. Dev: `typescript ~6.0.3`, `@types/node`, `vitest`, `tsx`.
 - `agent/pnpm-lock.yaml`, `agent/tsconfig.json`, `agent/.env.example`, `agent/.gitignore`, `agent/.dockerignore`
 - `agent/Dockerfile` — `node:22-alpine`, `corepack enable`, `pnpm install --frozen-lockfile`, `pnpm build`, `CMD ["node", "dist/server.js"]`. Mirror `landing/Dockerfile`.
-- `agent/src/server.ts` — `node:http` server, routing, auth, rate limit, JSON errors.
+- `agent/src/server.ts` — Hono app served with `@hono/node-server`: routing, bearer auth (`hono/bearer-auth`), body limit (`hono/body-limit`), request validation (`@hono/zod-validator`), rate limit, JSON errors.
 - `agent/src/schema.ts` — Zod schemas above plus `ContextSchema` and request/response schemas.
 - `agent/src/policy.ts` — policy rules above.
 - `agent/src/tools.ts` — `betaZodTool` definitions.
@@ -594,6 +594,7 @@ MULTIBAAS_BASE_URL=
 MULTIBAAS_API_KEY=
 SEPOLIA_RPC_URL=https://ethereum-sepolia-rpc.publicnode.com
 PLAN_VALUE_CAP_USD=250
+AGENT_MODEL=claude-sonnet-5
 AGENT_EFFORT=high
 ```
 
@@ -648,18 +649,16 @@ Balances, vault position, and sponsorship come from the context snapshot in the 
 
 ```ts
 import Anthropic from '@anthropic-ai/sdk';
-import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
+import { AGENT_OUTPUT_FORMAT } from './output-format.ts';
 
 const client = new Anthropic({ timeout: 60_000, maxRetries: 2 });
 
 export async function propose({ account, intent, context, transcript }): Promise<AgentOutput | { refused: true }> {
   const runner = client.beta.messages.toolRunner({
-    model: 'claude-opus-5',
+    model: process.env.AGENT_MODEL ?? 'claude-sonnet-5',
     max_tokens: 16000,
     max_iterations: 8,
-    betas: ['server-side-fallback-2026-07-01'],
-    fallbacks: 'default',
-    output_config: { effort: process.env.AGENT_EFFORT ?? 'high', format: zodOutputFormat(AgentOutputSchema) },
+    output_config: { effort: process.env.AGENT_EFFORT ?? 'high', format: AGENT_OUTPUT_FORMAT }, // agent/src/output-format.ts
     system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
     tools: TOOLS,
     messages: [...transcript, { role: 'user', content: renderUserMessage(intent, context) }],
@@ -673,7 +672,7 @@ export async function propose({ account, intent, context, transcript }): Promise
 }
 ```
 
-Verification at implementation: confirm that `toolRunner` forwards `output_config.format`. If it does not, use the fallback: declare an additional strict tool `submit_output` whose `inputSchema` is `AgentOutputSchema`, instruct the model in the system prompt to call it exactly once as its final step, capture its input in `run`, and stop the runner. Do not use `tool_choice` forcing; it is not supported on every current model and the instruction plus `strict: true` is sufficient.
+The runner's types accept `output_config`; confirm on the first live request that the final message is schema-valid JSON. If it is not, use the fallback: declare an additional strict tool `submit_output` whose `inputSchema` is `AgentOutputSchema`, instruct the model in the system prompt to call it exactly once as its final step, capture its input in `run`, and stop the runner. Do not use `tool_choice` forcing; it is not supported on every current model and the instruction plus `strict: true` is sufficient.
 
 Error handling in `server.ts`: `Anthropic.RateLimitError` returns 503 with a retry hint; `Anthropic.AuthenticationError` returns 500 and logs loudly; other `Anthropic.APIError` returns 502; a Zod parse failure of the model output returns `{ kind: 'rejected', violations: [{ code: 'schema', ... }] }`.
 
@@ -804,7 +803,7 @@ Any thrown error returns to the plan card with the message and keeps the sentenc
 
 - On a device with a funded account and alice in the address book, "send 0.01 eth to alice" produces a plan, review, one passkey ceremony, and a successful operation visible in the activity feed with amount and recipient.
 - "send some eth to alice" produces a clarification and no review.
-- "send 100 eth to alice" produces a rejection naming the balance and offers Send.
+- "send 100 eth to alice" produces a clarification that names the balance and asks for a smaller amount, and no review.
 - "make it 0.02 instead" after a plan updates the amount.
 - With the agent variables unset, the intent bar is hidden and the rest of the home is unchanged.
 - `pnpm lint` and `pnpm test --runInBand` pass.
@@ -876,7 +875,7 @@ MultiBaas rows are resolved by the section 1 script and applied in `multibaas.ts
 | USDC indexer keeps up under the free-tier 2 events per second cap | prerequisites step 6 | sections 1, 4 |
 | Where the webhook HMAC secret is shown | section 4 setup step 3 | section 4 (low priority) |
 | Exact `event.emitted` payload layout | section 4 setup step 4 | section 4 (low priority) |
-| `toolRunner` forwards `output_config.format` | Section 5 implementation, first run | Section 5 (fallback documented) |
+| `toolRunner` forwards `output_config.format` | Confirmed live on 2026-09-26 with the hand-written schema | Section 5 |
 | Effort level that keeps proposal latency under 10 seconds with good plans | Section 5 smoke tests, sweep `medium` and `high` | Sections 5 and 6 |
 | Pinned Uniswap route and quoter for `quote_swap` | PRA-212 | Section 5 tool, section 6 encoder |
 | Sponsorship allowance source | PRA-195, PRA-199 | Policy `sponsorship` rule, plan card line |
