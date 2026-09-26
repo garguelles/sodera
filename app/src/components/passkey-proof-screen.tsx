@@ -3,6 +3,8 @@ import * as Device from 'expo-device';
 import { router } from 'expo-router';
 import { AppState, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+
+import { platinum } from '@/constants/theme';
 import { sha256, toBytes, type Hash } from 'viem';
 
 import {
@@ -414,40 +416,42 @@ function describeExecutionError(error: unknown) {
   return message.replace(/https?:\/\/\S+/g, '[redacted RPC URL]');
 }
 
+const { colors, spacing, radius, typography } = platinum;
+
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#171713' },
-  content: { padding: 20, paddingBottom: 48, gap: 16 },
-  back: { color: '#8cc8ff', fontSize: 15, fontWeight: '600', paddingVertical: 8 },
-  heading: { gap: 8, paddingVertical: 12 },
-  eyebrow: { color: '#929188', fontSize: 12, fontWeight: '700', letterSpacing: 1.4 },
-  title: { color: '#f3f0e8', fontSize: 32, fontWeight: '700', letterSpacing: -1.2 },
-  body: { color: '#c8c5bb', fontSize: 15, lineHeight: 22 },
-  warning: { color: '#f2c879', fontSize: 14, lineHeight: 20 },
-  card: { backgroundColor: '#262620', borderRadius: 16, padding: 18, gap: 12 },
-  step: { color: '#f3f0e8', fontSize: 19, fontWeight: '700' },
+  screen: { flex: 1, backgroundColor: colors.canvas },
+  content: { padding: spacing.lg, paddingBottom: spacing.xxl, gap: spacing.lg },
+  back: { ...typography.bodySmall, color: colors.secondaryText, paddingVertical: spacing.sm },
+  heading: { gap: spacing.sm, paddingVertical: spacing.md },
+  eyebrow: { ...typography.labelSmall, color: colors.emerald },
+  title: { ...typography.title, color: colors.platinum },
+  body: { ...typography.bodySmall, color: colors.secondaryText },
+  warning: { ...typography.bodySmall, color: colors.warning },
+  card: { backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.lg, gap: spacing.md },
+  step: { ...typography.subheading, color: colors.platinum },
   button: {
-    backgroundColor: '#f3f0e8',
+    backgroundColor: colors.platinum,
     minHeight: 48,
-    borderRadius: 12,
+    borderRadius: radius.md,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 16,
+    paddingHorizontal: spacing.lg,
   },
-  secondaryButton: { backgroundColor: '#34342d', borderWidth: 1, borderColor: '#5b5a50' },
-  buttonText: { color: '#171713', fontSize: 15, fontWeight: '700' },
-  secondaryButtonText: { color: '#f3f0e8' },
+  secondaryButton: { backgroundColor: colors.surfaceHigh, borderWidth: 1, borderColor: colors.border },
+  buttonText: { ...typography.bodySmall, fontFamily: typography.subheading.fontFamily, color: colors.onPlatinum },
+  secondaryButtonText: { color: colors.platinum },
   disabled: { opacity: 0.4 },
   pressed: { opacity: 0.7 },
-  status: { backgroundColor: '#1d3448', borderRadius: 14, padding: 16, gap: 6 },
+  status: { backgroundColor: colors.cyanWash, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.sm },
   idle: {},
-  pending: { backgroundColor: '#483b1d' },
-  confirmed: { backgroundColor: '#1d4830' },
-  failed: { backgroundColor: '#481d25' },
-  statusLabel: { color: '#8cc8ff', fontSize: 11, fontWeight: '800', letterSpacing: 1.2 },
-  evidence: { backgroundColor: '#10100d', borderRadius: 14, padding: 16, gap: 10 },
-  mono: { color: '#d8d4c8', fontFamily: 'monospace', fontSize: 12, lineHeight: 18 },
-  review: { gap: 10 },
-  reviewRow: { gap: 3 },
-  reviewLabel: { color: '#929188', fontSize: 11, fontWeight: '700', letterSpacing: 0.7 },
-  reviewValue: { color: '#f3f0e8', fontFamily: 'monospace', fontSize: 12, lineHeight: 18 },
+  pending: { backgroundColor: colors.warningWash },
+  confirmed: { backgroundColor: colors.emeraldWash },
+  failed: { backgroundColor: colors.negativeWash },
+  statusLabel: { ...typography.labelSmall, color: colors.cyan },
+  evidence: { backgroundColor: colors.surfaceLowest, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.md },
+  mono: { ...typography.caption, fontFamily: typography.micro.fontFamily, color: colors.secondaryText },
+  review: { gap: spacing.md },
+  reviewRow: { gap: spacing.xs },
+  reviewLabel: { ...typography.labelSmall, color: colors.mutedText },
+  reviewValue: { ...typography.caption, fontFamily: typography.micro.fontFamily, color: colors.platinum },
 });
