@@ -41,6 +41,22 @@ adb -s <serial> shell am start -a android.intent.action.VIEW -d sodera://passkey
 
 Use `x86_64` instead of `arm64-v8a` for the Google Play emulator. Before accepting evidence, verify the APK signer matches `https://sodera.xyz/.well-known/assetlinks.json`, the hosted statement grants both `handle_all_urls` and `get_login_creds`, and the APK contains the `asset_statements` manifest resource. The complete security boundary, request format, and device evidence checklist are in [`../docs/research/PRA-185-android-credential-manager.md`](../docs/research/PRA-185-android-credential-manager.md).
 
+### Local ENS passkey proof
+
+Start the API and PostgreSQL with `make start` from the repository root. For a connected Android debug build, forward the API over USB with `adb reverse tcp:8082 tcp:8082` (and Metro with `adb reverse tcp:8081 tcp:8081`). **Restart** any existing Metro process so it picks up the ENS URL, then run from `app/`:
+
+```bash
+EXPO_PUBLIC_API_URL=http://127.0.0.1:8082 pnpm exec expo start --dev-client
+```
+
+In another terminal, open the diagnostic route:
+
+```bash
+adb shell am start -a android.intent.action.VIEW -d sodera://passkey-proof xyz.sodera.app
+```
+
+On the Passkey Proof screen, reopen a deployed wallet, enter an available Sodera label, and choose **Verify passkey with ENS service**. The server must verify the one-time assertion; the screen explicitly says that no name was issued. Loopback HTTP is allowed only in development; outside a local debug build the API URL must be HTTPS. This proof does not authorize a registration or change the wallet.
+
 ## Verification
 
 ```bash

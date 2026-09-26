@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { createEnsApp } from './app.ts';
 import type { Availability } from './chain.ts';
+import type { ClaimAuth } from './claim-auth.ts';
 
 const available: Availability = {
   chainId: 11155111,
@@ -37,5 +38,40 @@ describe('ENS availability API', () => {
     expect(response.status).toBe(503);
     expect(await response.text()).not.toContain('secret URL');
     expect((await app.request('/ens/claims', { method: 'POST' })).status).toBe(404);
+  });
+});
+
+describe('ENS challenge API', () => {
+  const account = '0x1111111111111111111111111111111111111111';
+  const id = '11111111-1111-4111-8111-111111111111';
+  const request = (body: unknown) => ({
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  }) as const;
+
+  it('passes only validated account/label and passkey proof fields to the authentication service', async () => {
+    const auth = {
+      issue: vi.fn().mockResolvedValue({ id, challenge: 'challenge', expiresAt: '2026-09-26T00:05:00Z' }),
+      verify: vi.fn().mockResolvedValue({ claimToken: 'secret', expiresAt: '2026-09-26T00:10:00Z' }),
+    } as unknown as ClaimAuth;
+    const app = createEnsApp(vi.fn().mockResolvedValue(available), auth);
+    const issued = await app.request('/ens/challenges', request({ account, label: 'gargs' }));
+    expect(issued.status).toBe(201);
+    expect(auth.issue).toHaveBeenCalledWith(expect.objectContaining({ account, label: 'gargs', name: 'gargs.sodera.eth' }));
+    const proof = { authenticatorData: 'a', clientDataJSON: 'b', signature: 'c' };
+    const verified = await app.request(`/ens/challenges/${id}/verify`, request({ account, label: 'gargs', proof }));
+    expect(verified.status).toBe(200);
+    expect(auth.verify).toHaveBeenCalledWith({ id, account, label: 'gargs', proof });
+  });
+
+  it('rejects malformed and reserved challenge requests before any signer call', async () => {
+    const auth = { issue: vi.fn(), verify: vi.fn() } as unknown as ClaimAuth;
+    const app = createEnsApp(vi.fn().mockResolvedValue(available), auth);
+    expect((await app.request('/ens/challenges', request({ account: 'invalid', label: 'gargs' }))).status).toBe(400);
+    expect((await app.request('/ens/challenges', request({ account, label: 'anon' }))).status).toBe(409);
+    expect((await app.request('/ens/challenges/bad/verify', request({ account, label: 'gargs' }))).status).toBe(400);
+    expect(auth.issue).not.toHaveBeenCalled();
+    expect(auth.verify).not.toHaveBeenCalled();
   });
 });

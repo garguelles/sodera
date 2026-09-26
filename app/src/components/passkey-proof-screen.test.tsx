@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 
 import { PasskeyProofScreen } from './passkey-proof-screen';
+import { createEnsClaimAuthClient } from '@/ens/claim-auth-client';
 import type {
   KernelOperationEvidence,
   KernelOperationReview,
@@ -13,6 +14,10 @@ import {
 } from '@/wallet/wallet-identity';
 
 jest.mock('expo-router', () => ({ router: { back: jest.fn() } }));
+jest.mock('@expo/ui', () => {
+  const { View, TextInput } = jest.requireActual('react-native');
+  return { Host: View, TextInput };
+});
 jest.mock('@/wallet/passkey-native-adapter', () => ({
   passkeyNativeAdapter: {
     createCredential: jest.fn(),
@@ -25,6 +30,7 @@ jest.mock('@/wallet/passkey-native-adapter', () => ({
 jest.mock('@/wallet/wallet-identity-native-storage', () => ({
   walletIdentityNativeStorage: { read: jest.fn(), write: jest.fn(), clear: jest.fn() },
 }));
+jest.mock('@/ens/claim-auth-client', () => ({ createEnsClaimAuthClient: jest.fn() }));
 
 const credential: RegisteredPrimaryPasskey = {
   id: 'MDEyMzQ1Njc4OQ',
@@ -170,6 +176,34 @@ describe('PasskeyProofScreen', () => {
     expect(await screen.findByText('The Primary Passkey is unavailable')).toBeOnTheScreen();
     expect(screen.getByRole('button', { name: 'Recover Wallet' })).toBeOnTheScreen();
     expect(client.registerPrimaryPasskey).not.toHaveBeenCalled();
+  });
+
+  it('verifies a chosen name with the deployed Kernel without displaying a claim token', async () => {
+    process.env.EXPO_PUBLIC_API_URL = 'https://ens.example';
+    const prove = jest.fn().mockResolvedValue({ name: 'gargs.sodera.eth', claimToken: 'secret-token' });
+    jest.mocked(createEnsClaimAuthClient).mockReturnValue({ prove } as never);
+    const client = createCeremonyClient();
+    client.verifyPrimaryPasskey = jest.fn().mockResolvedValue({ ok: true });
+    try {
+      await render(
+        <PasskeyProofScreen
+          client={client}
+          createExecutionClient={jest.fn().mockResolvedValue(createExecutionClient({ deployed: true }))}
+          storage={createStorage(JSON.stringify({
+            schemaVersion: 1, phase: 'accountDeployed', pins: CURRENT_WALLET_IDENTITY_PINS,
+            credential, account,
+          }))}
+        />,
+      );
+      await press('Reopen existing wallet');
+      await act(async () => fireEvent.changeText(screen.getByPlaceholderText('Choose a test username'), 'gargs'));
+      await press('Verify passkey with ENS service');
+      expect(prove).toHaveBeenCalledWith({ account, credential, label: 'gargs' });
+      expect(await screen.findByText('Primary Passkey verified for gargs.sodera.eth. No ENS name was issued.')).toBeOnTheScreen();
+      expect(screen.queryByText('secret-token')).not.toBeOnTheScreen();
+    } finally {
+      delete process.env.EXPO_PUBLIC_API_URL;
+    }
   });
 });
 

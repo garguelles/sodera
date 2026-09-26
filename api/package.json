@@ -8,8 +8,8 @@
     "node": ">=22.12.0"
   },
   "scripts": {
-    "dev:ens": "API_SERVICE=ens tsx watch --env-file-if-exists=.env src/server.ts",
-    "dev:uniswap": "API_SERVICE=uniswap tsx watch --env-file-if-exists=.env src/server.ts",
+    "dev": "tsx watch --env-file-if-exists=.env src/server.ts",
+    "test:db": "TEST_DATABASE_URL=postgres://sodera:sodera_local_only@127.0.0.1:5433/sodera vitest run",
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
@@ -18,10 +18,12 @@
   "dependencies": {
     "@hono/node-server": "^2.1.1",
     "hono": "^4.13.9",
+    "pg": "8.16.3",
     "viem": "2.35.0"
   },
   "devDependencies": {
     "@types/node": "^22.20.4",
+    "@types/pg": "8.15.5",
     "tsx": "^4.23.15",
     "typescript": "~6.0.3",
     "vitest": "^5.0.1"

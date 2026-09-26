@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
+import { Host, TextInput } from '@expo/ui';
 import * as Device from 'expo-device';
 import { router } from 'expo-router';
 import { AppState, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { platinum } from '@/constants/theme';
+import { createEnsClaimAuthClient } from '@/ens/claim-auth-client';
 import { sha256, toBytes, type Hash } from 'viem';
 
 import {
@@ -45,6 +47,8 @@ export function PasskeyProofScreen({
   const [review, setReview] = useState<KernelOperationReview | null>(null);
   const [confirmedHash, setConfirmedHash] = useState<Hash | null>(null);
   const [busy, setBusy] = useState(false);
+  const [proofLabel, setProofLabel] = useState('');
+  const [proofStatus, setProofStatus] = useState('');
   const [status, setStatus] = useState('Create a new Wallet Identity or reopen the existing one.');
   const [executionState, setExecutionState] = useState<'idle' | 'pending' | 'confirmed' | 'failed'>(
     'idle',
@@ -242,6 +246,28 @@ export function PasskeyProofScreen({
     }
   };
 
+  const verifyEnsClaimAuthority = async () => {
+    if (!credential || !executionClient || busy ||
+      !(executionClient.deployed || executionState === 'confirmed')) return;
+    const currentInvocation = ++invocation.current;
+    setBusy(true);
+    setProofStatus('Requesting a one-time ENS challenge for this wallet...');
+    try {
+      const result = await createEnsClaimAuthClient({ ceremonyClient: client }).prove({
+        account: executionClient.account,
+        credential,
+        label: proofLabel,
+      });
+      if (currentInvocation === invocation.current) {
+        setProofStatus(`Primary Passkey verified for ${result.name}. No ENS name was issued.`);
+      }
+    } catch (error) {
+      if (currentInvocation === invocation.current) setProofStatus(describeExecutionError(error));
+    } finally {
+      if (currentInvocation === invocation.current) setBusy(false);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.screen}>
       <ScrollView contentContainerStyle={styles.content} contentInsetAdjustmentBehavior="automatic">
@@ -330,6 +356,34 @@ export function PasskeyProofScreen({
             onPress={execute}
           />
         </View>
+
+        {process.env.EXPO_PUBLIC_API_URL ? (
+          <View style={styles.card}>
+            <Text style={styles.step}>5. Verify ENS claim authority</Text>
+            <Text style={styles.body}>
+              Sign a one-time server challenge with this wallet’s Primary Passkey. This checks
+              account control; it does not register a name.
+            </Text>
+            <Host matchContents={{ vertical: true }} style={{ width: '100%' }}>
+              <TextInput
+                autoCapitalize="none"
+                autoCorrect={false}
+                editable={!busy}
+                onChangeText={setProofLabel}
+                placeholder="Choose a test username"
+                placeholderTextColor={colors.mutedText}
+                style={styles.proofInput}
+              />
+            </Host>
+            <ActionButton
+              disabled={busy || !credential || !executionClient ||
+                !(executionClient.deployed || executionState === 'confirmed')}
+              label="Verify passkey with ENS service"
+              onPress={verifyEnsClaimAuthority}
+            />
+            {proofStatus ? <Text accessibilityRole="alert" style={styles.body}>{proofStatus}</Text> : null}
+          </View>
+        ) : null}
 
         <View accessibilityRole="alert" style={[styles.status, styles[executionState]]}>
           <Text style={styles.statusLabel}>STATUS</Text>
@@ -429,6 +483,7 @@ const styles = StyleSheet.create({
   warning: { ...typography.bodySmall, color: colors.warning },
   card: { backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.lg, gap: spacing.md },
   step: { ...typography.subheading, color: colors.platinum },
+  proofInput: { backgroundColor: colors.platinum, borderRadius: radius.md, paddingHorizontal: spacing.md, height: 48 },
   button: {
     backgroundColor: colors.platinum,
     minHeight: 48,
