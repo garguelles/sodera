@@ -32,13 +32,9 @@ import {
 } from '@/wallet/kernel-passkey-execution';
 import { createPasskeyCeremonyClient, type PasskeyCeremonyClient } from '@/wallet/passkey-ceremony';
 import { passkeyNativeAdapter } from '@/wallet/passkey-native-adapter';
-import {
-  SEPOLIA_USDC_ADDRESS,
-  SWAP_POOL_ID,
-  sepoliaTransactionUrl,
-  shortenAddress,
-} from '@/wallet/sepolia';
+import { SEPOLIA_USDC_ADDRESS, sepoliaTransactionUrl, shortenAddress } from '@/wallet/sepolia';
 import { blockscoutTransactionActivityProvider } from '@/wallet/transaction-activity-blockscout';
+import { SWAP_POOL_ID } from '@/wallet/uniswap-sdk';
 import { buildSwapCalls, swapDeadline } from '@/wallet/uniswap-swap-calls';
 import {
   SWAP_ASSET_DECIMALS,

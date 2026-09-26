@@ -23,9 +23,8 @@ import {
   SEPOLIA_UNISWAP_V4_QUOTER_ADDRESS,
   SEPOLIA_UNISWAP_V4_STATE_VIEW_ADDRESS,
   SEPOLIA_USDC_ADDRESS,
-  SWAP_POOL_ID,
-  SWAP_POOL_KEY,
 } from '../src/wallet/sepolia.ts';
+import { SWAP_POOL_ID, SWAP_POOL_KEY } from '../src/wallet/uniswap-sdk.ts';
 import { buildSwapCalls, swapDeadline } from '../src/wallet/uniswap-swap-calls.ts';
 import { quoteSwap } from '../src/wallet/uniswap-quote.ts';
 
@@ -33,6 +32,8 @@ if (!process.env.SEPOLIA_RPC_URL) {
   throw new Error('SEPOLIA_RPC_URL is required');
 }
 
+// The pool pinned in docs/research/PRA-212-uniswap-v4-sepolia-route.md.
+const EXPECTED_POOL_ID = '0xc743656d27fde4e2d5895e878557aaa56dd48c8656d25e9db35ba10b1fe3d824';
 const V4_TOO_LITTLE_RECEIVED_SELECTOR = '0x8b063d73';
 const SIMULATION_ACCOUNT = '0x000000000000000000000000000000000000dEaD';
 // FiatTokenV2_2 keeps balances in `balanceAndBlacklistStates` at storage slot 9.
@@ -82,7 +83,8 @@ assert.ok(
 const derivedPoolId = keccak256(
   encodeAbiParameters([{ type: 'tuple', components: poolKeyComponents }], [SWAP_POOL_KEY]),
 );
-assert.equal(derivedPoolId, SWAP_POOL_ID, 'Pool key does not hash to the pinned pool ID');
+assert.equal(derivedPoolId, EXPECTED_POOL_ID, 'Pool key does not hash to the pinned pool ID');
+assert.equal(SWAP_POOL_ID, EXPECTED_POOL_ID, 'SDK pool ID does not match the pinned pool ID');
 
 // Captured from the hand-encoded builder used for the first live swaps; refactors must reproduce it byte for byte.
 const GOLDEN_DEADLINE = 1_790_400_000n;

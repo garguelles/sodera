@@ -1,7 +1,8 @@
 import { createPublicClient, formatUnits, http, parseUnits, type PublicClient } from 'viem';
 import { sepolia } from 'viem/chains';
 
-import { SEPOLIA_UNISWAP_V4_QUOTER_ADDRESS, SWAP_POOL_KEY } from './sepolia';
+import { SEPOLIA_UNISWAP_V4_QUOTER_ADDRESS } from './sepolia';
+import { SWAP_POOL_KEY } from './uniswap-sdk';
 
 export type SwapAsset = 'ETH' | 'USDC';
 export type SwapDirection = 'eth-to-usdc' | 'usdc-to-eth';

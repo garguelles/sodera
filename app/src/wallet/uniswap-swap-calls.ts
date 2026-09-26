@@ -5,8 +5,8 @@ import {
   SEPOLIA_PERMIT2_ADDRESS,
   SEPOLIA_UNISWAP_UNIVERSAL_ROUTER_ADDRESS,
   SEPOLIA_USDC_ADDRESS,
-  SWAP_POOL_KEY,
 } from './sepolia';
+import { SWAP_POOL_KEY } from './uniswap-sdk';
 import { SWAP_DIRECTIONS, type SwapDirection } from './uniswap-quote';
 
 export const SWAP_DEADLINE_SECONDS = 600;
