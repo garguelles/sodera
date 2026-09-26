@@ -45,13 +45,13 @@ App: guard + decode calls → append transfer to payee → asset-change simulati
 - **Unchanged:** execution, gas sponsorship and simulation stay on the existing path: `createKernelPasskeyExecutionClient().prepare(calls)` batches any number of calls, then the ZeroDev bundler and paymaster, then our Sepolia RPC.
 - **Payee handling:** the payee is **never sent to Uniswap**. The swap output goes to the Kernel, and the app appends its own transfer to the payee. The reason is refunds. In exact-output trades the Universal Router SDK sends the leftover-ETH `SWEEP` to the same recipient as the output ([`universal-router-sdk` source](https://github.com/Uniswap/sdks/blob/main/sdks/universal-router-sdk/src/entities/actions/uniswap.ts)). Setting `recipient` to the payee would hand them the refund.
 
-## Pull requests
+## Commits
 
-Create each branch from a fast-forwarded `main`. Commits follow `{type}: {PRA-###}: {description}` (or `{type}: {description}` for untracked work), with no co-author trailer.
+All work lands on one branch, `feat/pay-with-any-token`, as separate commits, with backend and frontend changes kept in separate commits. Commits follow `{type}: {description}` (or `{type}: {PRA-###}: {description}` once a Linear ticket exists), with no co-author trailer. The order below is also the order of implementation. The spike is backend-side so the API key only ever lives in `agent/.env`.
 
-1. **Feasibility spike (the go/no-go gate).**
-    - Files: `app/scripts/verify-pay-with-route.mjs`, a `verify:pay-with` script in `app/package.json`, and `docs/research/…-trading-api-pay-with.md`.
-    - The script calls the API directly with a local `UNISWAP_API_KEY` read from `.env.local`. The file is git-ignored; this is the only place the app side ever holds a key. `swapper` is set to a Kernel address, and `x-universal-router-version: 2.1.2` is pinned.
+1. **Backend: feasibility spike (the go/no-go gate).**
+    - Files: `agent/scripts/verify-pay-with-route.ts`, a `verify:pay-with` script in `agent/package.json`, and `docs/research/…-trading-api-pay-with.md`.
+    - The script calls the API directly with `UNISWAP_API_KEY` from the git-ignored `agent/.env`, the same place the key will live in production. `swapper` is set to a Kernel address, and `x-universal-router-version: 2.1.2` is pinned.
     - Two cases: EXACT_OUTPUT **10 USDC paid with ETH**, and **0.001 ETH paid with USDC**.
     - Compare three ways of getting calls:
         1. `/swap_5792`
@@ -64,7 +64,7 @@ Create each branch from a fast-forwarded `main`. Commits follow `{type}: {PRA-##
     - Also confirm that `V4BaseActionsParser` decodes the API's router 2.1.2 calldata.
     - Record in the research doc: the chosen option and why, the call shapes and targets, approval amounts (`permitAmount` FULL vs EXACT), latency, and route quality on Sepolia's thin, mispriced liquidity.
     - Acceptance: both directions pass the asset-change assertions, or the doc records a no-go and why.
-2. **Backend quote endpoint.**
+2. **Backend: quote endpoint.**
     - Files: `agent/src/uniswap-trading.ts` (API client), `agent/src/pay-quote.ts` and its schema, the route in `agent/src/app.ts`, dependencies in `agent/src/server.ts`, `UNISWAP_API_KEY` in `agent/.env.example`, `agent/README.md`, and vitest tests with a faked `fetch`.
     - `POST /pay/quote`, authenticated with the existing app token.
     - Request: `{ account, payAsset: 'ETH' | 'USDC', receiveAsset, amountOut }`, where `amountOut` is a base-unit string. Zod rejects matching assets, zero or oversized amounts, and unknown assets.
@@ -81,7 +81,7 @@ Create each branch from a fast-forwarded `main`. Commits follow `{type}: {PRA-##
         - per-account and per-IP limits, plus a global limit of 5 req/s or less to stay under the key's quota;
         - errors: `NoRouteFound` maps to 422 `no_route`, upstream 429 to 503 `busy` with `retry-after`, a timeout to 504, and anything else to 502.
     - Acceptance: vitest covers auth, validation, rate limits, error mapping, and that the key never appears in responses. A smoke test passes on Railway with the env var set.
-3. **App call guard.**
+3. **Frontend: call guard and quote client.**
     - Files: `app/src/wallet/pay-with-swap.ts`, `payQuote` in the agent client (zod-parsed response with a timeout), and the Trading Universal Router (and proxy, if chosen) addresses in `app/src/wallet/sepolia.ts`.
     - Treat every call from the API as untrusted:
         - Targets must be on an allowlist: USDC, Permit2 or the proxy, and the Trading Universal Router.
@@ -92,7 +92,7 @@ Create each branch from a fast-forwarded `main`. Commits follow `{type}: {PRA-##
     - Decode the `V4_SWAP` input with `@uniswap/v4-sdk`'s `V4BaseActionsParser`. Verify the swap actions, the exact output amount and the maximum input, and that nothing is taken or swept to anyone but the Kernel. Commands the parser can't decode (v2/v3 legs) fall back to the target, selector and value checks plus the asset-change simulation.
     - `buildPayWithCalls(quote, transfer)` returns `[...guardedCalls, transfer.call]`, reusing `parseSendTransfer` from `app/src/wallet/send-transfer.ts`. This is the same batching pattern as `app/src/agent/plan-encoder.ts`.
     - Acceptance: each tampered case is rejected before any passkey prompt: a foreign target, an oversized approval, excess ETH value, a stale deadline, a wrong selector, or a foreign take or sweep.
-4. **Send UI.**
+4. **Frontend: Send UI.**
     - Files: `app/src/components/send-screen.tsx` and `app/src/wallet/send-transfer.ts`.
     - Add a "Pay with" selector on the amount step. When it matches the asset being sent, the existing path runs unchanged and nothing calls `/pay/quote`.
     - Generalize the one-call echo check (`send-screen.tsx:158`) into `assertPreparedCallsMatch(expected, prepared)` for any number of calls.
@@ -111,7 +111,7 @@ Create each branch from a fast-forwarded `main`. Commits follow `{type}: {PRA-##
         - The review expires 30 s after its quote; Confirm then re-quotes and prepares again.
     - Errors (`no_route`, `busy`, timeout) offer "Pay with <same asset> instead".
     - Acceptance: live device payments in both directions, and the same-asset path is unchanged.
-5. **Activity grouping.**
+5. **Frontend: activity grouping.**
     - Files: `app/src/wallet/transaction-activity*.ts`, `user-operation-calls.ts` and `pending-sends.ts`.
     - Today a pay-with transaction would show up as several rows (swap legs through the router and pool, plus the transfer). Group rows by UserOperation hash when the operation calls the Trading Universal Router, and show one row: "Paid X to <payee> (swapped from Y)".
     - Pending sends store `payAsset` and `maxAmountIn` so the pending row renders the same way.
@@ -141,7 +141,7 @@ Create each branch from a fast-forwarded `main`. Commits follow `{type}: {PRA-##
 
 Before "Pay with" is considered done:
 
-1. `pnpm verify:pay-with` passes the asset-change assertions in both directions.
+1. `pnpm verify:pay-with` (from `agent/`) passes the asset-change assertions in both directions.
 2. `agent/` tests and type checks pass, and `app/` type checks and lint pass.
 3. On the deployed backend:
     - `/pay/quote` without a token returns 401;
