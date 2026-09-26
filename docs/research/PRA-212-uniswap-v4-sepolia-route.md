@@ -77,3 +77,13 @@ Observed on 2026-09-26 through `https://ethereum-sepolia-rpc.publicnode.com`:
 - 1 USDC → ETH batch (block `11784194`): every call succeeded, 0.000031428307909673 ETH was received (exactly the quote), and both allowances ended at zero
 
 The script imports TypeScript modules, so it runs with `--experimental-strip-types` and a small resolver hook (`app/scripts/lib/register-ts-resolver.mjs`) for their extensionless relative imports. It was verified on Node 22.14, 24.12 and 25.8.
+
+## Live swaps
+
+Swaps executed by the Sodera app from a passkey-controlled Kernel account ([`0xFbf2213c7F5DE314729293fF1B541F8591637658`](https://sepolia.etherscan.io/address/0xFbf2213c7F5DE314729293fF1B541F8591637658)) through EntryPoint v0.7. Every UserOperation was sponsored by ZeroDev's paymaster (`0x777777777777AeC03fd955926DbF81597e66834C`):
+
+| Direction | Transaction | Result |
+| --- | --- | --- |
+| ETH → USDC | [`0x9b75ba46258116210043604a65f3a30f0684fd4b57cfdcd36839465504e3faf0`](https://sepolia.etherscan.io/tx/0x9b75ba46258116210043604a65f3a30f0684fd4b57cfdcd36839465504e3faf0) | 0.1 ETH → 3,179.920816 USDC on 2026-09-26 at 05:57 UTC. |
+| USDC → ETH | [`0x4a1d948edede137eb61f644cfaaeb8eaa0589da5f3c3247b2607b59e84b4faab`](https://sepolia.etherscan.io/tx/0x4a1d948edede137eb61f644cfaaeb8eaa0589da5f3c3247b2607b59e84b4faab) | 2 USDC → 0.000062856582279472 ETH on 2026-09-26 at 05:52 UTC. |
+| USDC → ETH | [`0x80e6031700477a5503a900196fd22fb4824f4012df8757e8b400dcf084005dbe`](https://sepolia.etherscan.io/tx/0x80e6031700477a5503a900196fd22fb4824f4012df8757e8b400dcf084005dbe) | 1 USDC → 0.000031428307909673 ETH on 2026-09-26 at 05:48 UTC, the exact quoted output. It was the account's first UserOperation, so it also deployed the Kernel account. |
