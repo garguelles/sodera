@@ -26,8 +26,8 @@ describe('WalletHome', () => {
     expect(screen.getByText('0.8200 ETH')).toBeOnTheScreen();
     expect(screen.getByText('USDC')).toBeOnTheScreen();
     expect(screen.getByText('245.00 USDC')).toBeOnTheScreen();
-    expect(screen.getByText('Curated USDC vault')).toBeOnTheScreen();
-    expect(screen.getByText('750.00 USDC')).toBeOnTheScreen();
+    expect(screen.getByText('USDC/WETH liquidity')).toBeOnTheScreen();
+    expect(screen.getByText('375.00 USDC + 0.139 WETH')).toBeOnTheScreen();
     expect(screen.getByText('$3,045.00')).toBeOnTheScreen();
     expect(screen.queryByText('$2,295.00')).not.toBeOnTheScreen();
   });
@@ -77,7 +77,7 @@ describe('WalletHome', () => {
     expect(screen.queryByText('$2,050.00')).not.toBeOnTheScreen();
     expect(screen.queryByText('245.00 USDC')).not.toBeOnTheScreen();
     expect(screen.queryByText('$245.00')).not.toBeOnTheScreen();
-    expect(screen.queryByText('750.00 USDC')).not.toBeOnTheScreen();
+    expect(screen.queryByText('375.00 USDC + 0.139 WETH')).not.toBeOnTheScreen();
     expect(screen.queryByText('$750.00')).not.toBeOnTheScreen();
     expect(screen.getAllByLabelText('Hidden amount')).toHaveLength(7);
     expect(screen.queryByText('Hidden')).not.toBeOnTheScreen();
@@ -126,7 +126,7 @@ describe('WalletHome', () => {
 
     expect(await screen.findAllByText('$0.00')).toHaveLength(2);
     expect(screen.queryByText('USD unavailable')).not.toBeOnTheScreen();
-    expect(screen.queryByText('Vault position')).not.toBeOnTheScreen();
+    expect(screen.queryByText('Earn position')).not.toBeOnTheScreen();
   });
 
   it('offers retry after a provider failure', async () => {

@@ -21,6 +21,7 @@ import {
 } from '@/agent/agent-client';
 import { AssetLogo } from '@/components/asset-logo';
 import { platinum } from '@/constants/theme';
+import { withoutCommittedUsdc } from '@/wallet/aqua-position';
 import {
   createKernelPasskeyExecutionClient,
   type KernelOperationReview,
@@ -83,11 +84,16 @@ type SendScreenProps = {
 type LoadedWallet = PersistedWalletIdentity & { balances: { ETH: bigint; USDC: bigint } };
 type SendStep = 'recipient' | 'asset' | 'amount' | 'review' | 'authorizing' | 'submitted';
 
+/** USDC committed to an open Earn position stays in the wallet but is not spendable here. */
+async function readSpendableSendBalances(account: Address) {
+  return withoutCommittedUsdc(account, await readSendBalances(account));
+}
+
 export function SendScreen({
   ceremonyClient = defaultCeremonyClient,
   storage = walletIdentityNativeStorage,
   createExecutionClient = createKernelPasskeyExecutionClient,
-  readBalances = readSendBalances,
+  readBalances = readSpendableSendBalances,
   resolveRecipient = resolveSepoliaRecipient,
   recordSend = pendingSends.update,
   quotePay = defaultQuotePay,

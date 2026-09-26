@@ -196,7 +196,7 @@ function WalletSnapshot({
         <View style={styles.section}>
           <View style={styles.positionHeading}>
             <Text accessibilityRole="header" style={styles.cardTitle}>
-              Vault position
+              Earn position
             </Text>
             <Text style={styles.protocol}>{portfolio.positions[0]?.protocol}</Text>
           </View>

@@ -13,12 +13,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { formatEther } from 'viem';
 
 import { platinum } from '@/constants/theme';
-import type {
-  TransactionActivityItem,
-  TransactionActivityOperationSummary,
-  TransactionActivityPayment,
-  TransactionActivityProvider,
-  TransactionActivityResult,
+import {
+  describeEarnActivity,
+  type TransactionActivityItem,
+  type TransactionActivityOperationSummary,
+  type TransactionActivityPayment,
+  type TransactionActivityProvider,
+  type TransactionActivityResult,
 } from '@/wallet/transaction-activity';
 import { sepoliaTransactionUrl, shortenAddress } from '@/wallet/sepolia';
 
@@ -97,7 +98,7 @@ export function TransactionsScreen({
       <View style={styles.heading}>
         <Text style={styles.eyebrow}>ETHEREUM SEPOLIA</Text>
         <Text accessibilityRole="header" style={styles.title}>Transactions</Text>
-        <Text style={styles.subtitle}>Your sends and payments, ETH and USDC transfers, and smart account operations.</Text>
+        <Text style={styles.subtitle}>Your sends and payments, ETH and USDC transfers, Earn deposits and withdrawals, and smart account operations.</Text>
       </View>
     </View>
   );
@@ -184,6 +185,28 @@ function TransactionRow({ item, onPress }: { item: TransactionActivityItem; onPr
         <View style={styles.rowCopy}>
           <Text style={styles.rowTitle}>Account operation</Text>
           <OperationDetail operation={item} />
+          <Text style={styles.timestamp}>{formatTimestamp(item.timestamp)}</Text>
+        </View>
+      </Pressable>
+    );
+  }
+
+  if (item.kind === 'earn') {
+    const { action, title, paired, amounts } = describeEarnActivity(item);
+    const operationLabel = item.operation ? `, ${describeOperation(item.operation).label}` : '';
+    return (
+      <Pressable
+        accessibilityLabel={`${action}, ${amounts}, 1inch Aqua, tokens stay in your wallet${operationLabel}`}
+        accessibilityRole="link"
+        onPress={onPress}
+        style={({ pressed }) => [styles.row, pressed && styles.pressed]}>
+        <View style={[styles.directionIcon, styles.earnIcon]}>
+          <Text importantForAccessibility="no" style={[styles.directionIconText, styles.earnIconText]}>✳</Text>
+        </View>
+        <View style={styles.rowCopy}>
+          <Text style={styles.rowTitle}>{title}</Text>
+          <Text selectable style={styles.counterparty}>{paired ? `+ ${paired} · 1inch Aqua` : '1inch Aqua'}</Text>
+          {item.operation ? <OperationDetail operation={item.operation} /> : null}
           <Text style={styles.timestamp}>{formatTimestamp(item.timestamp)}</Text>
         </View>
       </Pressable>
@@ -292,8 +315,10 @@ const styles = StyleSheet.create({
   sentIcon: { backgroundColor: colors.surfaceHigh },
   receivedIcon: { backgroundColor: colors.emeraldWash },
   operationIcon: { backgroundColor: colors.glassRaised },
+  earnIcon: { backgroundColor: colors.emeraldWash, borderWidth: 1, borderColor: colors.border },
   directionIconText: { ...typography.heading, color: colors.platinum },
   receivedIconText: { color: colors.emerald },
+  earnIconText: { color: colors.emerald },
   rowCopy: { flex: 1, minWidth: 0, gap: spacing.xs },
   rowTitle: { ...typography.bodySmall, fontFamily: typography.subheading.fontFamily, color: colors.platinum },
   counterparty: { ...typography.caption, color: colors.mutedText, fontVariant: ['tabular-nums'] },

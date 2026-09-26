@@ -26,6 +26,7 @@ import { sepolia } from 'viem/chains';
 
 import { AssetLogo } from '@/components/asset-logo';
 import { platinum } from '@/constants/theme';
+import { withoutCommittedUsdc } from '@/wallet/aqua-position';
 import {
   createKernelPasskeyExecutionClient,
   type KernelExecutionCall,
@@ -765,7 +766,8 @@ async function readSepoliaSwapBalances(account: Address): Promise<SwapBalances> 
       args: [account],
     }),
   ]);
-  return { ETH: eth, USDC: usdc };
+  // USDC committed to an open Earn position stays in the wallet but is not swappable.
+  return withoutCommittedUsdc(account, { ETH: eth, USDC: usdc });
 }
 
 const SWAP_ERROR_MESSAGES: { pattern: RegExp; message: string }[] = [

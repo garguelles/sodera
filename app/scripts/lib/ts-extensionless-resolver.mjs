@@ -1,8 +1,8 @@
 // Lets verification scripts import app TypeScript modules that use extensionless relative imports.
-// The Uniswap SDKs' ESM builds are bundler-only (extensionless imports, unattributed JSON), so Node
-// loads their CommonJS builds instead.
+// The Uniswap and 1inch SDKs' ESM builds are bundler-only (extensionless imports, unattributed JSON),
+// so Node loads their CommonJS builds instead.
 export async function resolve(specifier, context, nextResolve) {
-  if (specifier.startsWith('@uniswap/')) {
+  if (specifier.startsWith('@uniswap/') || specifier.startsWith('@1inch/')) {
     return nextResolve(specifier, { ...context, conditions: ['node', 'require', 'default'] });
   }
   try {

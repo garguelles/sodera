@@ -1,6 +1,11 @@
 import { getAddress, type Address } from 'viem';
 
-import { SEPOLIA_ETH_USD_FEED_ADDRESS, SEPOLIA_USDC_ADDRESS } from './sepolia';
+import {
+  SEPOLIA_AQUA_ADDRESS,
+  SEPOLIA_AQUA_SWAP_VM_ROUTER_ADDRESS,
+  SEPOLIA_ETH_USD_FEED_ADDRESS,
+  SEPOLIA_USDC_ADDRESS,
+} from './sepolia';
 
 const ENTRY_POINT_V07_ADDRESS: Address = '0x0000000071727De22E5E9d8BAf0edAc6f37da032';
 
@@ -16,6 +21,10 @@ export const MULTIBAAS_CONTRACTS = Object.freeze({
   usdc: { address: SEPOLIA_USDC_ADDRESS as Address, label: 'usdc' },
   entryPoint: { address: ENTRY_POINT_V07_ADDRESS, label: 'usdc2' },
   ethUsdFeed: { address: SEPOLIA_ETH_USD_FEED_ADDRESS as Address, label: 'ethprice' },
+  /** Holds Earn positions and emits their Shipped, Docked, Pulled and Pushed events. */
+  aqua: { address: SEPOLIA_AQUA_ADDRESS as Address, label: 'aqua' },
+  /** Executes trades against Earn positions; it emits only Swapped. */
+  aquaSwapVmRouter: { address: SEPOLIA_AQUA_SWAP_VM_ROUTER_ADDRESS as Address, label: 'aquaswapvmrouter' },
 });
 
 /**

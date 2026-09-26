@@ -5,7 +5,11 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { platinum } from '@/constants/theme';
 import type { WidgetSize } from '@/launcher/home-layout';
 import { shortenAddress } from '@/wallet/sepolia';
-import type { TransactionActivityItem, TransactionActivityProvider } from '@/wallet/transaction-activity';
+import {
+  describeEarnActivity,
+  type TransactionActivityItem,
+  type TransactionActivityProvider,
+} from '@/wallet/transaction-activity';
 
 type ActivityWidgetProps = {
   size: WidgetSize;
@@ -80,6 +84,10 @@ export function describeActivity(item: TransactionActivityItem, now: number): st
   const when = formatRelativeTime(item.timestamp, now);
   if (item.kind === 'operation') {
     return `${item.success ? '' : 'Failed '}Account operation · ${item.sponsored ? 'Sponsored' : 'Self-funded'} · ${when}`;
+  }
+  if (item.kind === 'earn') return `${describeEarnActivity(item).title} · ${when}`;
+  if (item.kind === 'payment') {
+    return `Paid ${item.amount} ${item.asset} to ${shortenAddress(item.counterparty)} · ${when}`;
   }
   const sent = item.direction === 'sent';
   return `${sent ? 'Sent' : 'Received'} ${item.amount} ${item.asset} ${sent ? 'to' : 'from'} ${shortenAddress(item.counterparty)} · ${when}`;

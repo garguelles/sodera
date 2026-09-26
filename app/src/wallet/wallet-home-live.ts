@@ -2,9 +2,17 @@ import { AppState } from 'react-native';
 import { formatEther, formatUnits, type Address } from 'viem';
 import { sepolia } from 'viem/chains';
 
+import {
+  availableAfterCommitment,
+  formatPositionAmounts,
+  readAquaHoldings,
+  trimEther,
+  valueUsdCents,
+  type AquaHoldings,
+} from './aqua-position';
 import { createMultiBaasClient, readMultiBaasConfigFromEnv } from './multibaas';
 import { createMultiBaasBalanceClient } from './multibaas-balance-client';
-import type { WalletHomeProvider } from './wallet-home';
+import type { WalletHomeBalance, WalletHomePosition, WalletHomeProvider } from './wallet-home';
 import { SEPOLIA_ETH_USD_FEED_ADDRESS, SEPOLIA_USDC_ADDRESS } from './sepolia';
 import { readPersistedWalletIdentity, type WalletIdentityStorage } from './wallet-identity';
 import { walletIdentityNativeStorage } from './wallet-identity-native-storage';
@@ -60,10 +68,13 @@ export function createWalletHomeLiveProvider({
   storage = walletIdentityNativeStorage,
   client,
   now = Date.now,
+  readEarn = readAquaHoldings,
 }: {
   storage?: WalletIdentityStorage;
   client?: SepoliaBalanceClient;
   now?: () => number;
+  /** The wallet's WETH and open Earn position; home still loads when this read fails. */
+  readEarn?: (account: Address) => Promise<AquaHoldings>;
 } = {}) {
   const listeners = new Set<() => void>();
   let defaultClient: SepoliaBalanceClient | undefined;
@@ -78,7 +89,7 @@ export function createWalletHomeLiveProvider({
     async load() {
       const identity = await readPersistedWalletIdentity(storage);
       const balanceClient = getClient();
-      const [chainId, ethBalance, usdcBalanceResult] = await Promise.all([
+      const [chainId, ethBalance, usdcBalanceResult, earn] = await Promise.all([
         balanceClient.getChainId(),
         balanceClient.getBalance({ address: identity.account }),
         balanceClient.readContract({
@@ -87,12 +98,42 @@ export function createWalletHomeLiveProvider({
           functionName: 'balanceOf',
           args: [identity.account],
         }),
+        readEarn(identity.account).catch(() => null),
       ]);
       if (chainId !== sepolia.id) throw new Error('MultiBaas deployment is not Ethereum Sepolia');
       if (typeof usdcBalanceResult !== 'bigint') throw new Error('Invalid Sepolia USDC balance');
 
-      const ethValueUsdCents =
-        ethBalance === 0n ? 0 : await readEthValueUsdCents(balanceClient, ethBalance, now);
+      const position = earn?.position ?? null;
+      const needsPrice = ethBalance > 0n || (earn !== null && earn.wethBalance > 0n);
+      const price = needsPrice ? await readEthUsdPrice(balanceClient, now) : null;
+      const ethValueUsdCents = ethBalance === 0n ? 0 : ethValueInUsdCents(ethBalance, price);
+      // Tokens committed to the Earn position stay in the wallet; count them once, under the position.
+      const availableUsdc = availableAfterCommitment(usdcBalanceResult, position?.usdc ?? 0n);
+      const availableWeth = availableAfterCommitment(earn?.wethBalance ?? 0n, position?.weth ?? 0n);
+      const wethRows: WalletHomeBalance[] =
+        availableWeth > 0n
+          ? [
+              {
+                id: 'sepolia-weth',
+                name: 'Wrapped Ether',
+                symbol: 'WETH',
+                amount: `${trimEther(availableWeth)} WETH`,
+                valueUsdCents: ethValueInUsdCents(availableWeth, price),
+              },
+            ]
+          : [];
+      const positions: WalletHomePosition[] = position
+        ? [
+            {
+              id: `aqua:${position.record.strategyHash}`,
+              protocol: '1inch Aqua',
+              name: 'USDC/WETH liquidity',
+              symbol: 'USDC/WETH',
+              amount: formatPositionAmounts(position),
+              valueUsdCents: valueUsdCents(position, price),
+            },
+          ]
+        : [];
 
       return {
         status: 'ready',
@@ -113,13 +154,14 @@ export function createWalletHomeLiveProvider({
               },
               {
                 id: 'sepolia-usdc',
-                name: 'USD Coin',
+                name: position ? 'Available USD Coin' : 'USD Coin',
                 symbol: 'USDC',
-                amount: `${formatUnits(usdcBalanceResult, USDC_DECIMALS)} USDC`,
-                valueUsdCents: getUsdcValueUsdCents(usdcBalanceResult),
+                amount: `${formatUnits(availableUsdc, USDC_DECIMALS)} USDC`,
+                valueUsdCents: getUsdcValueUsdCents(availableUsdc),
               },
+              ...wethRows,
             ],
-            positions: [],
+            positions,
           },
         },
       } as const;
@@ -154,12 +196,7 @@ function getUsdcValueUsdCents(balance: bigint) {
   return Number(cents);
 }
 
-async function readEthValueUsdCents(
-  client: SepoliaBalanceClient,
-  balance: bigint,
-  now: () => number,
-) {
-  const price = await readEthUsdPrice(client, now);
+function ethValueInUsdCents(balance: bigint, price: { answer: bigint; decimals: number } | null) {
   if (!price) return 0;
   const divisor = WEI_PER_ETH * 10n ** BigInt(price.decimals);
   const cents = (balance * price.answer * 100n + divisor / 2n) / divisor;
