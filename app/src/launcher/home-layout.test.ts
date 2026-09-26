@@ -1,4 +1,5 @@
 import {
+  addWidget,
   cellRect,
   columnWidth,
   fits,
@@ -102,6 +103,34 @@ describe('home layout', () => {
       const layout = layoutOf({ id: 'wallet', x: 0, y: 0, w: 2, h: 2 });
       placeWidget(layout, 'phone', { w: 2, h: 2 });
       expect(layout.items).toHaveLength(1);
+    });
+  });
+
+  describe('addWidget', () => {
+    const layout = layoutOf({ id: 'identity', x: 0, y: 0, w: 4, h: 2 }, { id: 'wallet', x: 0, y: 2, w: 2, h: 2 });
+
+    it('uses the chosen empty cell when the widget fits there', () => {
+      expect(addWidget(layout, 'swap-earn', { w: 2, h: 1 }, { x: 2, y: 3 }).items.at(-1)).toEqual({
+        id: 'swap-earn',
+        x: 2,
+        y: 3,
+        w: 2,
+        h: 1,
+      });
+    });
+
+    it('falls back to the first free slot when the chosen cell is too small', () => {
+      expect(addWidget(layout, 'activity', { w: 4, h: 1 }, { x: 2, y: 2 }).items.at(-1)).toEqual({
+        id: 'activity',
+        x: 0,
+        y: 4,
+        w: 4,
+        h: 1,
+      });
+    });
+
+    it('uses the first free slot without a chosen cell', () => {
+      expect(addWidget(layout, 'swap-earn', { w: 2, h: 2 }).items.at(-1)).toMatchObject({ x: 2, y: 2 });
     });
   });
 

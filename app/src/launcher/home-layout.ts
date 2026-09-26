@@ -54,6 +54,17 @@ export function placeWidget(layout: HomeLayout, id: WidgetId, size: WidgetSize):
   return { ...base, items: [...base.items, { id, x: 0, y: lastRow, ...size }] };
 }
 
+/**
+ * Places a widget at `preferred` (an empty cell the user chose) when it fits there, otherwise in the first free slot.
+ * Replaces any existing instance.
+ */
+export function addWidget(layout: HomeLayout, id: WidgetId, size: WidgetSize, preferred: GridCell | null = null): HomeLayout {
+  const base = removeWidget(layout, id);
+  const candidate = preferred ? { id, ...preferred, ...size } : null;
+  if (candidate && fits(base, candidate)) return { ...base, items: [...base.items, candidate] };
+  return placeWidget(base, id, size);
+}
+
 /** Moves a widget to a new top-left cell, or returns null when it would not fit. */
 export function moveWidget(layout: HomeLayout, id: WidgetId, x: number, y: number): HomeLayout | null {
   return replaceItem(layout, id, (item) => ({ ...item, x, y }));

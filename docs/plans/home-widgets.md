@@ -1,6 +1,6 @@
 # Home widgets plan
 
-Status: approved scope. Sections 1 to 3 implemented; sections 4 and 5 not yet implemented. Branch: `feat/home-widgets`. No Linear ticket; commits use `{type}: {description}`.
+Status: approved scope. Sections 1 to 4 implemented; section 5 not yet implemented. Branch: `feat/home-widgets`. No Linear ticket; commits use `{type}: {description}`.
 
 This document is one large ticket split into sub-tickets numbered 1 to 5. Each section is written so that a fresh model can implement it without the conversation that produced this plan. Read "Scope decisions" and "Shared context" before any section. Section 2 depends on section 1. Section 3 depends on section 2. Section 4 depends on section 3. Section 5 depends on sections 3 and 4.
 
@@ -384,7 +384,7 @@ A plain reanimated `View` anchored to the bottom, no sheet library: 55 % of the 
 
 ### Steps
 
-**4.1 Sheet component.** Props: `{ definitions: WidgetDefinition[]; placedIds: Set<WidgetId>; open: boolean; onOpenChange(open): void; onAdd(id): void }`. Definitions are `WIDGET_REGISTRY`.
+**4.1 Sheet component.** Props: `{ definitions: WidgetDefinition[]; placedIds: Set<WidgetId>; open: boolean; onOpenChange(open): void; onAdd(id): void }`. Definitions are the removable entries of `WIDGET_REGISTRY`; Phone cannot be removed, so it would always read "On home".
 
 **4.2 Tap to add.** `onAdd(id)` calls `placeWidget(layout, id, definition.defaultSize)`, selects the new item, saves, and scrolls the `ScrollView` to the new cell when it is below the fold (`scrollTo` using `cellRect`). `onAddAt(cell)` from an empty cell opens the sheet and remembers the cell; the next `onAdd` tries `{ ...cell, ...defaultSize }` through `fits` first and falls back to `placeWidget`.
 
@@ -397,6 +397,18 @@ A plain reanimated `View` anchored to the bottom, no sheet library: 55 % of the 
 - Remove Activity, open the sheet, tap Activity: it returns to the first free 4×1 slot and is selected.
 - Wallet shows "On home" while placed.
 - Tap a `+` cell, then a widget that fits there: it lands in that cell.
+
+### Implementation notes
+
+Implemented as specified. Not yet checked on a device; the acceptance criteria above are the manual test. Differences and additions:
+
+- The sheet lists removable widgets only, so Phone is not in it (see 4.1 and Scope decisions).
+- The header hint reads "tap to add" until section 5 adds dragging; section 5 changes it to the mock's "drag onto home".
+- Adding a widget collapses the sheet so the new, selected widget is visible, and scrolls the home only when the widget is outside the area above the collapsed sheet.
+- `addWidget(layout, id, size, preferred)` in `home-layout.ts` holds the "chosen `+` cell, else first free slot" rule so it is unit-tested; `index.tsx` calls it.
+- `LauncherScreen` gained `overlay` (the sheet), `contentInsetBottom` (room for the 32 dp collapsed handle in edit mode), `scrollRef`, and `onScrollMetrics` (offset and viewport height), which section 5 also needs.
+- `layoutRowHeights(items, rows)` in `widget-registry.ts` is shared by `HomeGrid` and the scroll-into-view calculation. `WidgetDefinition.icon` is typed as `SymbolViewProps['name']`.
+- The sheet's open and collapsed positions animate with a reanimated `withTiming`; the handle follows a drag and snaps at 40 dp. While open, a transparent backdrop over the screen collapses it on tap.
 
 ## Section 5: Drag to move and drag from the sheet
 

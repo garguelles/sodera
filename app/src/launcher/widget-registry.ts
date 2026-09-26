@@ -1,11 +1,12 @@
-import { HOME_GRID, type HomeLayout, type HomeLayoutItem, type WidgetId, type WidgetSize } from './home-layout';
+import type { SymbolViewProps } from 'expo-symbols';
+
+import { HOME_GRID, rowHeights, type HomeLayout, type HomeLayoutItem, type WidgetId, type WidgetSize } from './home-layout';
 
 export type WidgetDefinition = {
   id: WidgetId;
   title: string;
   subtitle: string;
-  /** SymbolView names. */
-  icon: { ios: string; android: string; web: string };
+  icon: SymbolViewProps['name'];
   sizes: readonly WidgetSize[];
   /** Natural height in dp of each size, keyed `${w}x${h}`; grid rows take their height from these. */
   heights: Readonly<Record<string, number>>;
@@ -104,6 +105,11 @@ export function isWidgetId(value: unknown): value is WidgetId {
 /** Natural height of a widget at a size; falls back to whole 72 dp rows for sizes without an entry. */
 export function widgetHeight(definition: WidgetDefinition, size: WidgetSize): number {
   return definition.heights[`${size.w}x${size.h}`] ?? size.h * HOME_GRID.rowHeight + (size.h - 1) * HOME_GRID.gap;
+}
+
+/** Row heights for a layout from each widget's natural height; see `rowHeights`. */
+export function layoutRowHeights(items: readonly HomeLayoutItem[], rows: number): number[] {
+  return rowHeights(items, (item) => widgetHeight(getWidgetDefinition(item.id), item), rows);
 }
 
 /**

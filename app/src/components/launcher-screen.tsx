@@ -1,6 +1,6 @@
 import { SymbolView } from 'expo-symbols';
-import { type ReactNode, useRef } from 'react';
-import { type GestureResponderEvent, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { type ReactNode, type RefObject, useRef } from 'react';
+import { type GestureResponderEvent, type NativeScrollEvent, type NativeSyntheticEvent, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { platinum } from '@/constants/theme';
@@ -15,6 +15,13 @@ type LauncherScreenProps = {
   /** Edit mode: the header shows `EDIT HOME` and a Done pill, and swipe-up is disabled. */
   editing?: boolean;
   onDone?: () => void;
+  /** Drawn over the screen, such as the widgets sheet in edit mode. */
+  overlay?: ReactNode;
+  /** Extra space at the end of the scroll content so an overlay does not cover the last row. */
+  contentInsetBottom?: number;
+  scrollRef?: RefObject<ScrollView | null>;
+  /** Scroll offset and visible height of the home scroll view. */
+  onScrollMetrics?: (metrics: { offset: number; viewportHeight: number }) => void;
 };
 
 const { colors, radius, spacing, typography } = platinum;
@@ -26,8 +33,18 @@ export function LauncherScreen({
   onOpenAssistant,
   editing = false,
   onDone,
+  overlay,
+  contentInsetBottom = 0,
+  scrollRef,
+  onScrollMetrics,
 }: LauncherScreenProps) {
   const touchStart = useRef<{ x: number; y: number } | null>(null);
+  const scrollMetrics = useRef({ offset: 0, viewportHeight: 0 });
+
+  const reportScroll = (next: Partial<{ offset: number; viewportHeight: number }>) => {
+    scrollMetrics.current = { ...scrollMetrics.current, ...next };
+    onScrollMetrics?.(scrollMetrics.current);
+  };
 
   const handleTouchStart = (event: GestureResponderEvent) => {
     touchStart.current = { x: event.nativeEvent.pageX, y: event.nativeEvent.pageY };
@@ -83,9 +100,13 @@ export function LauncherScreen({
         </View>
       )}
       <ScrollView
+        ref={scrollRef}
         style={styles.content}
-        contentContainerStyle={[styles.contentInner, editing && styles.contentEditing]}
-        contentInsetAdjustmentBehavior="automatic">
+        contentContainerStyle={[styles.contentInner, editing && styles.contentEditing, { paddingBottom: spacing.md + contentInsetBottom }]}
+        contentInsetAdjustmentBehavior="automatic"
+        onLayout={(event) => reportScroll({ viewportHeight: event.nativeEvent.layout.height })}
+        onScroll={(event: NativeSyntheticEvent<NativeScrollEvent>) => reportScroll({ offset: event.nativeEvent.contentOffset.y })}
+        scrollEventThrottle={32}>
         {homeContent}
       </ScrollView>
       <View onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd} style={[styles.gestureArea, editing && styles.gestureDisabled]}>
@@ -93,6 +114,7 @@ export function LauncherScreen({
         <Text style={styles.gestureText}>SWIPE UP FOR PHONE</Text>
         <View style={styles.gestureBar} />
       </View>
+      {overlay}
     </SafeAreaView>
   );
 }

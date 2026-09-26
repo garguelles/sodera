@@ -9,7 +9,6 @@ import {
   gridHeight,
   HOME_GRID,
   rowCount,
-  rowHeights,
   rowTop,
   type GridCell,
   type GridMetrics,
@@ -18,7 +17,7 @@ import {
   type WidgetId,
   type WidgetSize,
 } from '@/launcher/home-layout';
-import { getWidgetDefinition, nearestSupportedSize, widgetHeight } from '@/launcher/widget-registry';
+import { getWidgetDefinition, layoutRowHeights, nearestSupportedSize } from '@/launcher/widget-registry';
 
 type HomeGridProps = {
   layout: HomeLayout;
@@ -54,7 +53,7 @@ export function HomeGrid({
 }: HomeGridProps) {
   const [width, setWidth] = useState(0);
   const rows = rowCount(layout) + (editing ? 1 : 0);
-  const heights = rowHeights(layout.items, (item) => widgetHeight(getWidgetDefinition(item.id), item), rows);
+  const heights = layoutRowHeights(layout.items, rows);
   const metrics: GridMetrics = { columnWidth: columnWidth(width), gap: HOME_GRID.gap, rowHeights: heights };
   const selected = editing ? (layout.items.find((item) => item.id === selectedId) ?? null) : null;
 
