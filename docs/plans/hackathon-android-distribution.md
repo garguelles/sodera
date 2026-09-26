@@ -16,10 +16,25 @@ Google Play internal testing is an optional second channel if the Play Console a
 
 ## Build and validate
 
-1. From `app/`, run `npx eas-cli@latest build --platform android --profile preview`. Record the build URL, APK download URL, version, and build ID. Do not use the `production` profile for the direct APK: its default Android artifact is intended for Play submission.
+1. From `app/`, run `pnpm build:android` (or `npm run build:android`). Record the build URL, APK download URL, version, and build ID. Do not use the `production` profile for the direct APK: its default Android artifact is intended for Play submission.
 2. Download the APK and compare `apksigner verify --print-certs path/to/sodera.apk` with the fingerprint served by `https://sodera.xyz/.well-known/assetlinks.json`. If they differ, update `landing/public/.well-known/assetlinks.json`, deploy the landing site, and verify the HTTPS response before testing passkeys.
 3. Install that exact release APK on a clean physical Android phone, without Metro. Test launch, fresh wallet/passkey onboarding, wallet home, a Sepolia balance, a passkey-authorized transaction if funded, launcher registration and return to the previous home app. Test the link and installation instructions on a second device if available. Record any incomplete flows honestly in the submission.
-4. Put an **Install Android app** link to the verified EAS artifact on the landing page and in the hackathon submission; include a QR code if useful. Say that Android may ask users to allow installation from the browser and that the wallet uses Sepolia testnet assets. Keep a copy of the validated APK and link so a later rebuild cannot silently replace the submitted artifact.
+4. Publish the validated EAS install URL as described below, then put an **Install Android app** link to `https://sodera.xyz/download/android` on the landing page and in the hackathon submission; include a QR code if useful. EAS hosts the APK; the landing page only directs visitors to its install page. Say that Android may ask users to allow installation from the browser and that the wallet uses Sepolia testnet assets. Keep a copy of the validated APK and link so a later rebuild cannot silently replace the submitted artifact.
+
+### Updating the install link
+
+Each EAS build has a different URL. Store the **approved** build in a Git-tracked `landing/public/android-release.json` file, which Vite copies to `/android-release.json` on Railway. Create the file only after the first APK passes signing, passkey, and device checks. Use this format (replace the example values with the actual approved build):
+
+```json
+{
+  "buildId": "<EAS build ID>",
+  "installUrl": "https://expo.dev/accounts/pragma-collective/projects/sodera/builds/<EAS build ID>"
+}
+```
+
+Implement `landing/src/main.tsx` so its **Install Android app** button points to the stable `/download/android` route. That route fetches `/android-release.json` and navigates to `installUrl`; show a useful unavailable/retry state if the file is missing or invalid instead of redirecting to an unapproved build. The existing Caddy SPA fallback serves this React route. The button and route must use the same release file as their source of truth, and the URL must be an HTTPS EAS install page, not a build-list page or a local APK path. Verify the EAS project's unauthenticated internal-build access is enabled and test the link on a phone without an Expo login.
+
+To promote a replacement, update only `landing/public/android-release.json` after validation, commit it, and let Railway redeploy; verify `/android-release.json` and `/download/android` on the deployed site. A successful build alone must not replace the judge-facing APK. To automate promotion later, have a workflow receive the approved build ID after manual device validation, update this JSON file, and trigger a landing deployment; do not make the site query the latest EAS build at request time.
 
 ## Optional Play internal testing
 
