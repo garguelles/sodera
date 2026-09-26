@@ -13,6 +13,7 @@ import { createRateLimiter } from './rate-limit.ts';
 import { ProposeRequestSchema } from './schema.ts';
 import { createTools } from './tools.ts';
 import type { TranscriptStore } from './transcript.ts';
+import type { SwapQuoter } from './uniswap.ts';
 
 export const MAX_BODY_BYTES = 32 * 1024;
 
@@ -25,6 +26,7 @@ export type AppDependencies = {
   valueCapUsd: number;
   multibaas: MultiBaasClient;
   resolveEns: (name: string) => Promise<Address | null>;
+  quoteSwap: SwapQuoter;
   transcripts: TranscriptStore;
   now?: () => number;
   log?: (line: Record<string, unknown>) => void;
@@ -78,6 +80,7 @@ export function createApp(deps: AppDependencies) {
         context,
         multibaas: deps.multibaas,
         resolveEns: deps.resolveEns,
+        quoteSwap: deps.quoteSwap,
         now,
         resolvedNames,
         calls,

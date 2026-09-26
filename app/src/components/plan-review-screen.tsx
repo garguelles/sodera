@@ -1,11 +1,11 @@
 import * as Clipboard from 'expo-clipboard';
 import { router } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { formatEther, type Hash } from 'viem';
 
-import { encodePlan, type ReviewLine } from '@/agent/plan-encoder';
+import { encodePlan, type PlanEncoderDependencies, type ReviewLine } from '@/agent/plan-encoder';
 import { pendingPlan } from '@/agent/pending-plan';
 import { platinum } from '@/constants/theme';
 import {
@@ -35,7 +35,12 @@ type PlanReviewScreenProps = {
   copyTransactionHash?: (hash: Hash) => Promise<void>;
   openTransaction?: (url: string) => Promise<void>;
   onDone?: () => void;
+  /** Swap quoting and the clock, injectable for tests. */
+  encoder?: PlanEncoderDependencies;
 };
+
+/** Refresh a swap quote this close to its deadline rather than sign one that may expire in flight. */
+export const QUOTE_REFRESH_MARGIN_SECONDS = 30n;
 
 let defaultCeremonyClient: PasskeyCeremonyClient | undefined;
 
@@ -50,6 +55,7 @@ export function PlanReviewScreen({
     await Linking.openURL(url);
   },
   onDone = () => router.back(),
+  encoder,
 }: PlanReviewScreenProps) {
   const ceremony =
     ceremonyClient ??
@@ -60,46 +66,59 @@ export function PlanReviewScreen({
   const [transactionHash, setTransactionHash] = useState<Hash | null>(null);
   const [message, setMessage] = useState('');
   const [copied, setCopied] = useState(false);
+  const [notice, setNotice] = useState('');
+  const expiresAt = useRef<bigint | null>(null);
   const executionClient = useRef<KernelPasskeyExecutionClient | null>(null);
   const executing = useRef(false);
   const active = useRef(true);
 
+  const prepare = useCallback(async () => {
+    try {
+      const pending = pendingPlan.get();
+      if (!pending) throw new Error('There is no plan to review. Ask Dera again.');
+      const encoded = await encodePlan(pending.plan, encoder);
+      const identity = await readPersistedWalletIdentity(storage);
+      const client = await createExecutionClient({ ceremonyClient: ceremony, credential: identity.credential });
+      if (client.account.toLowerCase() !== identity.account.toLowerCase()) {
+        throw new Error('The signing account does not match the persisted wallet');
+      }
+      const prepared = await client.prepare(encoded.calls);
+      assertCallsMatch(prepared, encoded.calls);
+      if (!active.current) return;
+      executionClient.current = client;
+      expiresAt.current = encoded.expiresAt;
+      setLines(encoded.lines);
+      setReview(prepared);
+      setStep('review');
+    } catch (error) {
+      if (!active.current) return;
+      setMessage(describeError(error));
+      setStep('failed');
+    }
+  }, [ceremony, createExecutionClient, encoder, storage]);
+
   useEffect(() => {
     active.current = true;
-    const prepare = async () => {
-      try {
-        const pending = pendingPlan.get();
-        if (!pending) throw new Error('There is no plan to review. Ask Dera again.');
-        const encoded = encodePlan(pending.plan);
-        const identity = await readPersistedWalletIdentity(storage);
-        const client = await createExecutionClient({ ceremonyClient: ceremony, credential: identity.credential });
-        if (client.account.toLowerCase() !== identity.account.toLowerCase()) {
-          throw new Error('The signing account does not match the persisted wallet');
-        }
-        const prepared = await client.prepare(encoded.calls);
-        assertCallsMatch(prepared, encoded.calls);
-        if (!active.current) return;
-        executionClient.current = client;
-        setLines(encoded.lines);
-        setReview(prepared);
-        setStep('review');
-      } catch (error) {
-        if (!active.current) return;
-        setMessage(describeError(error));
-        setStep('failed');
-      }
-    };
-    void prepare();
+    // Deferred so the effect only schedules work; prepare's state updates happen after it.
+    void Promise.resolve().then(prepare);
     return () => {
       active.current = false;
       ceremony.cancelPending();
     };
-  }, [ceremony, createExecutionClient, storage]);
+  }, [ceremony, prepare]);
 
   const confirm = async () => {
     const client = executionClient.current;
     if (!review || !client || executing.current) return;
+    const nowSeconds = BigInt(Math.floor((encoder?.now ?? Date.now)() / 1000));
+    if (expiresAt.current !== null && nowSeconds >= expiresAt.current - QUOTE_REFRESH_MARGIN_SECONDS) {
+      setNotice('The swap quote expired, so it was refreshed. Check the amounts again.');
+      setStep('preparing');
+      await prepare();
+      return;
+    }
     executing.current = true;
+    setNotice('');
     setStep('authorizing');
     try {
       const evidence = await client.execute(review.userOperationHash);
@@ -145,6 +164,12 @@ export function PlanReviewScreen({
               operation. Once confirmed, it cannot be reversed.
             </Text>
           </View>
+
+          {notice ? (
+            <View accessibilityRole="alert" style={styles.notice}>
+              <Text style={styles.noticeText}>{notice}</Text>
+            </View>
+          ) : null}
 
           <View style={styles.card}>
             {lines.map((line, index) => (
@@ -283,6 +308,14 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     gap: spacing.md,
   },
+  notice: {
+    borderRadius: radius.lg,
+    backgroundColor: colors.warningWash,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+  },
+  noticeText: { ...typography.bodySmall, color: colors.warning },
   lineRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   lineNumber: {
     width: 28,

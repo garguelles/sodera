@@ -1,5 +1,5 @@
 import { betaZodTool } from '@anthropic-ai/sdk/helpers/beta/zod';
-import { formatUnits, getAddress, isAddress, type Address } from 'viem';
+import { formatUnits, getAddress, isAddress, parseUnits, type Address } from 'viem';
 import { z } from 'zod';
 
 import {
@@ -10,6 +10,7 @@ import {
   type MultiBaasClient,
 } from './multibaas.ts';
 import type { AgentContext } from './schema.ts';
+import type { SwapDirection, SwapQuoter } from './uniswap.ts';
 
 export const ETH_USD_MAX_AGE_SECONDS = 7_200;
 export const ETH_USD_MAX_FUTURE_SECONDS = 300;
@@ -19,6 +20,7 @@ export type ToolDependencies = {
   context: AgentContext;
   multibaas: MultiBaasClient;
   resolveEns: (name: string) => Promise<Address | null>;
+  quoteSwap: SwapQuoter;
   now: () => number;
   /** Names resolved during this request, shared with the policy check. */
   resolvedNames: Map<string, Address>;
@@ -139,10 +141,32 @@ export async function resolveName(deps: ToolDependencies, { name }: { name: stri
   return { address: getAddress(address), source: 'ens' as const };
 }
 
-export async function quoteSwap() {
-  // PRA-212 has not published a pinned Uniswap route yet. The tool stays declared so the
-  // tool list, and therefore the prompt cache, does not change when swaps arrive.
-  return { error: 'swaps unavailable' };
+const SWAP_ASSETS: Record<SwapDirection, { input: 'ETH' | 'USDC'; output: 'ETH' | 'USDC' }> = {
+  eth_to_usdc: { input: 'ETH', output: 'USDC' },
+  usdc_to_eth: { input: 'USDC', output: 'ETH' },
+};
+const DECIMALS = { ETH: 18, USDC: 6 } as const;
+
+/** Quote from the pinned Uniswap v4 pool; the phone quotes again at review before signing. */
+export async function quoteSwap(
+  deps: ToolDependencies,
+  { direction, amountIn }: { direction: SwapDirection; amountIn: string },
+) {
+  if (!deps.context.capabilities.swap) return { error: 'swaps unavailable' };
+  const { input, output } = SWAP_ASSETS[direction];
+  if (!/^(0|[1-9]\d*)(\.\d+)?$/.test(amountIn) || (amountIn.split('.')[1] ?? '').length > DECIMALS[input]) {
+    return { error: `amountIn must be a decimal ${input} amount with at most ${DECIMALS[input]} decimals` };
+  }
+  const amount = parseUnits(amountIn, DECIMALS[input]);
+  if (amount <= 0n) return { error: 'amountIn must be greater than zero' };
+  const quote = await deps.quoteSwap(direction, amount);
+  return {
+    amountIn: `${amountIn} ${input}`,
+    expectedOut: `${formatUnits(quote.amountOut, DECIMALS[output])} ${output}`,
+    minimumOut: `${formatUnits(quote.minAmountOut, DECIMALS[output])} ${output}`,
+    slippage: '0.5%',
+    venue: 'Uniswap v4 on Sepolia',
+  };
 }
 
 export async function getEthPrice(deps: ToolDependencies) {
@@ -203,7 +227,7 @@ export function createTools(deps: ToolDependencies) {
         direction: z.enum(['eth_to_usdc', 'usdc_to_eth']),
         amountIn: z.string(),
       }),
-      run: () => runSafely(deps, 'quote_swap', () => quoteSwap()),
+      run: (input) => runSafely(deps, 'quote_swap', () => quoteSwap(deps, input)),
     }),
     betaZodTool({
       name: 'get_eth_price',

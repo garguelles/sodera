@@ -40,7 +40,7 @@ describe('loadAgentContext', () => {
     expect(AGENT_CAPABILITIES).toEqual({
       send_eth: true,
       send_usdc: true,
-      swap: false,
+      swap: true,
       vault_deposit: false,
       vault_withdraw: false,
     });

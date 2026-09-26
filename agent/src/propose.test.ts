@@ -19,6 +19,7 @@ function toolDeps(overrides: Partial<ToolDependencies> = {}): ToolDependencies {
     context: createContext(),
     multibaas: fakeMultiBaas(),
     resolveEns: vi.fn().mockResolvedValue(null),
+    quoteSwap: vi.fn(),
     now: () => Date.parse('2026-09-26T08:00:00Z'),
     resolvedNames: new Map(),
     calls: [],

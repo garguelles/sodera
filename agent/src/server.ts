@@ -9,6 +9,7 @@ import { normalize } from 'viem/ens';
 import { createApp } from './app.ts';
 import { createMultiBaasClient } from './multibaas.ts';
 import type { Effort } from './propose.ts';
+import { createSwapQuoter } from './uniswap.ts';
 import { createTranscriptStore } from './transcript.ts';
 
 const EFFORTS: readonly Effort[] = ['low', 'medium', 'high', 'xhigh', 'max'];
@@ -48,6 +49,7 @@ const app = createApp({
       return null;
     }
   },
+  quoteSwap: createSwapQuoter(chain),
   transcripts: createTranscriptStore(),
 });
 

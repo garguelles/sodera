@@ -47,7 +47,9 @@ const plan: EnrichedPlan = {
   ],
 };
 
-function review(calls = [{ to: ALICE, valueWei: '10000000000000000', data: '0x' as const }]): KernelOperationReview {
+function review(
+  calls: KernelOperationReview['calls'] = [{ to: ALICE, valueWei: '10000000000000000', data: '0x' }],
+): KernelOperationReview {
   return {
     userOperationHash: operationHash,
     account,
@@ -112,6 +114,52 @@ describe('PlanReviewScreen', () => {
     expect(await screen.findByText('Plan completed')).toBeOnTheScreen();
     expect(pendingPlan.get()).toBeNull();
     expect(pendingPlan.consumeCompleted()).toBe(true);
+  });
+
+  it('refreshes an expired swap quote instead of signing it', async () => {
+    const swapPlan: EnrichedPlan = {
+      summary: 'Swap 0.01 ETH for USDC.',
+      assumptions: [],
+      totalUsdCents: 2600n,
+      actions: [
+        {
+          action: { type: 'swap', direction: 'eth_to_usdc', amountIn: '0.01' },
+          asset: 'ETH',
+          amountBase: 10_000_000_000_000_000n,
+          recipient: null,
+          usdCents: 2600n,
+        },
+      ],
+    };
+    pendingPlan.set({ plan: swapPlan, intent: 'swap' });
+    let clock = Date.parse('2026-09-26T08:00:00Z');
+    const quoteSwap = jest.fn().mockResolvedValue({ amountOut: 26_000_000n, minAmountOut: 25_870_000n });
+    const client = executionClient();
+    jest.mocked(client.prepare).mockImplementation(async (calls = []) =>
+      review(calls.map((call) => ({ to: call.to, valueWei: call.value.toString(), data: call.data }))),
+    );
+    await render(
+      <PlanReviewScreen
+        ceremonyClient={ceremonyClient}
+        createExecutionClient={jest.fn().mockResolvedValue(client)}
+        encoder={{ quoteSwap, now: () => clock }}
+        storage={storage()}
+      />,
+    );
+
+    expect(await screen.findByText('Swap 0.01 ETH for ~26 USDC')).toBeOnTheScreen();
+    clock += 10 * 60 * 1000;
+    await act(async () => {
+      fireEvent.press(screen.getByRole('button', { name: 'Confirm with passkey' }));
+    });
+
+    expect(await screen.findByText('The swap quote expired, so it was refreshed. Check the amounts again.')).toBeOnTheScreen();
+    expect(quoteSwap).toHaveBeenCalledTimes(2);
+    expect(client.execute).not.toHaveBeenCalled();
+    await act(async () => {
+      fireEvent.press(screen.getByRole('button', { name: 'Confirm with passkey' }));
+    });
+    expect(client.execute).toHaveBeenCalledTimes(1);
   });
 
   it('refuses a prepared operation that differs from the plan', async () => {

@@ -6,11 +6,11 @@ import { readEthUsdPrice, SEPOLIA_READ_ABI, type SepoliaBalanceClient } from '@/
 import type { AddressBookEntry } from './address-book';
 import type { AgentContext } from './schema';
 
-/** Actions the phone can encode today; the others wait on their seams (swaps, vault). */
+/** Actions the phone can encode today; the vault waits on its seam (PRA-216). */
 export const AGENT_CAPABILITIES: AgentContext['capabilities'] = {
   send_eth: true,
   send_usdc: true,
-  swap: false,
+  swap: true,
   vault_deposit: false,
   vault_withdraw: false,
 };

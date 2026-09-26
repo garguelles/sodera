@@ -30,6 +30,7 @@ function setup(reply: () => Anthropic.Beta.BetaMessage[] | Promise<Anthropic.Bet
     valueCapUsd: 250,
     multibaas: fakeMultiBaas(),
     resolveEns: vi.fn().mockResolvedValue(null),
+    quoteSwap: vi.fn(),
     transcripts: createTranscriptStore(),
     log,
     ...overrides,
