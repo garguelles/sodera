@@ -1,7 +1,6 @@
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { getAddress } from 'viem';
 
-import { createAddressBook } from '@/agent/address-book';
 import { AgentUnavailableError, type AgentClient, type ProposeResponse } from '@/agent/agent-client';
 import { pendingPlan } from '@/agent/pending-plan';
 
@@ -19,6 +18,13 @@ jest.mock('@/wallet/wallet-identity-native-storage', () => ({ walletIdentityNati
 
 const ACCOUNT = getAddress('0x1111111111111111111111111111111111111111');
 const ALICE = '0x2222222222222222222222222222222222222222';
+const SERVICE_ADDRESS = '0x3333333333333333333333333333333333333333';
+
+/** ENS as the phone sees it: only alice.sodera.eth has an address. */
+const resolveRecipient = jest.fn(async (name: string) => {
+  if (name !== 'alice.sodera.eth') throw new Error(`${name} has no Ethereum address`);
+  return { address: getAddress(ALICE), name };
+});
 
 function balances() {
   const now = Date.now();
@@ -31,7 +37,7 @@ function balances() {
   };
 }
 
-const plan = (amount: string): ProposeResponse => ({
+const plan = (amount: string): Extract<ProposeResponse, { kind: 'plan' }> => ({
   kind: 'plan',
   summary: `Send ${amount} ETH to alice.`,
   actions: [{ type: 'send_eth', recipient: { kind: 'name', value: 'alice' }, amount }],
@@ -50,7 +56,7 @@ async function setup(responses: (ProposeResponse | Error)[]) {
   await render(
     <AssistantScreen
       account={ACCOUNT}
-      addressBook={createAddressBook(`alice=${ALICE}`)}
+      resolveRecipient={resolveRecipient}
       balanceClient={() => balanceClient}
       client={{ propose } as unknown as AgentClient}
       config={{ baseUrl: 'http://localhost', token: 't' }}
@@ -94,8 +100,8 @@ describe('AssistantScreen', () => {
 
     expect(screen.getByText('send 0.01 eth to alice')).toBeOnTheScreen();
     expect(screen.getByText('make it 0.02 instead')).toBeOnTheScreen();
-    expect(screen.getByText('Send 0.01 ETH to alice')).toBeOnTheScreen();
-    expect(screen.getByText('Send 0.02 ETH to alice')).toBeOnTheScreen();
+    expect(screen.getByText('Send 0.01 ETH to alice.sodera.eth')).toBeOnTheScreen();
+    expect(screen.getByText('Send 0.02 ETH to alice.sodera.eth')).toBeOnTheScreen();
     expect(propose.mock.calls[1][0]).toMatchObject({ reset: false });
     expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeOnTheScreen();
     expect(screen.getAllByRole('button', { name: 'Review & sign' })).toHaveLength(1);
@@ -112,6 +118,30 @@ describe('AssistantScreen', () => {
       focusEffect?.();
     });
     expect(screen.getByLabelText('Signed')).toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: 'Review & sign' })).not.toBeOnTheScreen();
+  });
+
+  it('resolves a bare label as a Sodera name on the phone and ignores the service address', async () => {
+    await setup([{ ...plan('0.01'), enriched: { actions: [{ recipient: { address: SERVICE_ADDRESS, name: 'alice' } }] } }]);
+    await say('send 0.01 eth to alice');
+
+    expect(resolveRecipient).toHaveBeenCalledWith('alice.sodera.eth');
+    await act(async () => {
+      fireEvent.press(screen.getByRole('button', { name: 'Review & sign' }));
+    });
+    expect(pendingPlan.get()?.plan.actions[0].recipient).toEqual({ address: getAddress(ALICE), name: 'alice.sodera.eth' });
+  });
+
+  it('blocks a plan whose recipient the phone cannot resolve', async () => {
+    const unknown: ProposeResponse = {
+      ...plan('0.01'),
+      actions: [{ type: 'send_eth', recipient: { kind: 'name', value: 'nobodyhere' }, amount: '0.01' }],
+    };
+    await setup([unknown]);
+    await say('send 0.01 eth to nobodyhere');
+
+    expect(resolveRecipient).toHaveBeenCalledWith('nobodyhere.sodera.eth');
+    expect(screen.getByText("I don't know that recipient.")).toBeOnTheScreen();
     expect(screen.queryByRole('button', { name: 'Review & sign' })).not.toBeOnTheScreen();
   });
 

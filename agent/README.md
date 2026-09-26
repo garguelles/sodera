@@ -1,6 +1,6 @@
 # Sodera agent
 
-A small Hono service that turns a wallet request such as "send 0.01 eth to alice" into a plan the Sodera app can review and sign. It also proxies Uniswap Trading API quotes for paying with another asset, so the Uniswap API key never ships in the app. Claude proposes the plan through a fixed list of actions, the service checks it against the safety rules in `src/policy.ts`, and the app checks it again before encoding anything. The service never signs, never builds transactions, and holds no keys to the wallet.
+A small Hono service that turns a wallet request such as "send 0.01 eth to alice" into a plan the Sodera app can review and sign. Recipients can be a Sodera label (`john` resolves as `john.sodera.eth`), a full ENS name, or a `0x` address; `resolve_name` looks names up in ENS on Sepolia, and there is no address book for now. It also proxies Uniswap Trading API quotes for paying with another asset, so the Uniswap API key never ships in the app. Claude proposes the plan through a fixed list of actions, the service checks it against the safety rules in `src/policy.ts`, and the app checks it again before encoding anything. The service never signs, never builds transactions, and holds no keys to the wallet.
 
 ## Endpoints
 
@@ -30,7 +30,7 @@ pnpm dev
 | `ANTHROPIC_API_KEY` | Claude API key. Set a monthly spend limit on it. |
 | `AGENT_APP_TOKEN` | Random string the app sends as its bearer token. It ships inside the app, so it only deters casual abuse. |
 | `MULTIBAAS_BASE_URL`, `MULTIBAAS_API_KEY` | The same MultiBaas deployment and DApp User key the app uses. |
-| `SEPOLIA_RPC_URL` | Used only for ENS lookups. |
+| `SEPOLIA_RPC_URL` | ENS recipient lookups and swap quotes. |
 | `PLAN_VALUE_CAP_USD` | Largest plan value in US dollars. Default `250`. |
 | `AGENT_MODEL` | Default `claude-sonnet-5`. |
 | `AGENT_EFFORT` | `low`, `medium`, `high`, `xhigh`, or `max`. Default `high`. |
@@ -56,13 +56,13 @@ The schema and policy tests read the shared vectors in `../docs/plans/agent-sche
 
 ## Smoke test
 
-Save a request body, then send it three ways. Replace the domain, token and account.
+Save a request body, then send it a few ways. Replace the domain, token and account, and `<label>` with a claimed Sodera name.
 
 ```bash
 cat > /tmp/propose.json <<'JSON'
 {
   "account": "0x1111111111111111111111111111111111111111",
-  "intent": "send 0.01 eth to alice",
+  "intent": "send 0.01 eth to <label>",
   "context": {
     "chainId": 11155111,
     "now": "2026-09-26T08:00:00.000Z",
@@ -70,7 +70,7 @@ cat > /tmp/propose.json <<'JSON'
     "prices": { "ethUsd": "2600" },
     "vaultPosition": null,
     "sponsorship": null,
-    "addressBook": [{ "name": "alice", "address": "0x2222222222222222222222222222222222222222" }],
+    "addressBook": [],
     "capabilities": { "send_eth": true, "send_usdc": true, "swap": false, "vault_deposit": false, "vault_withdraw": false }
   }
 }
@@ -81,9 +81,10 @@ propose() {
     curl -s https://<domain>/agent/propose -H 'authorization: Bearer <token>' -H 'content-type: application/json' -d @-
 }
 
-propose 'send 0.01 eth to alice'   # expect "kind": "plan"
-propose 'send some eth to alice'   # expect "kind": "clarification"
-propose 'send 100 eth to alice'    # expect "kind": "clarification" naming the 0.5 ETH balance
+propose 'send 0.01 eth to <label>'   # expect "kind": "plan" to <label>.sodera.eth
+propose 'send 0.01 eth to nobodyhere'   # expect "kind": "clarification" asking who that is
+propose 'send some eth to <label>'   # expect "kind": "clarification"
+propose 'send 100 eth to <label>'    # expect "kind": "clarification" naming the 0.5 ETH balance
 propose 'how much usdc did I send this month?'   # expect "kind": "answer" with a source range
 ```
 

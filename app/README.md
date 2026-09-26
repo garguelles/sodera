@@ -17,13 +17,12 @@ For a standalone Android APK to share with testers, run `pnpm build:android`. Th
 
 ## Wallet agent
 
-The sparkle button in the launcher header opens Dera, the assistant: a chat that sends each sentence to the agent service in [`../agent/`](../agent/) and shows the plan it returns. The phone re-runs the same safety rules before anything is signed. Set these in `.env.local` to enable it; without the first two the button is hidden.
+The sparkle button in the launcher header opens Dera, the assistant: a chat that sends each sentence to the agent service in [`../agent/`](../agent/) and shows the plan it returns. Recipients can be a Sodera label (`john` means `john.sodera.eth`), a full ENS name, or a `0x` address. The phone resolves names through its own Sepolia RPC and re-runs the same safety rules before anything is signed. Set these in `.env.local` to enable it; without the first two the button is hidden.
 
 | Variable | Value |
 | --- | --- |
 | `EXPO_PUBLIC_AGENT_BASE_URL` | The agent service URL. For a local agent, this Mac's Wi-Fi address, for example `http://192.168.1.20:8080`, with the phone on the same network |
 | `EXPO_PUBLIC_AGENT_APP_TOKEN` | The service's `AGENT_APP_TOKEN` |
-| `EXPO_PUBLIC_AGENT_CONTACTS` | Placeholder contacts, `alice=0x…,bob=0x…`, until an address book or ENS lands |
 
 ## Android passkey proof
 

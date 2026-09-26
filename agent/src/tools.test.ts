@@ -5,7 +5,7 @@ import { MULTIBAAS_CONTRACTS, type EventQuery } from './multibaas.ts';
 import { getActivity, getEthPrice, quoteSwap, resolveName, summarizeActivity, type ToolDependencies } from './tools.ts';
 import { fakeMultiBaas } from './test/fakes.ts';
 import { createSwapQuoter, SEPOLIA_UNISWAP_V4_QUOTER_ADDRESS, SWAP_POOL_KEY } from './uniswap.ts';
-import { ACCOUNT, ALICE, createContext } from './test/fixtures.ts';
+import { ACCOUNT, ALICE, createContext, resolveAliceEns } from './test/fixtures.ts';
 
 const now = Date.parse('2026-09-26T08:00:00Z');
 
@@ -14,7 +14,7 @@ function deps(overrides: Partial<ToolDependencies> = {}): ToolDependencies {
     account: getAddress(ACCOUNT),
     context: createContext(),
     multibaas: fakeMultiBaas(),
-    resolveEns: vi.fn().mockResolvedValue(null),
+    resolveEns: vi.fn(resolveAliceEns),
     quoteSwap: vi.fn(),
     now: () => now,
     resolvedNames: new Map(),
@@ -26,23 +26,24 @@ function deps(overrides: Partial<ToolDependencies> = {}): ToolDependencies {
 }
 
 describe('resolve_name', () => {
-  it('prefers the address book and records the result for the policy check', async () => {
-    const resolveEns = vi.fn();
-    const tool = deps({ resolveEns });
+  it('reads a bare label as a Sodera name and records both spellings for the policy check', async () => {
+    const tool = deps();
 
-    await expect(resolveName(tool, { name: 'Alice' })).resolves.toEqual({
+    await expect(resolveName(tool, { name: ' Alice ' })).resolves.toEqual({
       address: getAddress(ALICE),
-      source: 'address_book',
+      name: 'alice.sodera.eth',
     });
-    expect(resolveEns).not.toHaveBeenCalled();
+    expect(tool.resolveEns).toHaveBeenCalledWith('alice.sodera.eth');
     expect(tool.resolvedNames.get('alice')).toBe(getAddress(ALICE));
+    expect(tool.resolvedNames.get('alice.sodera.eth')).toBe(getAddress(ALICE));
   });
 
-  it('falls back to ENS for dotted names', async () => {
+  it('resolves dotted names as typed', async () => {
     const ens = '0x3333333333333333333333333333333333333333' as Address;
     const tool = deps({ resolveEns: vi.fn().mockResolvedValue(ens) });
 
-    await expect(resolveName(tool, { name: 'bob.eth' })).resolves.toEqual({ address: ens, source: 'ens' });
+    await expect(resolveName(tool, { name: 'Bob.eth' })).resolves.toEqual({ address: ens, name: 'bob.eth' });
+    expect(tool.resolveEns).toHaveBeenCalledWith('bob.eth');
     expect(tool.resolvedNames.get('bob.eth')).toBe(ens);
   });
 
@@ -50,7 +51,14 @@ describe('resolve_name', () => {
     const resolveEns = vi.fn().mockResolvedValue(null);
     await expect(resolveName(deps({ resolveEns }), { name: 'carol.eth' })).resolves.toEqual({ error: 'unknown' });
     await expect(resolveName(deps({ resolveEns }), { name: 'carol' })).resolves.toEqual({ error: 'unknown' });
-    expect(resolveEns).toHaveBeenCalledTimes(1);
+    expect(resolveEns.mock.calls).toEqual([['carol.eth'], ['carol.sodera.eth']]);
+  });
+
+  it('returns unknown without a lookup for names ENS cannot normalize', async () => {
+    const resolveEns = vi.fn();
+    await expect(resolveName(deps({ resolveEns }), { name: 'bad name' })).resolves.toEqual({ error: 'unknown' });
+    await expect(resolveName(deps({ resolveEns }), { name: '  ' })).resolves.toEqual({ error: 'unknown' });
+    expect(resolveEns).not.toHaveBeenCalled();
   });
 });
 

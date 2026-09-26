@@ -1,5 +1,6 @@
 import { betaZodTool } from '@anthropic-ai/sdk/helpers/beta/zod';
 import { formatUnits, getAddress, isAddress, parseUnits, type Address } from 'viem';
+import { normalize } from 'viem/ens';
 import { z } from 'zod';
 
 import {
@@ -20,6 +21,7 @@ export const SUMMARY_MAX_RANGE_DAYS = 366;
 export const ACTIVITY_COVERAGE = 'USDC transfers and account operations, by UTC day. ETH transfers are not included.';
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 const DAY_MS = 86_400_000;
+const SODERA_NAME_SUFFIX = '.sodera.eth';
 
 export type ToolDependencies = {
   account: Address;
@@ -326,19 +328,26 @@ export async function summarizeActivity(
   };
 }
 
-export async function resolveName(deps: ToolDependencies, { name }: { name: string }) {
-  const key = name.trim().toLowerCase();
-  const entry = deps.context.addressBook.find((item) => item.name.toLowerCase() === key);
-  if (entry) {
-    const address = getAddress(entry.address);
-    deps.resolvedNames.set(key, address);
-    return { address, source: 'address_book' as const };
+/** The ENS name a recipient stands for: a bare label is a Sodera name, so `john` is `john.sodera.eth`. */
+export function ensNameFor(input: string): string | null {
+  const name = input.trim().toLowerCase();
+  if (!name) return null;
+  try {
+    return normalize(name.includes('.') ? name : `${name}${SODERA_NAME_SUFFIX}`);
+  } catch {
+    return null;
   }
-  if (!key.includes('.')) return { error: 'unknown' };
-  const address = await deps.resolveEns(key);
-  if (!address) return { error: 'unknown' };
-  deps.resolvedNames.set(key, getAddress(address));
-  return { address: getAddress(address), source: 'ens' as const };
+}
+
+export async function resolveName(deps: ToolDependencies, { name }: { name: string }) {
+  const ensName = ensNameFor(name);
+  if (!ensName) return { error: 'unknown' };
+  const resolved = await deps.resolveEns(ensName);
+  if (!resolved) return { error: 'unknown' };
+  const address = getAddress(resolved);
+  deps.resolvedNames.set(name.trim().toLowerCase(), address);
+  deps.resolvedNames.set(ensName, address);
+  return { address, name: ensName };
 }
 
 const SWAP_ASSETS: Record<SwapDirection, { input: 'ETH' | 'USDC'; output: 'ETH' | 'USDC' }> = {
@@ -434,7 +443,7 @@ export function createTools(deps: ToolDependencies) {
     betaZodTool({
       name: 'resolve_name',
       description:
-        "Resolve a recipient name to an address. Checks the user's address book first, then ENS for names containing a dot. Returns {address, source} or {error: 'unknown'}.",
+        "Resolve a recipient name to an address through ENS. A name without a dot is a Sodera name: 'john' means 'john.sodera.eth'. Returns {address, name} with the full ENS name, or {error: 'unknown'}.",
       inputSchema: z.object({ name: z.string().min(1).max(255) }),
       run: (input) => runSafely(deps, 'resolve_name', () => resolveName(deps, input)),
     }),

@@ -3,7 +3,6 @@ import { formatEther, formatUnits, type Address } from 'viem';
 import { SEPOLIA_USDC_ADDRESS } from '@/wallet/sepolia';
 import { readEthUsdPrice, SEPOLIA_READ_ABI, type SepoliaBalanceClient } from '@/wallet/wallet-home-live';
 
-import type { AddressBookEntry } from './address-book';
 import type { AgentContext } from './schema';
 
 /** Actions the phone can encode today; the vault waits on its seam (PRA-216). */
@@ -19,12 +18,10 @@ export const AGENT_CAPABILITIES: AgentContext['capabilities'] = {
 export async function loadAgentContext({
   account,
   balanceClient,
-  addressBook,
   now = Date.now,
 }: {
   account: Address;
   balanceClient: SepoliaBalanceClient;
-  addressBook: readonly AddressBookEntry[];
   now?: () => number;
 }): Promise<AgentContext> {
   const [chainId, ethWei, usdcMicro, price] = await Promise.all([
@@ -48,7 +45,8 @@ export async function loadAgentContext({
     prices: { ethUsd: price ? formatUnits(price.answer, price.decimals) : null },
     vaultPosition: null,
     sponsorship: null,
-    addressBook: addressBook.map((entry) => ({ name: entry.name, address: entry.address })),
+    // Reserved for a future phonebook; recipients resolve through ENS.
+    addressBook: [],
     capabilities: AGENT_CAPABILITIES,
   };
 }

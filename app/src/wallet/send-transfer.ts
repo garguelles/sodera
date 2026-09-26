@@ -10,6 +10,8 @@ import {
 import { normalize } from 'viem/ens';
 import { sepolia } from 'viem/chains';
 
+import { SODERA_NAME_SUFFIX } from '@/ens/username';
+
 import { SEPOLIA_USDC_ADDRESS } from './sepolia';
 import type { KernelExecutionCall } from './kernel-passkey-execution';
 
@@ -24,6 +26,13 @@ export function sepoliaClient() {
   const rpcUrl = process.env.EXPO_PUBLIC_SEPOLIA_RPC_URL;
   if (!rpcUrl) throw new Error('Ethereum RPC URL is required to send');
   return createPublicClient({ chain: sepolia, transport: http(rpcUrl) });
+}
+
+/** A bare label is a Sodera name, so `john` is `john.sodera.eth`. Addresses and dotted names are unchanged. */
+export function expandSoderaName(input: string): string {
+  const value = input.trim();
+  if (!value || isAddress(value) || value.includes('.')) return value;
+  return `${value.toLowerCase()}${SODERA_NAME_SUFFIX}`;
 }
 
 export async function resolveSepoliaRecipient(input: string): Promise<{ address: Address; name: string | null }> {

@@ -76,7 +76,8 @@ export async function propose({
 
 /**
  * The volatile part of the request. Deterministic for a given input so identical requests
- * render identically. Address book entries appear by name only; the service resolves them.
+ * render identically. Address book entries appear by name only, and the line is left out while the
+ * book is empty; recipients are resolved through ENS.
  */
 export function renderUserMessage(intent: string, context: AgentContext, valueCapUsd: number) {
   const capabilities = Object.entries(context.capabilities)
@@ -99,7 +100,7 @@ export function renderUserMessage(intent: string, context: AgentContext, valueCa
         : 'unknown'
     }`,
     `- Plan value limit: $${valueCapUsd}`,
-    `- Address book: ${names.length > 0 ? names.join(', ') : 'empty'}`,
+    ...(names.length > 0 ? [`- Address book: ${names.join(', ')}`] : []),
     `- Actions: ${capabilities}`,
   ].join('\n');
 }

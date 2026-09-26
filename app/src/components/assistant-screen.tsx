@@ -5,16 +5,23 @@ import { KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, View, ty
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { Address } from 'viem';
 
-import { createAddressBook, type AddressBook } from '@/agent/address-book';
 import { AGENT_CAPABILITIES } from '@/agent/agent-context';
 import { createAgentClient, type AgentClient, type AgentConfig } from '@/agent/agent-client';
 import { pendingPlan } from '@/agent/pending-plan';
 import { useAgentPlanner } from '@/agent/use-agent-planner';
 import { platinum } from '@/constants/theme';
+import type { resolveSepoliaRecipient } from '@/wallet/send-transfer';
 import { createDefaultBalanceClient, type SepoliaBalanceClient } from '@/wallet/wallet-home-live';
 
 import { IntentBar, type IntentBarMode } from './intent-bar';
 import { PlanCard } from './plan-card';
+
+const SUGGESTIONS = [
+  AGENT_CAPABILITIES.send_eth ? 'send 0.01 eth to alice' : null,
+  AGENT_CAPABILITIES.send_usdc ? 'send 2 usdc to alice' : null,
+  AGENT_CAPABILITIES.swap ? 'swap 50 usdc to eth' : null,
+  AGENT_CAPABILITIES.vault_deposit ? 'deposit 100 usdc' : null,
+].filter((item): item is string => item !== null);
 
 type AssistantScreenProps = {
   account: Address;
@@ -25,7 +32,7 @@ type AssistantScreenProps = {
   onOpenSwap: () => void;
   client?: AgentClient;
   balanceClient?: () => SepoliaBalanceClient;
-  addressBook?: AddressBook;
+  resolveRecipient?: typeof resolveSepoliaRecipient;
 };
 
 export function AssistantScreen({
@@ -37,10 +44,9 @@ export function AssistantScreen({
   onOpenSwap,
   client,
   balanceClient,
-  addressBook,
+  resolveRecipient,
 }: AssistantScreenProps) {
   const agentClient = useMemo(() => client ?? createAgentClient({ config }), [client, config]);
-  const contacts = useMemo(() => addressBook ?? createAddressBook(), [addressBook]);
   const readBalances = useMemo(() => {
     if (balanceClient) return balanceClient;
     let cached: SepoliaBalanceClient | undefined;
@@ -50,7 +56,7 @@ export function AssistantScreen({
     account,
     client: agentClient,
     balanceClient: readBalances,
-    addressBook: contacts,
+    resolveRecipient,
   });
 
   const [text, setText] = useState('');
@@ -74,16 +80,6 @@ export function AssistantScreen({
     setText('');
     await submit(intent);
   };
-
-  const suggestions = useMemo(() => {
-    const name = contacts.list()[0]?.name ?? 'alice';
-    return [
-      AGENT_CAPABILITIES.send_eth ? `send 0.01 eth to ${name}` : null,
-      AGENT_CAPABILITIES.send_usdc ? `send 2 usdc to ${name}` : null,
-      AGENT_CAPABILITIES.swap ? 'swap 50 usdc to eth' : null,
-      AGENT_CAPABILITIES.vault_deposit ? 'deposit 100 usdc' : null,
-    ].filter((item): item is string => item !== null);
-  }, [contacts]);
 
   const lastId = turns.at(-1)?.id;
 
@@ -133,7 +129,7 @@ export function AssistantScreen({
               <Text style={styles.emptyBody}>Dera turns what you say into a plan. You review and sign every step with your passkey.</Text>
               <Text style={styles.eyebrow}>TRY SAYING</Text>
               <View style={styles.chips}>
-                {suggestions.map((suggestion) => (
+                {SUGGESTIONS.map((suggestion) => (
                   <Pressable
                     key={suggestion}
                     accessibilityRole="button"

@@ -219,13 +219,7 @@ export function createApp(deps: AppDependencies) {
       const policy = evaluatePolicy(result.output, context, {
         account,
         valueCapUsd: deps.valueCapUsd,
-        resolveName: (name) => {
-          const key = name.trim().toLowerCase();
-          const fromTool = resolvedNames.get(key);
-          if (fromTool) return fromTool;
-          const entry = context.addressBook.find((item) => item.name.toLowerCase() === key);
-          return entry ? getAddress(entry.address) : null;
-        },
+        resolveName: (name) => resolvedNames.get(name.trim().toLowerCase()) ?? null,
       });
       if (!policy.ok) {
         record('rejected', result);

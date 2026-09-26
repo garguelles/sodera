@@ -55,8 +55,8 @@ export type PolicyOptions = {
   account: Address;
   valueCapUsd: number;
   /**
-   * Resolves a recipient name. The service passes the address book plus any names the
-   * `resolve_name` tool resolved during this request; the app adds its ENS resolver.
+   * Resolves a recipient name. The service passes the names its `resolve_name` tool resolved
+   * through ENS during this request; the app passes the names it resolved itself.
    */
   resolveName: (name: string) => Address | null;
 };

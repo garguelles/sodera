@@ -19,11 +19,10 @@ function balanceClient(round: readonly bigint[] = [1n, 268_775_750_636n, 0n, Big
 }
 
 describe('loadAgentContext', () => {
-  it('snapshots balances, price, and contacts, with the seams that do not exist yet as null', async () => {
+  it('snapshots balances and price, with the seams that do not exist yet as null', async () => {
     const context = await loadAgentContext({
       account: ACCOUNT,
       balanceClient: balanceClient(),
-      addressBook: [{ name: 'alice', address: getAddress('0x2222222222222222222222222222222222222222') }],
       now: () => now,
     });
 
@@ -34,7 +33,7 @@ describe('loadAgentContext', () => {
       prices: { ethUsd: '2687.75750636' },
       vaultPosition: null,
       sponsorship: null,
-      addressBook: [{ name: 'alice', address: '0x2222222222222222222222222222222222222222' }],
+      addressBook: [],
       capabilities: AGENT_CAPABILITIES,
     });
     expect(AGENT_CAPABILITIES).toEqual({
@@ -48,7 +47,7 @@ describe('loadAgentContext', () => {
 
   it('sends no price when the feed is stale', async () => {
     const stale = balanceClient([1n, 268_775_750_636n, 0n, BigInt(now / 1000 - 10_000), 1n]);
-    const context = await loadAgentContext({ account: ACCOUNT, balanceClient: stale, addressBook: [], now: () => now });
+    const context = await loadAgentContext({ account: ACCOUNT, balanceClient: stale, now: () => now });
     expect(context.prices.ethUsd).toBeNull();
   });
 });
