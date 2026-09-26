@@ -1,8 +1,8 @@
-import { FeaturePreview } from '@/components/feature-preview';
+import { PlatinumFeaturePreview } from '@/components/platinum-feature-preview';
 
 export default function EarnRoute() {
   return (
-    <FeaturePreview
+    <PlatinumFeaturePreview
       title="Earn"
       symbol="✳"
       description="A simpler way to discover what your assets can do, right from your phone."
