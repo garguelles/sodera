@@ -111,6 +111,18 @@ export function createEnsApp(
   }
 
   if (claims) {
+    app.get('/ens/claims/account/:account', async (c) => {
+      const account = c.req.param('account');
+      if (!isAddress(account) || getAddress(account) === zeroAddress) {
+        return c.json({ error: 'invalid_request' }, 400);
+      }
+      try {
+        const claim = await claims.getForAccount(getAddress(account));
+        return claim ? c.json(claim) : c.json({ error: 'not_found' }, 404);
+      } catch {
+        return c.json({ error: 'ens_unavailable' }, 503);
+      }
+    });
     app.post('/ens/claims', bodyLimit({
       maxSize: 2048,
       onError: (c) => c.json({ error: 'body_too_large' }, 413),

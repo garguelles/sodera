@@ -28,6 +28,7 @@ export function createClaims(store: ClaimStore, ipHashKey: string, isIssuerAutho
       });
     },
     get: (id: string) => store.get(id),
+    getForAccount: (account: Address) => store.getForAccount(account),
   };
 }
 

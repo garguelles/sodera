@@ -135,5 +135,12 @@ export async function createPostgresClaimStore(pool: Pool): Promise<ClaimStore> 
       const result = await pool.query<ClaimRow>('SELECT * FROM ens_claims WHERE id = $1', [id]);
       return result.rows[0] ? fromRow(result.rows[0]) : null;
     },
+    async getForAccount(account) {
+      const result = await pool.query<ClaimRow>(`
+        SELECT * FROM ens_claims
+        WHERE chain_id = 11155111 AND registry = $1 AND account = $2 AND status <> 'detached'
+      `, [ENSV2.child.toLowerCase(), account.toLowerCase()]);
+      return result.rows[0] ? fromRow(result.rows[0]) : null;
+    },
   };
 }

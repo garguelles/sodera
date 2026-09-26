@@ -82,7 +82,8 @@ describe('ENS claim API', () => {
     const account = '0x1111111111111111111111111111111111111111';
     const id = '11111111-1111-4111-8111-111111111111';
     const claim = { id, account, name: 'gargs.sodera.eth', status: 'queued' };
-    const claims = { submit: vi.fn().mockResolvedValue(claim), get: vi.fn().mockResolvedValue(claim) } as unknown as Claims;
+    const claims = { submit: vi.fn().mockResolvedValue(claim), get: vi.fn().mockResolvedValue(claim),
+      getForAccount: vi.fn().mockResolvedValue(claim) } as unknown as Claims;
     const app = createEnsApp(vi.fn().mockResolvedValue(available), undefined, claims);
     const response = await app.request('/ens/claims', {
       method: 'POST', headers: { 'content-type': 'application/json' },
@@ -92,6 +93,9 @@ describe('ENS claim API', () => {
     expect(await response.json()).toEqual(claim);
     expect(claims.submit).toHaveBeenCalledWith(expect.objectContaining({ account, label: 'gargs', name: 'gargs.sodera.eth' }));
     expect(await (await app.request(`/ens/claims/${id}`)).json()).toEqual(claim);
+    expect(await (await app.request(`/ens/claims/account/${account}`)).json()).toEqual(claim);
+    expect(claims.getForAccount).toHaveBeenCalledWith(account);
+    expect((await app.request('/ens/claims/account/bad')).status).toBe(400);
     expect((await app.request('/ens/claims', { method: 'POST',
       headers: { 'content-type': 'application/json' }, body: JSON.stringify({ account, label: 'gargs', claimToken: 'bad' }),
     })).status).toBe(400);

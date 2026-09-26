@@ -47,6 +47,7 @@ export type OnboardingProfileStorage = {
 export type UsernameClaimClient = {
   submit(parameters: { account: Address; credential: RegisteredPrimaryPasskey; label: string }): Promise<{ id: string; status: string; name: string }>;
   status(parameters: { id: string; account: Address; label: string }): Promise<{ status: string; name: string }>;
+  forAccount(account: Address): Promise<{ id: string; status: string; name: string } | null>;
 };
 
 export type OnboardingAccess =

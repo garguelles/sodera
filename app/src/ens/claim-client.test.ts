@@ -47,4 +47,15 @@ describe('ENS claim client', () => {
     await expect(createEnsClaimClient({ ceremonyClient, request, baseUrl: 'https://api.sodera.xyz' })
       .submit({ account, credential, label: 'gargs' })).rejects.toThrow('mismatched claim');
   });
+
+  it('recovers an existing name for the same wallet and explains conflicts', async () => {
+    jest.mocked(createEnsClaimAuthClient).mockReturnValue({ prove: jest.fn().mockResolvedValue({ claimToken: 'A'.repeat(43) }) } as never);
+    request.mockResolvedValueOnce(reply({ id, account, name: 'gargs.sodera.eth', chainId: 11155111, status: 'confirmed' }))
+      .mockResolvedValueOnce(reply({ error: 'not_found' }, 404))
+      .mockResolvedValueOnce(reply({ error: 'name_or_wallet_taken' }, 409));
+    const client = createEnsClaimClient({ ceremonyClient, request, baseUrl: 'https://api.sodera.xyz' });
+    await expect(client.forAccount(account)).resolves.toMatchObject({ id, name: 'gargs.sodera.eth', status: 'confirmed' });
+    await expect(client.forAccount(account)).resolves.toBeNull();
+    await expect(client.submit({ account, credential, label: 'gargs' })).rejects.toThrow('already has a Sodera name');
+  });
 });

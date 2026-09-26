@@ -1,4 +1,3 @@
-import { Host, TextInput } from '@expo/ui';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -8,6 +7,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -44,7 +44,7 @@ const defaultCeremonyClient = createPasskeyCeremonyClient(passkeyNativeAdapter, 
   isForeground: waitForAppForeground,
 });
 
-type Stage = 'loading' | 'welcome' | 'wallet' | 'activation' | 'username' | 'claimPending' | 'home' | 'recovery' | 'blocked';
+type Stage = 'loading' | 'welcome' | 'wallet' | 'username' | 'claimPending' | 'home' | 'recovery' | 'blocked';
 
 export function OnboardingScreen({
   client = defaultCeremonyClient,
@@ -74,9 +74,6 @@ export function OnboardingScreen({
   const [executionClient, setExecutionClient] = useState<KernelPasskeyExecutionClient | null>(null);
   const [activationReview, setActivationReview] = useState<KernelOperationReview | null>(null);
   const [label, setLabel] = useState('');
-  const [available, setAvailable] = useState(false);
-  const currentLabel = useRef('');
-  const availableLabel = useRef<string | null>(null);
   const [pending, setPending] = useState<PendingEnsClaim | null>(null);
   const [profile, setProfile] = useState<OnboardingProfile | null>(null);
   const [resumeWallet, setResumeWallet] = useState(false);
@@ -100,6 +97,17 @@ export function OnboardingScreen({
       };
     },
   });
+
+  const recoverClaim = async (wallet: Address) => {
+    const existing = await (usernameClaimClient ?? createEnsClaimClient({ ceremonyClient: client })).forAccount(wallet);
+    if (!existing) return false;
+    const saved = await persistPendingEnsClaim(profileStorage, {
+      account: wallet, username: existing.name, claimId: existing.id,
+    });
+    setPending(saved);
+    setStage('claimPending');
+    return true;
+  };
 
   useEffect(() => {
     if (initialError) return;
@@ -229,7 +237,14 @@ export function OnboardingScreen({
       }
       setAccount(result.account);
       setExecutionClient(result.executionClient ?? null);
-      setStage(result.deployed ? 'username' : 'activation');
+      if (result.deployed && await recoverClaim(result.account)) return;
+      if (result.deployed) {
+        setStage('username');
+      } else if (result.executionClient) {
+        setActivationReview(await result.executionClient.prepare());
+      } else {
+        throw new Error('Wallet activation is unavailable. Reopen the existing wallet to retry.');
+      }
     } catch (error) {
       if (currentInvocation === invocation.current) setMessage(getErrorMessage(error));
     } finally {
@@ -261,42 +276,22 @@ export function OnboardingScreen({
     }
   };
 
-  const checkUsername = async () => {
-    if (operationInFlight.current) return;
-    operationInFlight.current = true;
-    setBusy(true);
-    setAvailable(false);
-    availableLabel.current = null;
-    setMessage('');
-    try {
-      const username = parseSoderaUsername(label);
-      if (!(await (identityReader ?? createEnsIdentityReader()).availability(username.label))) {
-        throw new Error('This name is unavailable or the parent expires too soon');
-      }
-      if (currentLabel.current === label) {
-        availableLabel.current = username.label;
-        setAvailable(true);
-      }
-    } catch (error) {
-      setMessage(getErrorMessage(error));
-    } finally {
-      operationInFlight.current = false;
-      setBusy(false);
-    }
-  };
-
   const claimUsername = async () => {
-    if (!account || !available || availableLabel.current !== label || operationInFlight.current) return;
+    if (!account || !label || operationInFlight.current) return;
     operationInFlight.current = true;
     const currentInvocation = ++invocation.current;
     setBusy(true);
     setMessage('');
     try {
+      if (await recoverClaim(account)) return;
+      const username = parseSoderaUsername(label);
+      if (!(await (identityReader ?? createEnsIdentityReader()).availability(username.label))) {
+        throw new Error('This name is unavailable or the parent expires too soon');
+      }
       const identity = await readPersistedWalletIdentity(identityStorage);
       if (!identity.deployed || identity.account.toLowerCase() !== account.toLowerCase()) {
         throw new Error('Activate this wallet before claiming a name');
       }
-      const username = parseSoderaUsername(label);
       const claim = await (usernameClaimClient ?? createEnsClaimClient({ ceremonyClient: client })).submit({
         account, credential: identity.credential, label: username.label,
       });
@@ -336,7 +331,7 @@ export function OnboardingScreen({
         setMessage('');
         setStage('home');
       } else {
-        setMessage(`Registration is ${result.status.replace(/_/g, ' ')}. This can take a moment on Sepolia.`);
+        setMessage('');
       }
     } catch (error) {
       setMessage(getErrorMessage(error));
@@ -398,51 +393,38 @@ export function OnboardingScreen({
             <>
               <View style={styles.hero}>
                 <Text style={styles.eyebrow}>YOUR PRIMARY PASSKEY</Text>
-                <Text style={styles.title}>{resumeWallet ? 'Finish your wallet.' : 'Create your wallet.'}</Text>
+                <Text style={styles.title}>{executionClient ? 'Activate your wallet.' : resumeWallet ? 'Finish your wallet.' : 'Create your wallet.'}</Text>
                 <Text style={styles.description}>
-                  Android will ask you to create a passkey. It directly controls your testnet smart account.
+                  {executionClient
+                    ? 'One passkey confirmation deploys your smart account and sends a zero-value Sepolia operation.'
+                    : 'Android will ask you to create a passkey. It directly controls your testnet smart account.'}
                 </Text>
               </View>
               <View style={styles.detailCard}>
-                <Text style={styles.detailTitle}>No password. No seed phrase.</Text>
-                <Text style={styles.detailBody}>
-                  This testnet wallet is tied to your passkey. Recovery is not available in this build.
-                </Text>
+                {executionClient ? (
+                  <>
+                    <Text style={styles.detailTitle}>Wallet activation</Text>
+                    <Text style={styles.detailBody}>Deploy wallet + 0 ETH operation on Sepolia</Text>
+                    <Text style={styles.detailBody}>Network fee: {activationReview?.sponsored ? 'Sponsored' : 'Requires Sepolia ETH if not sponsored'}</Text>
+                  </>
+                ) : (
+                  <>
+                    <Text style={styles.detailTitle}>No password. No seed phrase.</Text>
+                    <Text style={styles.detailBody}>This testnet wallet is tied to your passkey. Recovery is not available in this build.</Text>
+                  </>
+                )}
               </View>
               <InlineError message={message} />
               <View style={styles.actions}>
                 <ActionButton
                   busy={busy}
                   disabled={busy}
-                  label={resumeWallet ? 'Continue wallet setup' : 'Create with passkey'}
-                  onPress={createOrResumeWallet}
+                  label={executionClient ? activationReview ? 'Activate wallet' : 'Retry activation' : resumeWallet ? 'Continue wallet setup' : 'Create with passkey'}
+                  onPress={executionClient ? activateWallet : createOrResumeWallet}
                 />
-                {!resumeWallet ? (
+                {!resumeWallet && !executionClient ? (
                   <ActionButton label="Back" onPress={() => setStage('welcome')} secondary />
                 ) : null}
-              </View>
-            </>
-          ) : null}
-
-          {stage === 'activation' ? (
-            <>
-              <View style={styles.hero}>
-                <Text style={styles.eyebrow}>ACTIVATE YOUR WALLET</Text>
-                <Text style={styles.title}>Ready for your name.</Text>
-                <Text style={styles.description}>Your new smart account must be deployed before it can prove passkey control to the ENS issuer. Review and authorize a zero-value Sepolia operation.</Text>
-              </View>
-              {activationReview ? (
-                <View style={styles.detailCard}>
-                  <Text style={styles.detailTitle}>Review activation</Text>
-                  <Text selectable style={styles.detailBody}>Wallet: {activationReview.account}</Text>
-                  <Text selectable style={styles.detailBody}>Call: {activationReview.calls[0]?.to} · {activationReview.calls[0]?.valueWei} wei</Text>
-                  <Text selectable style={styles.detailBody}>UserOperation: {activationReview.userOperationHash}</Text>
-                  <Text style={styles.detailBody}>Sponsored: {activationReview.sponsored ? 'Yes' : 'No'} · Maximum network fee: {activationReview.maximumNetworkFeeWei} wei</Text>
-                </View>
-              ) : null}
-              <InlineError message={message} />
-              <View style={styles.actions}>
-                <ActionButton busy={busy} disabled={busy} label={activationReview ? 'Authorize wallet activation' : 'Prepare wallet activation'} onPress={activateWallet} />
               </View>
             </>
           ) : null}
@@ -457,45 +439,40 @@ export function OnboardingScreen({
                 </Text>
               </View>
               <View style={styles.nameCard}>
-                <Host matchContents={{ vertical: true }} style={{ width: '100%' }}>
-                  <TextInput autoCapitalize="none" autoCorrect={false} editable={!busy}
-                    placeholder="yourname" testID="ens-username" onChangeText={(value) => { currentLabel.current = value; availableLabel.current = null; setLabel(value); setAvailable(false); setMessage(''); }}
-                    style={styles.nameInput} />
-                </Host>
+                <TextInput
+                  accessibilityLabel="Choose your Sodera name"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  editable={!busy}
+                  maxLength={20}
+                  onChangeText={(value) => { setLabel(value); setMessage(''); }}
+                  placeholder="yourname"
+                  placeholderTextColor={colors.faintText}
+                  selectionColor={colors.emerald}
+                  style={styles.nameInput}
+                  testID="ens-username"
+                  value={label}
+                />
                 <Text style={styles.name}>.sodera.eth</Text>
-                {available ? <View style={styles.availablePill}>
-                  <View style={styles.availableDot} />
-                  <Text style={styles.availableText}>Available now</Text>
-                </View> : null}
               </View>
-              <Text style={styles.disclaimer}>
-                Free name registration; your passkey authorizes the request. Wait for on-chain confirmation before using this name.
-              </Text>
               <InlineError message={message} />
               <View style={styles.actions}>
                 <ActionButton
                   busy={busy}
                   disabled={busy || !label}
-                  label="Check availability"
-                  onPress={checkUsername}
+                  label="Claim"
+                  onPress={claimUsername}
                 />
-                <ActionButton busy={busy} disabled={busy || !available} label={`Claim ${label || 'your name'}.sodera.eth`} onPress={claimUsername} secondary />
               </View>
             </>
           ) : null}
 
           {stage === 'claimPending' && pending ? (
-            <>
-              <View style={styles.hero}>
-                <Text style={styles.eyebrow}>REGISTRATION IN PROGRESS</Text>
-                <Text style={styles.title}>Making it official.</Text>
-                <Text selectable style={styles.description}>Your request for {pending.username} is saved on this device. We will continue checking after you reopen Sodera.</Text>
-              </View>
-              <View style={styles.detailCard}><Text style={styles.detailTitle}>Waiting for Sepolia</Text>
-                <Text selectable style={styles.detailBody}>Claim ID: {pending.claimId}</Text></View>
+            <View accessibilityLabel="Registering Sodera name" style={styles.pendingMask}>
+              <ActivityIndicator color={colors.emerald} size="large" />
+              <Text style={styles.pendingTitle}>Making it official.</Text>
               <InlineError message={message} />
-              <View style={styles.actions}><ActionButton busy={busy} disabled={busy} label="Check registration status" onPress={() => void refreshClaim(pending)} /></View>
-            </>
+            </View>
           ) : null}
 
           {stage === 'home' && account && profile ? (
@@ -608,7 +585,7 @@ function InlineError({ message }: { message: string }) {
 function progressLabel(stage: Stage) {
   if (stage === 'welcome') return '1 / 4';
   if (stage === 'wallet') return '2 / 4';
-  if (stage === 'activation' || stage === 'username' || stage === 'claimPending') return '3 / 4';
+  if (stage === 'username' || stage === 'claimPending') return '3 / 4';
   return '4 / 4';
 }
 
@@ -638,6 +615,8 @@ const styles = StyleSheet.create({
   progress: { ...typography.labelSmall, marginLeft: 'auto', color: colors.mutedText },
   body: { flex: 1, justifyContent: 'space-between', paddingTop: spacing.xxl, paddingBottom: spacing.lg, gap: spacing.xxl },
   centered: { flex: 1, minHeight: 400, alignItems: 'center', justifyContent: 'center', gap: spacing.lg },
+  pendingMask: { flex: 1, minHeight: 400, alignItems: 'center', justifyContent: 'center', gap: spacing.xl },
+  pendingTitle: { ...typography.heading, color: colors.platinum, textAlign: 'center' },
   hero: { gap: spacing.md },
   eyebrow: { ...typography.labelSmall, color: colors.emerald },
   title: { ...typography.display, color: colors.platinum, maxWidth: 520 },
@@ -677,11 +656,14 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   name: { ...typography.title, color: colors.onPlatinum },
-  nameInput: { backgroundColor: colors.platinum, color: colors.onPlatinum, borderRadius: radius.md, paddingHorizontal: spacing.md, minHeight: 50 },
-  availablePill: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: colors.onPlatinum, borderRadius: radius.full, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
-  availableDot: { width: 7, height: 7, borderRadius: radius.full, backgroundColor: colors.emerald },
-  availableText: { ...typography.caption, color: colors.platinum },
-  disclaimer: { ...typography.bodySmall, color: colors.mutedText },
+  nameInput: {
+    ...typography.title,
+    color: colors.onPlatinum,
+    minHeight: 64,
+    paddingHorizontal: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.faintText,
+  },
   summaryCard: {
     backgroundColor: colors.surface,
     borderRadius: radius.xl,

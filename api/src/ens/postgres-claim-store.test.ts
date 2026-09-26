@@ -66,6 +66,7 @@ suite('Postgres claim redemption', () => {
     expect(results[0].id).toBe(results[1].id);
     expect(results[0]).toMatchObject({ account: getAddress(account), label, status: 'queued' });
     expect(await claims.get(results[0].id)).toMatchObject({ status: 'queued' });
+    expect(await claims.getForAccount(account)).toMatchObject({ id: results[0].id, label });
 
     const freshProof = await verifiedToken(account, label);
     const resumed = await claims.submit(claimInput(account, label, freshProof));
@@ -76,6 +77,7 @@ suite('Postgres claim redemption', () => {
     await expect(claims.submit(claimInput(account, nextLabel, secondToken)))
       .rejects.toBeInstanceOf(ClaimConflictError);
     const secondAccount = `0x${randomBytes(20).toString('hex')}` as const;
+    expect(await claims.getForAccount(secondAccount)).toBeNull();
     const thirdToken = await verifiedToken(secondAccount, label);
     await expect(claims.submit(claimInput(secondAccount, label, thirdToken)))
       .rejects.toBeInstanceOf(ClaimConflictError);

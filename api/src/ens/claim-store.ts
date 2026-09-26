@@ -34,4 +34,5 @@ export type ClaimStore = {
     tokenHash: string; ipHash: string; now: Date;
   }): Promise<ClaimRecord>;
   get(id: string): Promise<ClaimRecord | null>;
+  getForAccount(account: Address): Promise<ClaimRecord | null>;
 };

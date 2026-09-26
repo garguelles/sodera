@@ -1,5 +1,5 @@
 import { fetch as expoFetch } from 'expo/fetch';
-import type { Address } from 'viem';
+import { isAddress, type Address } from 'viem';
 
 import { createEnsClaimAuthClient, readSoderaApiUrl } from './claim-auth-client';
 import { parseSoderaUsername } from './username';
@@ -47,8 +47,28 @@ export function createEnsClaimClient({
         method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ account, label: username.label, claimToken: proof.claimToken }),
       });
-      if (!response.ok) throw new Error(`ENS claim request failed (${response.status})`);
+      if (!response.ok) {
+        if (response.status === 409) {
+          const body = await response.json().catch(() => null) as { error?: string } | null;
+          if (body?.error === 'name_or_wallet_taken') {
+            throw new Error('This wallet already has a Sodera name, or this label was claimed. Reopen setup to recover your name or choose another label.');
+          }
+        }
+        throw new Error(`ENS claim request failed (${response.status})`);
+      }
       return parseClaim(await response.json(), account, username.name);
+    },
+    async forAccount(account: Address) {
+      if (!isAddress(account)) throw new Error('Invalid ENS claim account');
+      const response = await request(`${url}/ens/claims/account/${account}`);
+      if (response.status === 404) return null;
+      if (!response.ok) throw new Error(`ENS account claim unavailable (${response.status})`);
+      const data = await response.json() as { name?: unknown };
+      if (typeof data.name !== 'string' || !data.name.endsWith('.sodera.eth')) {
+        throw new Error('ENS service returned a mismatched claim');
+      }
+      const username = parseSoderaUsername(data.name.slice(0, -'.sodera.eth'.length));
+      return parseClaim(data, account, username.name);
     },
     async status({ id, account, label }: { id: string; account: Address; label: string }) {
       const username = parseSoderaUsername(label);
