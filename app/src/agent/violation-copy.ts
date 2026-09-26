@@ -15,4 +15,5 @@ export const VIOLATION_TITLES: Record<ViolationCode, string> = {
   value_cap: 'That plan is too large for the assistant.',
   sponsorship: 'No sponsored operations left today.',
   no_authority_ops: "The planner's answer couldn't be read.",
+  ungrounded: "Dera couldn't back up that answer.",
 };

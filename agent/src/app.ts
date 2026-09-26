@@ -8,8 +8,9 @@ import { getAddress, type Address } from 'viem';
 
 import type { MultiBaasClient } from './multibaas.ts';
 import { PayQuoteRequestSchema, UnexpectedPayCallsError, type PayQuoter } from './pay-quote.ts';
+import { ungroundedFacts } from './grounding.ts';
 import { evaluatePolicy, serializeEnrichedPlan } from './policy.ts';
-import { propose, type Effort, type ProposeClient, type ProposeResult } from './propose.ts';
+import { propose, renderUserMessage, type Effort, type ProposeClient, type ProposeResult } from './propose.ts';
 import { createRateLimiter } from './rate-limit.ts';
 import { ProposeRequestSchema } from './schema.ts';
 import { createTools } from './tools.ts';
@@ -126,6 +127,8 @@ export function createApp(deps: AppDependencies) {
       if (reset) deps.transcripts.reset(account);
       const resolvedNames = new Map<string, Address>();
       const calls: string[] = [];
+      const toolResults: string[] = [];
+      const ranges: { from: string; to: string }[] = [];
       const tools = createTools({
         account,
         context,
@@ -135,6 +138,8 @@ export function createApp(deps: AppDependencies) {
         now,
         resolvedNames,
         calls,
+        toolResults,
+        ranges,
       });
 
       const record = (outcome: string, result?: ProposeResult) =>
@@ -190,6 +195,25 @@ export function createApp(deps: AppDependencies) {
       if (result.output.kind === 'clarification') {
         record('clarification', result);
         return c.json(result.output);
+      }
+      if (result.output.kind === 'answer') {
+        const snapshot = renderUserMessage(intent, context, deps.valueCapUsd);
+        if (ungroundedFacts(result.output, [...toolResults, snapshot]).length > 0) {
+          record('ungrounded', result);
+          return c.json({
+            kind: 'rejected',
+            summary: null,
+            violations: [
+              {
+                code: 'ungrounded',
+                actionIndex: null,
+                message: "Some figures in the answer didn't match your wallet data. Try a narrower question.",
+              },
+            ],
+          });
+        }
+        record('answer', result);
+        return c.json({ ...result.output, source: ranges.at(-1) ?? null });
       }
 
       const policy = evaluatePolicy(result.output, context, {

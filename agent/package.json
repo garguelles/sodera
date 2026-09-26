@@ -13,7 +13,8 @@
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "verify:pay-with": "tsx --env-file-if-exists=.env scripts/verify-pay-with-route.ts"
+    "verify:pay-with": "tsx --env-file-if-exists=.env scripts/verify-pay-with-route.ts",
+    "verify:activity": "tsx --env-file-if-exists=.env scripts/verify-activity-queries.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.128.0",

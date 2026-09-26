@@ -27,6 +27,13 @@ const ProposeResponseSchema = z.discriminatedUnion('kind', [
     enriched: z.unknown(),
   }),
   z.object({ kind: z.literal('clarification'), question: z.string() }),
+  z.object({
+    kind: z.literal('answer'),
+    text: z.string(),
+    facts: z.array(z.object({ label: z.string(), value: z.string() })),
+    /** The UTC days the answer's activity figures cover; `to` is exclusive. Null for snapshot answers. */
+    source: z.object({ from: z.string(), to: z.string() }).nullable(),
+  }),
   z.object({ kind: z.literal('rejected'), summary: z.string().nullable(), violations: z.array(ViolationSchema) }),
   z.object({ kind: z.literal('declined'), message: z.string() }),
 ]);

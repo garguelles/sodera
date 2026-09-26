@@ -7,8 +7,10 @@ A small Hono service that turns a wallet request such as "send 0.01 eth to alice
 | Method and path | Purpose |
 | --- | --- |
 | `GET /healthz` | Returns `{ "ok": true }`. |
-| `POST /agent/propose` | Takes `{ account, intent, context, reset? }` and returns a `plan`, `clarification`, `rejected`, or `declined` response. Requires `Authorization: Bearer <AGENT_APP_TOKEN>`. |
+| `POST /agent/propose` | Takes `{ account, intent, context, reset? }` and returns a `plan`, `clarification`, `answer`, `rejected`, or `declined` response. Requires `Authorization: Bearer <AGENT_APP_TOKEN>`. |
 | `POST /pay/quote` | Takes `{ account, payAsset, receiveAsset, amountOut }` (`ETH` or `USDC`, different assets, `amountOut` in base units) and returns an exact-output Uniswap quote with the single Universal Router call. The app adds its own approvals, the transfer to the payee and its own checks. Requires the same bearer token; answers `503 pay_unavailable` when `UNISWAP_API_KEY` is not set. |
+
+Questions about the wallet ("how much did I send alice this month?") return `{ kind: "answer", text, facts, source }`. The `summarize_activity` tool computes the figures with MultiBaas grouped queries over whole UTC days, and `source` is the range it covered. Every number in `facts` must appear in a tool result or the wallet snapshot; otherwise the service answers `rejected` with the `ungrounded` violation. The snapshot includes rounded ETH, its dollar value, and the total value so answers can quote them rather than compute them.
 
 Requests are limited to 32 KB. `/agent/propose` allows 10 per account per minute and 60 per IP per minute. `/pay/quote` allows 20 per account per minute, 60 per IP per minute, and 3 per second across all users, because each quote makes two Uniswap requests and the key allows 6 per second. Follow-up memory and rate limits live in memory, so run a single instance.
 
@@ -41,6 +43,7 @@ pnpm test
 pnpm typecheck
 pnpm build
 pnpm verify:pay-with   # live Trading API check on Sepolia; needs UNISWAP_API_KEY and SEPOLIA_RPC_URL
+VERIFY_ACCOUNT=0x... pnpm verify:activity   # live MultiBaas check of the summarize_activity queries
 ```
 
 The schema and policy tests read the shared vectors in `../docs/plans/agent-schema-vectors.json` and `../docs/plans/agent-policy-vectors.json`. The app's copies of the schema and policy must pass the same files.
@@ -81,6 +84,7 @@ propose() {
 propose 'send 0.01 eth to alice'   # expect "kind": "plan"
 propose 'send some eth to alice'   # expect "kind": "clarification"
 propose 'send 100 eth to alice'    # expect "kind": "clarification" naming the 0.5 ETH balance
+propose 'how much usdc did I send this month?'   # expect "kind": "answer" with a source range
 ```
 
 Each request logs one JSON line with the outcome, tool calls, token usage and latency. From the second identical request on, `cacheReadInputTokens` should be above zero. The log never contains the request sentence or address book.

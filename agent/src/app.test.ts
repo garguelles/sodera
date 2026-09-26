@@ -3,6 +3,7 @@ import { getAddress } from 'viem';
 import { describe, expect, it, vi } from 'vitest';
 
 import { createApp, MAX_BODY_BYTES, type AppDependencies } from './app.ts';
+import type { EventQuery } from './multibaas.ts';
 import { UnexpectedPayCallsError, type PayQuote } from './pay-quote.ts';
 import { TradingApiError } from './uniswap-trading.ts';
 import { createTranscriptStore } from './transcript.ts';
@@ -108,6 +109,48 @@ describe('agent server', () => {
       kind: 'clarification',
       question: 'How much ETH?',
     });
+  });
+
+  it('returns grounded answers without a policy check, with the range they cover', async () => {
+    const answer = JSON.stringify({
+      kind: 'answer',
+      text: 'You sent 42.5 USDC to alice this month.',
+      facts: [{ label: 'Sent to alice', value: '42.50 USDC' }],
+    });
+    const executeEventQuery = vi.fn(async (query: EventQuery) => {
+      const sent = JSON.stringify(query.events[0]!.filter).includes(`"inputIndex":0,"operator":"equal","value":"${ACCOUNT}"`);
+      return query.groupBy === 'counterparty' && sent ? [{ counterparty: ALICE, total: '42500000' }] : [];
+    });
+    const { app, log } = setup(() => [message(answer)], { multibaas: fakeMultiBaas({ executeEventQuery }) });
+    const { client, toolRunner } = fakeClient(async (params) => {
+      const tool = params.tools.find((item) => 'name' in item && item.name === 'summarize_activity') as unknown as {
+        run: (input: unknown) => Promise<string>;
+      };
+      await tool.run({ from: '2026-09-01', to: '2026-09-27', counterparty: 'alice' });
+      return [message(answer)];
+    });
+    const grounded = setup(() => [], { client, multibaas: fakeMultiBaas({ executeEventQuery }) });
+
+    const body = await (await post(grounded.app, request('how much did I send alice this month?'))).json();
+    expect(body).toEqual({
+      kind: 'answer',
+      text: 'You sent 42.5 USDC to alice this month.',
+      facts: [{ label: 'Sent to alice', value: '42.50 USDC' }],
+      source: { from: '2026-09-01', to: '2026-09-27' },
+    });
+    expect(toolRunner).toHaveBeenCalledTimes(1);
+    expect(grounded.log).toHaveBeenCalledWith(expect.objectContaining({ outcome: 'answer', toolCalls: ['summarize_activity'] }));
+
+    // Without the tool call, 42.5 appears nowhere the model could have read it.
+    const ungrounded = await (await post(app, request('how much did I send alice this month?'))).json();
+    expect(ungrounded).toMatchObject({ kind: 'rejected', summary: null, violations: [{ code: 'ungrounded' }] });
+    expect(log).toHaveBeenCalledWith(expect.objectContaining({ outcome: 'ungrounded' }));
+  });
+
+  it('accepts answers taken from the snapshot', async () => {
+    const answer = JSON.stringify({ kind: 'answer', text: 'You have 100 USDC.', facts: [{ label: 'USDC', value: '100' }] });
+    const { app } = setup(() => [message(answer)]);
+    expect(await (await post(app, request('how much usdc do I have?'))).json()).toMatchObject({ kind: 'answer', source: null });
   });
 
   it('rejects plans that break the policy', async () => {

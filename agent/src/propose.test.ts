@@ -1,7 +1,7 @@
 import { getAddress } from 'viem';
 import { describe, expect, it, vi } from 'vitest';
 
-import { propose, renderUserMessage } from './propose.ts';
+import { propose, renderUserMessage, roundUnits } from './propose.ts';
 import { createTools, type ToolDependencies } from './tools.ts';
 import { fakeClient, fakeMultiBaas, message } from './test/fakes.ts';
 import { ACCOUNT, createContext } from './test/fixtures.ts';
@@ -23,6 +23,8 @@ function toolDeps(overrides: Partial<ToolDependencies> = {}): ToolDependencies {
     now: () => Date.parse('2026-09-26T08:00:00Z'),
     resolvedNames: new Map(),
     calls: [],
+    toolResults: [],
+    ranges: [],
     ...overrides,
   };
 }
@@ -66,6 +68,7 @@ describe('propose', () => {
     expect(params.output_config?.format?.type).toBe('json_schema');
     expect(params.tools.map((tool) => ('name' in tool ? tool.name : null))).toEqual([
       'get_activity',
+      'summarize_activity',
       'resolve_name',
       'quote_swap',
       'get_eth_price',
@@ -136,5 +139,27 @@ describe('renderUserMessage', () => {
     expect(text).toContain('- Plan value limit: $250');
     expect(text).toContain('swap=unavailable');
     expect(renderUserMessage('pay zed', context, 250)).toBe(text);
+  });
+
+  it('adds rounded ETH, its dollar value, and the total so answers never compute figures', () => {
+    const text = renderUserMessage(
+      'what is my eth worth?',
+      createContext({ balances: { eth: '0.44157679561013403', usdc: '20' }, prices: { ethUsd: '2601.5' } }),
+      250,
+    );
+    expect(text).toContain('- ETH balance: 0.44157679561013403 (about 0.441577 ETH, about $1148.76)');
+    expect(text).toContain('- Total value: about $1218.76');
+
+    const plain = renderUserMessage('hi', createContext({ prices: { ethUsd: null } }), 250);
+    expect(plain).toContain('- ETH balance: 1\n');
+    expect(plain).not.toContain('Total value');
+  });
+});
+
+describe('roundUnits', () => {
+  it('rounds half up to the given decimals', () => {
+    expect(roundUnits(1_456_569_437_711_620n, 18, 6)).toBe('0.001457');
+    expect(roundUnits(400_000_000_000_000n, 18, 6)).toBe('0.0004');
+    expect(roundUnits(0n, 18, 6)).toBe('0');
   });
 });
