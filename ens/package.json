@@ -11,7 +11,8 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "verify:namespace": "node --env-file-if-exists=.env.local ./scripts/verify-namespace.mjs",
-    "prepare:registry": "node --env-file-if-exists=.env.local ./scripts/prepare-registry.mjs"
+    "prepare:registry": "node --env-file-if-exists=.env.local ./scripts/prepare-registry.mjs",
+    "verify:issuer": "node --env-file-if-exists=.env.local ./scripts/verify-issuer.mjs"
   },
   "dependencies": {
     "react": "19.2.3",
