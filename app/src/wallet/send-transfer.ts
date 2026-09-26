@@ -20,7 +20,7 @@ const usdcAbi = [
   { type: 'function', name: 'transfer', stateMutability: 'nonpayable', inputs: [{ type: 'address' }, { type: 'uint256' }], outputs: [{ type: 'bool' }] },
 ] as const;
 
-function sepoliaClient() {
+export function sepoliaClient() {
   const rpcUrl = process.env.EXPO_PUBLIC_SEPOLIA_RPC_URL;
   if (!rpcUrl) throw new Error('EXPO_PUBLIC_SEPOLIA_RPC_URL is required to send');
   return createPublicClient({ chain: sepolia, transport: http(rpcUrl) });
@@ -54,12 +54,8 @@ export async function readSendBalances(account: Address) {
   return { ETH, USDC };
 }
 
-export function parseSendTransfer({ recipient, amount, asset, balance }: {
-  recipient: Address;
-  amount: string;
-  asset: SendAsset;
-  balance: bigint;
-}): { value: bigint; call: KernelExecutionCall } {
+/** The exact amount in base units, before any balance check. */
+export function parseSendAmount({ amount, asset }: { amount: string; asset: SendAsset }): bigint {
   const precision = asset === 'ETH' ? 18 : 6;
   const trimmed = amount.trim();
   if (!/^\d+(?:\.\d+)?$/.test(trimmed) || (trimmed.split('.')[1]?.length ?? 0) > precision) {
@@ -72,6 +68,16 @@ export function parseSendTransfer({ recipient, amount, asset, balance }: {
     throw new Error(`Enter a valid ${asset} amount with no more than ${asset === 'ETH' ? 18 : 6} decimals`);
   }
   if (value <= 0n) throw new Error('Amount must be greater than zero');
+  return value;
+}
+
+export function parseSendTransfer({ recipient, amount, asset, balance }: {
+  recipient: Address;
+  amount: string;
+  asset: SendAsset;
+  balance: bigint;
+}): { value: bigint; call: KernelExecutionCall } {
+  const value = parseSendAmount({ amount, asset });
   if (value > balance) throw new Error(`Amount exceeds the available ${asset} balance`);
   return {
     value,

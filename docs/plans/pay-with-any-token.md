@@ -95,24 +95,30 @@ All work lands on one branch, `feat/pay-with-any-token`, as separate commits, wi
     - `buildPayWithCalls` returns `[USDC.approve(Permit2, maxAmountIn), Permit2.approve(USDC, router, maxAmountIn, deadline), swap, transfer]` when paying with USDC, and `[swap, transfer]` when paying with ETH. The approvals reuse `buildUsdcPermit2Approvals` from `uniswap-swap-calls.ts`, and the transfer is the wallet's own, of exactly `amountOut` to the payee.
     - Acceptance: the four captured quotes pass, and each tampered case is rejected before any passkey prompt: another amount or direction, a foreign target, a wrong selector, excess ETH value, a mismatched or expired deadline, a lower maximum, a take, sweep, swap or unwrap to someone else, an allow-revert or unknown command, and a wrap when paying with USDC. `pnpm verify:uniswap` still matches the golden Swap calldata.
 4. **Frontend: Send UI.**
-    - Files: `app/src/components/send-screen.tsx` and `app/src/wallet/send-transfer.ts`.
-    - Add a "Pay with" selector on the amount step. When it matches the asset being sent, the existing path runs unchanged and nothing calls `/pay/quote`.
-    - Generalize the one-call echo check (`send-screen.tsx:158`) into `assertPreparedCallsMatch(expected, prepared)` for any number of calls.
-    - After `prepare`, run an asset-change simulation. It must show the payee receiving exactly the amount and the Kernel spending no more than `maxAmountIn`; otherwise the payment is blocked.
+    - Files: `app/src/components/send-screen.tsx`, `app/src/wallet/send-transfer.ts` (`parseSendAmount`, split from the balance check), `app/src/wallet/pay-with-simulation.ts` and `app/src/wallet/prepared-calls.ts`.
+    - A "Pay with" selector on the amount step, shown only when the agent is configured. When it matches the asset being sent, the existing path runs unchanged and nothing calls `/pay/quote`.
+    - The one-call echo check became `assertPreparedCallsMatch(review, calls)` for any number of calls, used by both paths.
+    - Before `prepare` (which spends sponsorship), the wallet checks the quote:
+        - price impact above 10% is blocked;
+        - a pay balance below `maxAmountIn` is blocked;
+        - paying yourself is blocked (that is a swap).
+    - It then runs `buildPayWithCalls` and simulates the batch from the account on live Sepolia state with `eth_simulateV1` transfer tracing. Every call must succeed, the payee must receive exactly the amount, the account must not spend its own receive asset, and it may spend at most `maxAmountIn`. The simulated spend is shown as the estimate.
     - The review shows:
         - "Recipient gets exactly X"
-        - "You pay at most Y (est. Z)"
-        - the route
-        - price impact, with a warning above 2% and a block above 10%
-        - approvals being granted
+        - "You pay Z (at most Y)"
+        - the route (for example "Uniswap v4 · 2 hops"; the full route string is under More details)
+        - price impact, marked high above 2%
+        - the USDC approval and its expiry, when paying with USDC
         - the sponsored network fee
-        - a note that testnet pricing differs from the market
-    - Use the Platinum Fluid tokens from `app/src/constants/theme.ts`, and place status notices above the primary button, as on the swap screen.
-    - Freshness:
-        - A quote is refetched if it is older than 30 s when entering review.
-        - The review expires 30 s after its quote; Confirm then re-quotes and prepares again.
-    - Errors (`no_route`, `busy`, timeout) offer "Pay with <same asset> instead".
-    - Acceptance: live device payments in both directions, and the same-asset path is unchanged.
+        - a note that Sepolia pools are not market prices
+        - every call under More details
+    - Uses the Platinum Fluid tokens from `app/src/constants/theme.ts`; status notices keep Send's existing placement.
+    - Freshness: the review expires 30 s after preparing, including when checked at Confirm after the app slept. It returns to the amount step with "Get a new quote", as Swap does, so nothing is signed on a stale quote.
+    - Errors (no route, busy, timeout, a rejected guard or simulation) offer "Pay with <same asset> instead".
+    - Acceptance:
+        - Jest covers the pay-with flow, expiry, no-route fallback and simulation rejection.
+        - A live check (fresh agent quotes, then the guard, `buildPayWithCalls` and the simulation against Sepolia from the deployed Kernel) passes in both directions.
+        - A device payment in each direction is still to be done.
 5. **Frontend: activity grouping.**
     - Files: `app/src/wallet/transaction-activity*.ts`, `user-operation-calls.ts` and `pending-sends.ts`.
     - Today a pay-with transaction would show up as several rows (swap legs through the router and pool, plus the transfer). Group rows by UserOperation hash when the operation calls the Trading Universal Router, and show one row: "Paid X to <payee> (swapped from Y)".

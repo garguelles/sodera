@@ -1,8 +1,10 @@
+import type { Address } from 'viem';
+
 import type { PayQuote } from '../agent/agent-client';
 
 // Real /pay/quote responses captured from the Trading API on Sepolia on 2026-09-26, for the Kernel
 // PAY_FIXTURE_ACCOUNT. The v3 quote wraps ETH, swaps through v3 and unwraps the leftover; the others are v4.
-export const PAY_FIXTURE_ACCOUNT = '0xFbf2213c7F5DE314729293fF1B541F8591637658';
+export const PAY_FIXTURE_ACCOUNT: Address = '0xFbf2213c7F5DE314729293fF1B541F8591637658';
 
 export const ethForTenUsdc: PayQuote = {
   quoteId: '01a0ddd0-95f1-8000-9d89-93ef0ead0100',
