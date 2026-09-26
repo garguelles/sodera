@@ -38,7 +38,7 @@ function renderPhone(
 }
 
 describe('PhoneScreen', () => {
-  it('shows favorites at the bottom and other apps in the searchable grid', async () => {
+  it('shows all apps in the list and pinned apps in the bottom dock', async () => {
     const camera = {
       ...calculator,
       componentName: 'com.android.camera/.Camera',
@@ -53,17 +53,19 @@ describe('PhoneScreen', () => {
       storage,
     );
 
-    expect(await screen.findByRole('button', { name: 'Open Calculator' })).toBeOnTheScreen();
+    expect(await screen.findAllByRole('button', { name: 'Open Calculator' })).toHaveLength(2);
     expect(await screen.findByRole('button', { name: 'Open Camera' })).toBeOnTheScreen();
-    expect(screen.getByText('FAVORITES')).toBeOnTheScreen();
-    expect(screen.getByRole('button', { name: 'Unpin Calculator' })).toBeOnTheScreen();
+    expect(screen.queryByText('FAVORITES')).not.toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: 'Unpin Calculator' })).not.toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: 'Pin Camera' })).not.toBeOnTheScreen();
+    expect(screen.queryByText('Search includes pinned apps')).not.toBeOnTheScreen();
     expect(screen.getByLabelText('Search apps')).toBeOnTheScreen();
 
     fireEvent.changeText(screen.getByLabelText('Search apps'), 'calc');
     await waitFor(() => {
       expect(screen.getByText('1 of 2 apps')).toBeOnTheScreen();
       expect(screen.getByRole('button', { name: 'Open Calculator' })).toBeOnTheScreen();
-      expect(screen.queryByText('FAVORITES')).not.toBeOnTheScreen();
+      expect(screen.queryByText('Calculator')).toBeOnTheScreen();
     });
   });
 
@@ -167,55 +169,6 @@ describe('PhoneScreen', () => {
     await waitFor(() => expect(screen.getByText('No apps match "maps"')).toBeOnTheScreen());
   });
 
-  it('persists favorites by package and restores them after remount', async () => {
-    const storage = createPreferencesStorage();
-    const client = createClient();
-    const firstRender = await renderPhone(client, storage);
-    await screen.findByText('Calculator');
-
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Pin Calculator' })).toBeEnabled(),
-    );
-    fireEvent.press(screen.getByRole('button', { name: 'Pin Calculator' }));
-    await waitFor(() => expect(storage.write).toHaveBeenCalledTimes(1));
-    expect(JSON.parse((storage.write as jest.Mock).mock.calls[0][0]).favoritePackageNames).toEqual([
-      calculator.packageName,
-    ]);
-
-    await firstRender.unmount();
-    await renderPhone(client, storage);
-
-    const unpin = await screen.findByRole('button', { name: 'Unpin Calculator' });
-    fireEvent.press(unpin);
-    await waitFor(() => expect(storage.write).toHaveBeenCalledTimes(2));
-    expect(JSON.parse((storage.write as jest.Mock).mock.calls[1][0]).favoritePackageNames).toEqual([]);
-  });
-
-  it('limits pinned apps to four and allows another after unpinning', async () => {
-    const apps = ['One', 'Two', 'Three', 'Four', 'Five'].map((label) => ({
-      ...calculator,
-      componentName: `com.example.${label.toLowerCase()}/.Main`,
-      packageName: `com.example.${label.toLowerCase()}`,
-      label,
-    }));
-    const storage = createPreferencesStorage(
-      JSON.stringify({
-        schemaVersion: 1,
-        favoritePackageNames: apps.slice(0, 4).map((app) => app.packageName),
-      }),
-    );
-    await renderPhone(
-      createClient({ getLaunchableApps: jest.fn().mockResolvedValue(apps) }),
-      storage,
-    );
-    expect(await screen.findByText('4/4')).toBeOnTheScreen();
-    expect(screen.getByRole('button', { name: 'Pin limit reached for Five' })).toBeDisabled();
-
-    fireEvent.press(screen.getByRole('button', { name: 'Unpin One' }));
-
-    expect(await screen.findByRole('button', { name: 'Pin Five' })).toBeEnabled();
-  });
-
   it('uses current discovery metadata for a persisted favorite', async () => {
     const updatedCalculator = {
       ...calculator,
@@ -228,7 +181,8 @@ describe('PhoneScreen', () => {
     const client = createClient({ getLaunchableApps: jest.fn().mockResolvedValue([updatedCalculator]) });
     await renderPhone(client, storage);
 
-    fireEvent.press(await screen.findByRole('button', { name: 'Open Calculator Pro' }));
+    const calculatorButtons = await screen.findAllByRole('button', { name: 'Open Calculator Pro' });
+    fireEvent.press(calculatorButtons[0]);
 
     expect(client.launchApp).toHaveBeenCalledWith(updatedCalculator.componentName);
   });
@@ -251,11 +205,11 @@ describe('PhoneScreen', () => {
       }),
     };
     await renderPhone(createClient(), storage);
-    expect(await screen.findByRole('button', { name: 'Open Calculator' })).toBeOnTheScreen();
+    expect(await screen.findAllByRole('button', { name: 'Open Calculator' })).toHaveLength(2);
 
     await act(() => storage.write(JSON.stringify({ schemaVersion: 1, favoritePackageNames: [] })));
 
-    expect(await screen.findByText('Pin up to four apps for quick access.')).toBeOnTheScreen();
+    expect(await screen.findByText('Pin apps in Settings for quick access.')).toBeOnTheScreen();
   });
 
   it('reconciles a favorite when a package-change event removes its app', async () => {
@@ -275,13 +229,13 @@ describe('PhoneScreen', () => {
       JSON.stringify({ schemaVersion: 1, favoritePackageNames: [calculator.packageName] }),
     );
     await renderPhone(client, storage);
-    expect(await screen.findByRole('button', { name: 'Open Calculator' })).toBeOnTheScreen();
+    expect(await screen.findAllByRole('button', { name: 'Open Calculator' })).toHaveLength(2);
 
     await act(() => notifyAppsChanged());
 
     await waitFor(() => {
       expect(screen.queryByRole('button', { name: 'Open Calculator' })).not.toBeOnTheScreen();
-      expect(screen.getByText('Pin up to four apps for quick access.')).toBeOnTheScreen();
+      expect(screen.getByText('Pin apps in Settings for quick access.')).toBeOnTheScreen();
     });
   });
 
