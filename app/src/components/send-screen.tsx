@@ -24,6 +24,7 @@ import {
 } from 'viem';
 import { sepolia } from 'viem/chains';
 
+import { platinum } from '@/constants/theme';
 import {
   createKernelPasskeyExecutionClient,
   type KernelOperationReview,
@@ -255,7 +256,7 @@ export function SendScreen({
                 invalidateReview();
               }}
               placeholder="0x..."
-              placeholderTextColor="#66665d"
+              placeholderTextColor={platinum.colors.faintText}
               style={styles.input}
               value={recipient}
             />
@@ -270,7 +271,7 @@ export function SendScreen({
                   invalidateReview();
                 }}
                 placeholder="0.0"
-                placeholderTextColor="#66665d"
+                placeholderTextColor={platinum.colors.faintText}
                 style={[styles.input, styles.amountInput]}
                 value={amount}
               />
@@ -341,7 +342,7 @@ export function SendScreen({
       {step === 'authorizing' ? (
         <View accessibilityLiveRegion="polite" style={styles.centeredStep}>
           <View style={styles.progressIcon}>
-            <ActivityIndicator color="#171713" size="large" />
+            <ActivityIndicator color={platinum.colors.emerald} size="large" />
           </View>
           <Text style={styles.centeredTitle}>Confirm on your device</Text>
           <Text style={styles.centeredBody}>
@@ -530,154 +531,157 @@ function describeError(error: unknown) {
   return message.replace(/https?:\/\/\S+/g, '[redacted RPC URL]');
 }
 
+const { colors, spacing, radius, typography } = platinum;
+
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#171713' },
-  content: { flexGrow: 1, padding: 22, paddingBottom: 48, gap: 22 },
+  screen: { flex: 1, backgroundColor: colors.canvas },
+  content: { flexGrow: 1, padding: spacing.lg, paddingBottom: spacing.xxl, gap: spacing.xl },
   successContent: {
     flexGrow: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 24,
-    gap: 26,
+    padding: spacing.xl,
+    gap: spacing.xl,
   },
   backButton: { alignSelf: 'flex-start', minHeight: 44, justifyContent: 'center' },
-  back: { color: '#d4f06a', fontSize: 14, fontWeight: '700' },
-  heading: { gap: 9 },
-  eyebrow: { color: '#d4f06a', fontSize: 11, fontWeight: '800', letterSpacing: 1.4 },
-  title: { color: '#f3f0e8', fontSize: 38, lineHeight: 43, fontWeight: '800', letterSpacing: -1.2 },
-  body: { color: '#aaa89f', fontSize: 16, lineHeight: 23 },
+  back: { ...typography.bodySmall, color: colors.secondaryText },
+  heading: { gap: spacing.sm },
+  eyebrow: { ...typography.labelSmall, color: colors.emerald },
+  title: { ...typography.display, color: colors.platinum },
+  body: { ...typography.body, color: colors.mutedText },
   balanceCard: {
-    borderRadius: 20,
+    borderRadius: radius.xl,
     borderCurve: 'continuous',
-    backgroundColor: '#24241f',
-    padding: 18,
-    gap: 7,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.lg,
+    gap: spacing.sm,
   },
-  label: { color: '#929188', fontSize: 11, fontWeight: '800', letterSpacing: 1.1 },
-  fieldLabel: { color: '#c8c5bb', fontSize: 12, fontWeight: '800', letterSpacing: 0.8, paddingTop: 4 },
-  balance: { color: '#f3f0e8', fontSize: 27, fontWeight: '700', fontVariant: ['tabular-nums'] },
-  form: { gap: 12 },
+  label: { ...typography.labelSmall, color: colors.mutedText },
+  fieldLabel: { ...typography.labelSmall, color: colors.secondaryText, paddingTop: spacing.xs },
+  balance: { ...typography.title, color: colors.platinum, fontVariant: ['tabular-nums'] },
+  form: { gap: spacing.md },
   input: {
     minHeight: 56,
-    borderRadius: 16,
+    borderRadius: radius.lg,
     borderCurve: 'continuous',
     borderWidth: 1,
-    borderColor: '#42423a',
-    backgroundColor: '#20201c',
-    color: '#f3f0e8',
-    paddingHorizontal: 14,
-    fontSize: 15,
+    borderColor: colors.borderLit,
+    backgroundColor: colors.surfaceLow,
+    color: colors.platinum,
+    paddingHorizontal: spacing.lg,
+    ...typography.body,
   },
-  amountRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  amountRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   amountInput: { flex: 1 },
-  asset: { color: '#d4f06a', fontSize: 14, fontWeight: '800' },
+  asset: { ...typography.label, color: colors.emerald },
   primaryButton: {
     minHeight: 56,
     alignSelf: 'stretch',
-    borderRadius: 18,
+    borderRadius: radius.lg,
     borderCurve: 'continuous',
-    backgroundColor: '#d4f06a',
+    backgroundColor: colors.platinum,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 16,
-    marginTop: 4,
+    paddingHorizontal: spacing.lg,
+    marginTop: spacing.xs,
   },
-  primaryButtonText: { color: '#202515', fontSize: 16, fontWeight: '800' },
+  primaryButtonText: { ...typography.body, fontFamily: typography.subheading.fontFamily, color: colors.onPlatinum },
   disabled: { opacity: 0.4 },
   pressed: { opacity: 0.65, transform: [{ scale: 0.98 }] },
-  reviewSection: { gap: 16 },
-  amountSummary: { alignItems: 'center', gap: 5, paddingVertical: 8 },
+  reviewSection: { gap: spacing.lg },
+  amountSummary: { alignItems: 'center', gap: spacing.xs, paddingVertical: spacing.sm },
   reviewAmount: {
-    color: '#f3f0e8',
-    fontSize: 40,
-    lineHeight: 46,
-    fontWeight: '800',
-    letterSpacing: -1.4,
+    ...typography.display,
+    color: colors.platinum,
     fontVariant: ['tabular-nums'],
   },
-  reviewDetails: { paddingHorizontal: 4 },
-  friendlyReviewRow: { gap: 6, paddingVertical: 14 },
-  friendlyReviewDivider: { borderBottomWidth: 1, borderBottomColor: '#383831' },
-  friendlyReviewLabel: { color: '#929188', fontSize: 12, fontWeight: '700' },
-  friendlyReviewValue: { color: '#f3f0e8', fontSize: 15, lineHeight: 21, fontWeight: '600' },
-  monoValue: { fontFamily: 'monospace', fontSize: 12, fontWeight: '400' },
-  technicalToggle: { alignSelf: 'center', minHeight: 44, justifyContent: 'center', paddingHorizontal: 12 },
-  technicalToggleText: { color: '#aaa89f', fontSize: 13, fontWeight: '700' },
+  reviewDetails: { paddingHorizontal: spacing.xs },
+  friendlyReviewRow: { gap: spacing.sm, paddingVertical: spacing.md },
+  friendlyReviewDivider: { borderBottomWidth: 1, borderBottomColor: colors.border },
+  friendlyReviewLabel: { ...typography.caption, color: colors.mutedText },
+  friendlyReviewValue: { ...typography.bodySmall, fontFamily: typography.subheading.fontFamily, color: colors.platinum },
+  monoValue: { ...typography.caption, fontFamily: typography.micro.fontFamily },
+  technicalToggle: { alignSelf: 'center', minHeight: 44, justifyContent: 'center', paddingHorizontal: spacing.md },
+  technicalToggleText: { ...typography.label, color: colors.mutedText },
   technicalDetails: {
     borderTopWidth: 1,
-    borderTopColor: '#383831',
-    paddingHorizontal: 4,
-    paddingTop: 16,
-    gap: 12,
+    borderTopColor: colors.border,
+    paddingHorizontal: spacing.xs,
+    paddingTop: spacing.lg,
+    gap: spacing.md,
   },
-  reviewRow: { gap: 2 },
-  reviewLabel: { color: '#929188', fontSize: 10, fontWeight: '700', letterSpacing: 0.8 },
-  reviewValue: { color: '#f3f0e8', fontFamily: 'monospace', fontSize: 11, lineHeight: 17 },
-  reassurance: { color: '#77766f', fontSize: 13, lineHeight: 19, textAlign: 'center' },
+  reviewRow: { gap: spacing.xs },
+  reviewLabel: { ...typography.micro, color: colors.mutedText },
+  reviewValue: { ...typography.labelSmall, color: colors.platinum },
+  reassurance: { ...typography.bodySmall, color: colors.faintText, textAlign: 'center' },
   statusCard: {
-    borderRadius: 14,
+    borderRadius: radius.lg,
     borderCurve: 'continuous',
-    backgroundColor: '#352a22',
-    padding: 14,
+    backgroundColor: colors.surfaceHigh,
+    padding: spacing.md,
   },
-  statusText: { color: '#f4d4b5', fontSize: 14, lineHeight: 20 },
+  statusText: { ...typography.bodySmall, color: colors.warning },
   centeredStep: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 18,
-    padding: 32,
+    gap: spacing.lg,
+    padding: spacing.xxl,
   },
   progressIcon: {
     width: 88,
     height: 88,
-    borderRadius: 44,
+    borderRadius: radius.full,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#d4f06a',
+    backgroundColor: colors.emeraldWash,
   },
-  centeredTitle: { color: '#f3f0e8', fontSize: 28, fontWeight: '800', textAlign: 'center' },
-  centeredBody: { color: '#aaa89f', fontSize: 16, lineHeight: 24, textAlign: 'center' },
+  centeredTitle: { ...typography.title, color: colors.platinum, textAlign: 'center' },
+  centeredBody: { ...typography.body, color: colors.mutedText, textAlign: 'center' },
   successIcon: {
     width: 112,
     height: 112,
-    borderRadius: 56,
+    borderRadius: radius.full,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#d4f06a',
+    backgroundColor: colors.emeraldWash,
   },
-  successIconText: { color: '#171713', fontSize: 62, lineHeight: 70, fontWeight: '800' },
-  successHeading: { alignItems: 'center', gap: 8 },
-  successTitle: { color: '#f3f0e8', fontSize: 30, lineHeight: 36, fontWeight: '800', textAlign: 'center' },
+  successIconText: { color: colors.emerald, fontSize: 62, lineHeight: 70 },
+  successHeading: { alignItems: 'center', gap: spacing.sm },
+  successTitle: { ...typography.title, color: colors.platinum, textAlign: 'center' },
   transactionCard: {
     alignSelf: 'stretch',
-    gap: 12,
-    padding: 18,
-    borderRadius: 20,
+    gap: spacing.md,
+    padding: spacing.lg,
+    borderRadius: radius.xl,
     borderCurve: 'continuous',
-    backgroundColor: '#24241f',
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
-  shortHash: { color: '#f3f0e8', fontFamily: 'monospace', fontSize: 16, lineHeight: 22 },
-  transactionActions: { flexDirection: 'row', gap: 10 },
+  shortHash: { ...typography.label, color: colors.platinum },
+  transactionActions: { flexDirection: 'row', gap: spacing.md },
   secondaryButton: {
     minHeight: 48,
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 15,
+    borderRadius: radius.lg,
     borderCurve: 'continuous',
-    backgroundColor: '#34342d',
+    backgroundColor: colors.surfaceHigh,
   },
-  secondaryButtonText: { color: '#f3f0e8', fontSize: 14, fontWeight: '800' },
+  secondaryButtonText: { ...typography.bodySmall, color: colors.platinum },
   explorerLink: {
     minHeight: 48,
     flex: 1.6,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 15,
+    borderRadius: radius.lg,
     borderCurve: 'continuous',
-    backgroundColor: '#34342d',
+    backgroundColor: colors.surfaceHigh,
   },
-  explorerLinkText: { color: '#d4f06a', fontSize: 14, fontWeight: '800' },
-  errorText: { color: '#ffd9d4', fontSize: 13, lineHeight: 19, textAlign: 'center' },
+  explorerLinkText: { ...typography.bodySmall, color: colors.cyan },
+  errorText: { ...typography.bodySmall, color: colors.negative, textAlign: 'center' },
 });

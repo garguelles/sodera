@@ -2,10 +2,16 @@ import { router } from 'expo-router';
 
 import { LauncherScreen } from '@/components/launcher-screen';
 import { LauncherHome } from '@/components/launcher-home';
+import { useOnboarding } from '@/onboarding/onboarding-context';
 
 export default function HomeScreen() {
+  const { access } = useOnboarding();
+  const profile = access?.status === 'complete' ? access.profile : null;
+
   return (
     <LauncherScreen
+      accountAddress={profile?.account}
+      username={profile?.username}
       homeContent={
         <LauncherHome
           onOpenEarn={() => router.push('/earn')}

@@ -1,4 +1,4 @@
-import { loadMarketPrices } from './market-prices';
+import { loadMarketPrices, loadMarketTrends } from './market-prices';
 
 describe('loadMarketPrices', () => {
   const originalFetch = global.fetch;
@@ -37,5 +37,18 @@ describe('loadMarketPrices', () => {
     global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 429 });
 
     await expect(loadMarketPrices()).rejects.toThrow('HTTP 429');
+  });
+
+  it('uses price history for the sparklines and omits unavailable history', async () => {
+    global.fetch = jest.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ prices: [[1, 100], [2, 110], [3, 105]] }) })
+      .mockResolvedValueOnce({ ok: false, status: 429 });
+
+    const trends = await loadMarketTrends();
+
+    expect(trends.bitcoin).toHaveLength(24);
+    expect(trends.bitcoin?.[0]).toBe(100);
+    expect(trends.bitcoin?.[23]).toBe(105);
+    expect(trends.ethereum).toBeNull();
   });
 });

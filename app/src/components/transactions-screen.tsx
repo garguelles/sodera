@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { platinum } from '@/constants/theme';
 import type {
   TransactionActivityItem,
   TransactionActivityProvider,
@@ -112,7 +113,7 @@ export function TransactionsScreen({
         ListEmptyComponent={
           viewState.status === 'loading' ? (
             <View accessibilityLabel="Loading transactions" style={styles.centeredState}>
-              <ActivityIndicator color="#d4f06a" />
+              <ActivityIndicator color={platinum.colors.emerald} />
               <Text style={styles.stateCopy}>Loading activity...</Text>
             </View>
           ) : viewState.status === 'error' ? (
@@ -172,7 +173,7 @@ function TransactionRow({ item, onPress }: { item: TransactionActivityItem; onPr
       onPress={onPress}
       style={({ pressed }) => [styles.row, pressed && styles.pressed]}>
       <View style={[styles.directionIcon, sent ? styles.sentIcon : styles.receivedIcon]}>
-        <Text importantForAccessibility="no" style={styles.directionIconText}>{sent ? '↗' : '↙'}</Text>
+        <Text importantForAccessibility="no" style={[styles.directionIconText, !sent && styles.receivedIconText]}>{sent ? '↗' : '↙'}</Text>
       </View>
       <View style={styles.rowCopy}>
         <Text style={styles.rowTitle}>{sent ? 'Sent' : 'Received'} {item.asset}</Text>
@@ -202,56 +203,59 @@ function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'Unable to load transaction activity';
 }
 
+const { colors, spacing, radius, typography } = platinum;
+
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#171713' },
-  list: { flexGrow: 1, paddingHorizontal: 22, paddingBottom: 48 },
+  screen: { flex: 1, backgroundColor: colors.canvas },
+  list: { flexGrow: 1, paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl },
   emptyList: { flexGrow: 1 },
-  header: { gap: 22, paddingBottom: 28 },
+  header: { gap: spacing.xl, paddingBottom: spacing.xl },
   backButton: { alignSelf: 'flex-start', minHeight: 44, justifyContent: 'center' },
-  back: { color: '#d4f06a', fontSize: 14, fontWeight: '700' },
-  heading: { gap: 9 },
-  eyebrow: { color: '#d4f06a', fontSize: 11, fontWeight: '800', letterSpacing: 1.4 },
-  title: { color: '#f3f0e8', fontSize: 38, lineHeight: 43, fontWeight: '800', letterSpacing: -1.2 },
-  subtitle: { color: '#aaa89f', fontSize: 15, lineHeight: 22 },
-  row: { minHeight: 92, flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14 },
+  back: { ...typography.bodySmall, color: colors.secondaryText },
+  heading: { gap: spacing.sm },
+  eyebrow: { ...typography.labelSmall, color: colors.emerald },
+  title: { ...typography.display, color: colors.platinum },
+  subtitle: { ...typography.bodySmall, color: colors.mutedText },
+  row: { minHeight: 92, flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.md },
   directionIcon: {
     width: 42,
     height: 42,
-    borderRadius: 21,
+    borderRadius: radius.full,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  sentIcon: { backgroundColor: '#2b2b25' },
-  receivedIcon: { backgroundColor: '#d4f06a' },
-  directionIconText: { color: '#f3f0e8', fontSize: 22, fontWeight: '700' },
-  rowCopy: { flex: 1, minWidth: 0, gap: 3 },
-  rowTitle: { color: '#f3f0e8', fontSize: 15, fontWeight: '700' },
-  counterparty: { color: '#aaa89f', fontSize: 12, fontVariant: ['tabular-nums'] },
-  timestamp: { color: '#77766f', fontSize: 11 },
-  amountCopy: { maxWidth: '38%', alignItems: 'flex-end', gap: 2 },
-  amount: { color: '#f3f0e8', fontSize: 14, fontWeight: '700', fontVariant: ['tabular-nums'] },
-  receivedAmount: { color: '#d4f06a' },
-  asset: { color: '#929188', fontSize: 11, fontWeight: '700' },
-  linkError: { color: '#ffd9d4', fontSize: 13, lineHeight: 19, paddingTop: 20, textAlign: 'center' },
-  separator: { height: 1, marginLeft: 54, backgroundColor: '#303029' },
-  centeredState: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 32 },
-  emptyState: { flex: 1, minHeight: 300, alignItems: 'center', justifyContent: 'center', gap: 8 },
+  sentIcon: { backgroundColor: colors.surfaceHigh },
+  receivedIcon: { backgroundColor: colors.emeraldWash },
+  directionIconText: { ...typography.heading, color: colors.platinum },
+  receivedIconText: { color: colors.emerald },
+  rowCopy: { flex: 1, minWidth: 0, gap: spacing.xs },
+  rowTitle: { ...typography.bodySmall, fontFamily: typography.subheading.fontFamily, color: colors.platinum },
+  counterparty: { ...typography.caption, color: colors.mutedText, fontVariant: ['tabular-nums'] },
+  timestamp: { ...typography.labelSmall, color: colors.faintText },
+  amountCopy: { maxWidth: '38%', alignItems: 'flex-end', gap: spacing.xs },
+  amount: { ...typography.label, color: colors.platinum, fontVariant: ['tabular-nums'] },
+  receivedAmount: { color: colors.emerald },
+  asset: { ...typography.labelSmall, color: colors.mutedText },
+  linkError: { ...typography.bodySmall, color: colors.negative, paddingTop: spacing.xl, textAlign: 'center' },
+  separator: { height: 1, marginLeft: 42 + spacing.md, backgroundColor: colors.border },
+  centeredState: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.md, padding: spacing.xxl },
+  emptyState: { flex: 1, minHeight: 300, alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
   partialState: {
-    borderRadius: 14,
+    borderRadius: radius.lg,
     borderCurve: 'continuous',
-    backgroundColor: '#443a24',
-    padding: 14,
-    marginBottom: 12,
+    backgroundColor: colors.surfaceHigh,
+    padding: spacing.md,
+    marginBottom: spacing.md,
   },
-  stateTitle: { color: '#f3f0e8', fontSize: 18, fontWeight: '700', textAlign: 'center' },
-  stateCopy: { color: '#929188', fontSize: 13, lineHeight: 19, textAlign: 'center' },
+  stateTitle: { ...typography.subheading, color: colors.platinum, textAlign: 'center' },
+  stateCopy: { ...typography.bodySmall, color: colors.mutedText, textAlign: 'center' },
   retryButton: {
     minHeight: 48,
-    borderRadius: 16,
-    backgroundColor: '#d4f06a',
+    borderRadius: radius.lg,
+    backgroundColor: colors.platinum,
     justifyContent: 'center',
-    paddingHorizontal: 20,
+    paddingHorizontal: spacing.xl,
   },
-  retryText: { color: '#202515', fontSize: 14, fontWeight: '800' },
+  retryText: { ...typography.bodySmall, color: colors.onPlatinum },
   pressed: { opacity: 0.6, transform: [{ scale: 0.98 }] },
 });

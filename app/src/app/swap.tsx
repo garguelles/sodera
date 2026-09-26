@@ -1,8 +1,8 @@
-import { FeaturePreview } from '@/components/feature-preview';
+import { PlatinumFeaturePreview } from '@/components/platinum-feature-preview';
 
 export default function SwapRoute() {
   return (
-    <FeaturePreview
+    <PlatinumFeaturePreview
       title="Swap"
       symbol="⇄"
       description="Move between assets without leaving your everyday space."

@@ -15,6 +15,7 @@ import type { PasskeyCeremonyClient, RegisteredPrimaryPasskey } from '@/wallet/p
 import { CURRENT_WALLET_IDENTITY_PINS, type WalletIdentityStorage } from '@/wallet/wallet-identity';
 
 jest.mock('expo-router', () => ({ router: { back: jest.fn() } }));
+jest.mock('@/onboarding/onboarding', () => ({ SODERA_FIXTURE_USERNAME: 'anon.sodera.eth' }));
 jest.mock('@/wallet/passkey-native-adapter', () => ({
   passkeyNativeAdapter: {
     createCredential: jest.fn(),

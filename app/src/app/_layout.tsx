@@ -1,10 +1,19 @@
+import '@/global.css';
+
+import { Geist_400Regular, Geist_500Medium, Geist_600SemiBold, useFonts as useGeistFonts } from '@expo-google-fonts/geist';
+import { JetBrainsMono_400Regular, JetBrainsMono_500Medium, useFonts as useMonoFonts } from '@expo-google-fonts/jetbrains-mono';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
 import { OnboardingProvider, useOnboarding } from '@/onboarding/onboarding-context';
+import { platinum } from '@/constants/theme';
 
 export default function RootLayout() {
+  const [geistLoaded, geistError] = useGeistFonts({ Geist_400Regular, Geist_500Medium, Geist_600SemiBold });
+  const [monoLoaded, monoError] = useMonoFonts({ JetBrainsMono_400Regular, JetBrainsMono_500Medium });
+  if ((!geistLoaded && !geistError) || (!monoLoaded && !monoError)) return null;
+
   return (
     <OnboardingProvider>
       <StatusBar style="light" />
@@ -18,7 +27,7 @@ function RootNavigator() {
   if (!access) {
     return (
       <View style={styles.loading}>
-        <ActivityIndicator color="#d4f06a" />
+        <ActivityIndicator color={platinum.colors.emerald} />
       </View>
     );
   }
@@ -40,12 +49,11 @@ function RootNavigator() {
         <Stack.Screen name="transactions" />
         <Stack.Screen name="settings" />
         <Stack.Screen name="passkey-proof" />
-        <Stack.Screen name="explore" />
       </Stack.Protected>
     </Stack>
   );
 }
 
 const styles = StyleSheet.create({
-  loading: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#171713' },
+  loading: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: platinum.colors.canvas },
 });

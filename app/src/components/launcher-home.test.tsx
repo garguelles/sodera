@@ -1,13 +1,14 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
 
 import { LauncherHome } from './launcher-home';
-import { loadMarketPrices } from '@/launcher/market-prices';
+import { loadMarketPrices, loadMarketTrends } from '@/launcher/market-prices';
 
-jest.mock('@/launcher/market-prices', () => ({ loadMarketPrices: jest.fn() }));
+jest.mock('@/launcher/market-prices', () => ({ loadMarketPrices: jest.fn(), loadMarketTrends: jest.fn() }));
 
 describe('LauncherHome', () => {
   beforeEach(() => {
     (loadMarketPrices as jest.Mock).mockReset();
+    (loadMarketTrends as jest.Mock).mockReset().mockResolvedValue({ bitcoin: null, ethereum: null });
   });
 
   it('shows an unavailable state and allows retry', async () => {

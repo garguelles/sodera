@@ -2,6 +2,7 @@ import { router, Stack } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
 
 import { WalletHome } from '@/components/wallet-home';
+import { platinum } from '@/constants/theme';
 import { walletHomeLiveProvider } from '@/wallet/wallet-home-live';
 
 export default function WalletRoute() {
@@ -11,8 +12,9 @@ export default function WalletRoute() {
         options={{
           headerShown: true,
           title: 'Wallet',
-          headerStyle: { backgroundColor: '#171713' },
-          headerTintColor: '#f3f0e8',
+          headerStyle: { backgroundColor: platinum.colors.canvas },
+          headerTintColor: platinum.colors.platinum,
+          headerShadowVisible: false,
           headerRight: () => (
             <Pressable
               accessibilityRole="button"
@@ -39,7 +41,7 @@ export default function WalletRoute() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#171713' },
-  historyButton: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 8 },
-  historyText: { color: '#f3f0e8', fontSize: 14, fontWeight: '600' },
+  screen: { flex: 1, backgroundColor: platinum.colors.canvas },
+  historyButton: { minHeight: 44, justifyContent: 'center', paddingHorizontal: platinum.spacing.sm },
+  historyText: { ...platinum.typography.bodySmall, color: platinum.colors.platinum },
 });

@@ -2,6 +2,12 @@
 
 Sodera is a seedless smart-account wallet and Android home launcher. The repository contains two isolated applications: `app/` is the Expo mobile application and `landing/` is the React landing site and passkey domain host.
 
+## Design
+
+- `docs/DESIGN.md` is the Platinum Fluid visual specification for both applications. Use its dark surfaces, platinum hierarchy, emerald/cyan status accents, Geist text, and JetBrains Mono data labels.
+- The Expo app's executable tokens live in `app/src/constants/theme.ts` (`platinum`); use those for new and updated screens instead of adding inline palettes, font sizes, spacing scales, or another theme file. Preserve real data and existing feature states when adapting Stitch mockups.
+- The landing site's CSS variables live in `landing/src/styles.css` and should mirror the same design roles. Update both token sets and `docs/DESIGN.md` together when the brand changes.
+
 ## Git
 
 - For a new feature or Linear ticket, fast-forward `main` and create a branch from `main`.
