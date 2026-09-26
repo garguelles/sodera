@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { platinum } from '@/constants/theme';
 import { createEnsClaimAuthClient } from '@/ens/claim-auth-client';
+import { createEnsClaimClient } from '@/ens/claim-client';
 import { sha256, toBytes, type Hash } from 'viem';
 
 import {
@@ -49,6 +50,8 @@ export function PasskeyProofScreen({
   const [busy, setBusy] = useState(false);
   const [proofLabel, setProofLabel] = useState('');
   const [proofStatus, setProofStatus] = useState('');
+  const [claim, setClaim] = useState<{ id: string; label: string; status: string } | null>(null);
+  const [claimMessage, setClaimMessage] = useState('');
   const [status, setStatus] = useState('Create a new Wallet Identity or reopen the existing one.');
   const [executionState, setExecutionState] = useState<'idle' | 'pending' | 'confirmed' | 'failed'>(
     'idle',
@@ -268,6 +271,50 @@ export function PasskeyProofScreen({
     }
   };
 
+  const requestEnsName = async () => {
+    if (!credential || !executionClient || busy ||
+      !(executionClient.deployed || executionState === 'confirmed')) return;
+    const currentInvocation = ++invocation.current;
+    setBusy(true);
+    setClaimMessage('Confirming passkey authority for this one-year ENS name...');
+    try {
+      const result = await createEnsClaimClient({ ceremonyClient: client }).submit({
+        account: executionClient.account,
+        credential,
+        label: proofLabel,
+      });
+      if (currentInvocation === invocation.current) {
+        setClaim({ id: result.id, label: proofLabel, status: result.status });
+        setClaimMessage(`Claim for ${result.name}: ${result.status}. An API response alone does not confirm on-chain issuance.`);
+      }
+    } catch (error) {
+      if (currentInvocation === invocation.current) setClaimMessage(describeExecutionError(error));
+    } finally {
+      if (currentInvocation === invocation.current) setBusy(false);
+    }
+  };
+
+  const refreshEnsClaim = async () => {
+    if (!executionClient || !claim || busy) return;
+    const currentInvocation = ++invocation.current;
+    setBusy(true);
+    try {
+      const result = await createEnsClaimClient({ ceremonyClient: client }).status({
+        id: claim.id,
+        account: executionClient.account,
+        label: claim.label,
+      });
+      if (currentInvocation === invocation.current) {
+        setClaim({ ...claim, status: result.status });
+        setClaimMessage(`Claim for ${result.name}: ${result.status}.`);
+      }
+    } catch (error) {
+      if (currentInvocation === invocation.current) setClaimMessage(describeExecutionError(error));
+    } finally {
+      if (currentInvocation === invocation.current) setBusy(false);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.screen}>
       <ScrollView contentContainerStyle={styles.content} contentInsetAdjustmentBehavior="automatic">
@@ -382,6 +429,24 @@ export function PasskeyProofScreen({
               onPress={verifyEnsClaimAuthority}
             />
             {proofStatus ? <Text accessibilityRole="alert" style={styles.body}>{proofStatus}</Text> : null}
+          </View>
+        ) : null}
+
+        {process.env.EXPO_PUBLIC_API_URL && process.env.EXPO_PUBLIC_ENS_CLAIMS_ENABLED === '1' ? (
+          <View style={styles.card}>
+            <Text style={styles.step}>6. Request a one-year ENS name</Text>
+            <Text style={styles.body}>
+              Review the username above before requesting a free, user-owned subname. This action
+              runs a fresh passkey ceremony and asks the issuer to register the name on Sepolia.
+            </Text>
+            <ActionButton
+              disabled={busy || !credential || !executionClient || Boolean(claim) ||
+                !(executionClient.deployed || executionState === 'confirmed')}
+              label="Request ENS name"
+              onPress={requestEnsName}
+            />
+            {claim ? <ActionButton disabled={busy} label="Refresh ENS claim status" onPress={refreshEnsClaim} secondary /> : null}
+            {claimMessage ? <Text accessibilityRole="alert" style={styles.body}>{claimMessage}</Text> : null}
           </View>
         ) : null}
 

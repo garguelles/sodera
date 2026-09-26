@@ -1,4 +1,5 @@
-import type { Address } from 'viem';
+import type { Address, Hex } from 'viem';
+import type { PasskeyProof } from './webauthn-proof.ts';
 
 export type StoredChallenge = {
   id: string;
@@ -7,6 +8,7 @@ export type StoredChallenge = {
   chainId: 11155111;
   registry: Address;
   challenge: string;
+  nonce: Hex;
   ipHash: string;
   createdAt: Date;
   expiresAt: Date;
@@ -19,5 +21,5 @@ export type ChallengeStore = {
   consume(input: {
     id: string; account: Address; label: string; chainId: 11155111; registry: Address; now: Date;
   }): Promise<string | null>;
-  markVerified(input: { id: string; tokenHash: string; expiresAt: Date }): Promise<void>;
+  markVerified(input: { id: string; tokenHash: string; expiresAt: Date; proof: PasskeyProof }): Promise<void>;
 };

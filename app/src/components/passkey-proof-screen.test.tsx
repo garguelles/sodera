@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-
 
 import { PasskeyProofScreen } from './passkey-proof-screen';
 import { createEnsClaimAuthClient } from '@/ens/claim-auth-client';
+import { createEnsClaimClient } from '@/ens/claim-client';
 import type {
   KernelOperationEvidence,
   KernelOperationReview,
@@ -31,6 +32,7 @@ jest.mock('@/wallet/wallet-identity-native-storage', () => ({
   walletIdentityNativeStorage: { read: jest.fn(), write: jest.fn(), clear: jest.fn() },
 }));
 jest.mock('@/ens/claim-auth-client', () => ({ createEnsClaimAuthClient: jest.fn() }));
+jest.mock('@/ens/claim-client', () => ({ createEnsClaimClient: jest.fn() }));
 
 const credential: RegisteredPrimaryPasskey = {
   id: 'MDEyMzQ1Njc4OQ',
@@ -203,6 +205,37 @@ describe('PasskeyProofScreen', () => {
       expect(screen.queryByText('secret-token')).not.toBeOnTheScreen();
     } finally {
       delete process.env.EXPO_PUBLIC_API_URL;
+    }
+  });
+
+  it('keeps controlled issuance behind an explicit flag and never shows the proof token', async () => {
+    process.env.EXPO_PUBLIC_API_URL = 'https://api.sodera.xyz';
+    process.env.EXPO_PUBLIC_ENS_CLAIMS_ENABLED = '1';
+    const submit = jest.fn().mockResolvedValue({ id: '11111111-1111-4111-8111-111111111111',
+      name: 'gargs.sodera.eth', status: 'queued' });
+    const status = jest.fn().mockResolvedValue({ name: 'gargs.sodera.eth', status: 'confirmed' });
+    jest.mocked(createEnsClaimClient).mockReturnValue({ submit, status } as never);
+    const client = createCeremonyClient();
+    client.verifyPrimaryPasskey = jest.fn().mockResolvedValue({ ok: true });
+    try {
+      await render(<PasskeyProofScreen client={client}
+        createExecutionClient={jest.fn().mockResolvedValue(createExecutionClient({ deployed: true }))}
+        storage={createStorage(JSON.stringify({ schemaVersion: 1, phase: 'accountDeployed',
+          pins: CURRENT_WALLET_IDENTITY_PINS, credential, account }))} />);
+      await press('Reopen existing wallet');
+      await act(async () => fireEvent.changeText(screen.getByPlaceholderText('Choose a test username'), 'gargs'));
+      await press('Request ENS name');
+      expect(submit).toHaveBeenCalledWith({ account, credential, label: 'gargs' });
+      expect(await screen.findByText(/Claim for gargs.sodera.eth: queued/)).toBeOnTheScreen();
+      await press('Refresh ENS claim status');
+      expect(status).toHaveBeenCalledWith({
+        id: '11111111-1111-4111-8111-111111111111', account, label: 'gargs',
+      });
+      expect(await screen.findByText('Claim for gargs.sodera.eth: confirmed.')).toBeOnTheScreen();
+      expect(screen.queryByText('secret-token')).not.toBeOnTheScreen();
+    } finally {
+      delete process.env.EXPO_PUBLIC_API_URL;
+      delete process.env.EXPO_PUBLIC_ENS_CLAIMS_ENABLED;
     }
   });
 });

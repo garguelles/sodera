@@ -1,8 +1,9 @@
 import { createHash, createHmac, randomBytes, randomUUID } from 'node:crypto';
-import type { Address } from 'viem';
+import type { Address, Hex } from 'viem';
 
 import type { Availability } from './chain.ts';
 import type { ChallengeStore } from './challenge-store.ts';
+import { deriveClaimChallenge } from './challenge-digest.ts';
 import { ENSV2 } from './contracts.ts';
 import type { KernelPasskeyKey } from './kernel-proof.ts';
 import { verifyPasskeyProof, type PasskeyProof } from './webauthn-proof.ts';
@@ -38,7 +39,9 @@ export function createClaimAuth({
       const createdAt = new Date(now());
       const expiresAt = new Date(createdAt.getTime() + 5 * 60_000);
       const id = randomUUID();
-      const challenge = randomBytes(32).toString('base64url');
+      const nonce = `0x${randomBytes(32).toString('hex')}` as Hex;
+      const challenge = deriveClaimChallenge({ chainId: 11155111, registry: ENSV2.child,
+        account, label, expiresAt, nonce });
       await store.issue({
         id,
         account,
@@ -46,6 +49,7 @@ export function createClaimAuth({
         chainId: 11155111,
         registry: ENSV2.child,
         challenge,
+        nonce,
         ipHash: createHmac('sha256', ipHashKey).update(ip).digest('hex'),
         createdAt,
         expiresAt,
@@ -71,6 +75,7 @@ export function createClaimAuth({
         id,
         tokenHash: createHash('sha256').update(token).digest('hex'),
         expiresAt,
+        proof,
       });
       return { claimToken: token, account, label, expiresAt: expiresAt.toISOString() };
     },

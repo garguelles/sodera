@@ -20,6 +20,7 @@ export const registryAbi = parseAbi([
   'function isEmancipated() view returns (bool)',
   'function setParent(address parent, string label)',
   'function setSubregistry(uint256 anyId, address registry)',
+  'function grantRootRoles(uint256 roleBitmap, address account) returns (bool)',
 ]);
 
 export const factoryAbi = parseAbi([

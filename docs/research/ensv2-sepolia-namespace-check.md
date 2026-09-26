@@ -69,3 +69,13 @@ At block `11786628`, after funding, the same read-only check reported `100000000
 ## Android claim proof
 
 On September 27, 2026 (local time), the owner reported that Step 5 of the Passkey Proof screen succeeded on a connected physical Android device. A read-only query of the local Podman PostgreSQL `ens_claim_challenges` table showed the latest challenge for the device wallet (abbreviated `0xc451...6906`) was both consumed and verified at `2026-09-26 15:57:11 UTC`. The proof token, challenge bytes, assertion, and credential ID were not copied into this evidence. This corroborates the Android-to-local-API verification path; it does **not** prove ENS issuance or authorize a future registration, and the issuer still has no root registrar role.
+
+## Issuer read-only preflight
+
+The private-worker call builder was checked against the live Sepolia factory without using the issuer signing key or submitting a transaction. With the **public synthetic test Kernel only as a simulation argument**, `deployProxy(PermissionedResolverImpl, salt, initialize(grants, calls))` returned resolver address `0x263a8878b7e4a6066374C1044D1b427946733676`, matching the independently computed CREATE2 address. Initializer calldata grants address, text, link and upgrade roles and their admins to that Kernel only, and writes its coin-60 address for the full DNS name. The resolver was **not** deployed.
+
+A separate `eth_call` of `UserRegistry.register()` from the proposed issuer returned revert selector `0x4b27a133` (`EACUnauthorizedAccountRoles(uint256,uint256,address)`), confirming that this issuer is **not yet authorized**. Local PostgreSQL tests use disposable schemas and leave the operational `ens_claims` table empty. No user name was registered and no issuer secret or registrar role was used in these checks.
+
+After the challenge protocol was tightened to hash chain, registry, wallet, label, expiry and nonce, a further **synthetic-only**, read-only local API check returned challenge HTTP `201`, verification HTTP `200`, and replay HTTP `401`. The database stored the nonce and verified assertion; `ens_claims` stayed empty. This is not evidence that the changed challenge version has been accepted on the physical Android device, and the synthetic publicly known test Kernel is barred from actual issuance.
+
+`pnpm prepare:issuer-grant` from `ens/` simulated `grantRootRoles(ROLE_REGISTRAR, issuer)` as the real parent owner at block `11787441`. The simulation succeeded and printed unsigned calldata targeting child registry `0xfBb4ef18Db7F8044a0A19fD1Db7B192327811EC7`; **no transaction was sent**, and on-chain verification still reports zero issuer root roles. Owner review and a separate signature remain required.

@@ -6,10 +6,13 @@ import { parseUsername } from './username.ts';
 import type { Availability } from './chain.ts';
 import { InvalidAssertionError, InvalidChallengeError, NameNotClaimableError, type ClaimAuth } from './claim-auth.ts';
 import { ChallengeLimitError } from './challenge-store.ts';
+import { ClaimConflictError, InvalidClaimTokenError } from './claim-store.ts';
+import { IneligibleKernelError, IssuerUnavailableError, type Claims } from './claims.ts';
 
 export function createEnsApp(
   lookup: (name: { label: string; name: string }) => Promise<Availability>,
   auth?: ClaimAuth,
+  claims?: Claims,
 ) {
   const app = new Hono();
   app.get('/healthz', (c) => c.json({ ok: true, service: 'api' }));
@@ -102,6 +105,53 @@ export function createEnsApp(
         if (error instanceof InvalidChallengeError || error instanceof InvalidAssertionError) {
           return c.json({ error: 'invalid_proof' }, 401);
         }
+        return c.json({ error: 'ens_unavailable' }, 503);
+      }
+    });
+  }
+
+  if (claims) {
+    app.post('/ens/claims', bodyLimit({
+      maxSize: 2048,
+      onError: (c) => c.json({ error: 'body_too_large' }, 413),
+    }), async (c) => {
+      let input: { account: Address; label: string; name: string; claimToken: string };
+      try {
+        const body = await c.req.json() as { account?: unknown; label?: unknown; claimToken?: unknown };
+        if (typeof body.account !== 'string' || !isAddress(body.account) ||
+          getAddress(body.account) === zeroAddress || typeof body.label !== 'string' ||
+          typeof body.claimToken !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(body.claimToken)) {
+          throw new Error('Invalid claim');
+        }
+        const username = parseUsername(body.label);
+        if (username.reserved) return c.json({ error: 'name_unavailable' }, 409);
+        input = { account: getAddress(body.account), label: username.label,
+          name: username.name, claimToken: body.claimToken };
+      } catch {
+        return c.json({ error: 'invalid_request' }, 400);
+      }
+      try {
+        const ip = (c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown').slice(0, 128);
+        const claim = await claims.submit({ ...input, ip });
+        return c.json(claim, 202);
+      } catch (error) {
+        if (error instanceof IneligibleKernelError) return c.json({ error: 'ineligible_wallet' }, 403);
+        if (error instanceof IssuerUnavailableError) return c.json({ error: 'issuer_unavailable' }, 503);
+        if (error instanceof InvalidClaimTokenError) return c.json({ error: 'invalid_proof' }, 401);
+        if (error instanceof ClaimConflictError) return c.json({ error: 'name_or_wallet_taken' }, 409);
+        return c.json({ error: 'ens_unavailable' }, 503);
+      }
+    });
+
+    app.get('/ens/claims/:id', async (c) => {
+      const id = c.req.param('id');
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) {
+        return c.json({ error: 'invalid_request' }, 400);
+      }
+      try {
+        const claim = await claims.get(id);
+        return claim ? c.json(claim) : c.json({ error: 'not_found' }, 404);
+      } catch {
         return c.json({ error: 'ens_unavailable' }, 503);
       }
     });

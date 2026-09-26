@@ -6,15 +6,7 @@ import type { PasskeyCeremonyClient, RegisteredPrimaryPasskey } from '@/wallet/p
 
 type ApiRequest = typeof expoFetch;
 
-export function createEnsClaimAuthClient({
-  ceremonyClient,
-  request = expoFetch,
-  baseUrl = process.env.EXPO_PUBLIC_API_URL,
-}: {
-  ceremonyClient: PasskeyCeremonyClient;
-  request?: ApiRequest;
-  baseUrl?: string;
-}) {
+export function readSoderaApiUrl(baseUrl = process.env.EXPO_PUBLIC_API_URL) {
   if (!baseUrl) throw new Error('EXPO_PUBLIC_API_URL must be a configured HTTPS endpoint');
   let endpoint: URL;
   try {
@@ -27,7 +19,19 @@ export function createEnsClaimAuthClient({
   if ((endpoint.protocol !== 'https:' && !localDebug) || endpoint.username || endpoint.password) {
     throw new Error('EXPO_PUBLIC_API_URL must use HTTPS (or loopback HTTP in development)');
   }
-  const url = baseUrl.replace(/\/+$/, '');
+  return baseUrl.replace(/\/+$/, '');
+}
+
+export function createEnsClaimAuthClient({
+  ceremonyClient,
+  request = expoFetch,
+  baseUrl,
+}: {
+  ceremonyClient: PasskeyCeremonyClient;
+  request?: ApiRequest;
+  baseUrl?: string;
+}) {
+  const url = readSoderaApiUrl(baseUrl);
 
   return {
     async prove({ account, credential, label }: {

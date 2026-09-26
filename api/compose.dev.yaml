@@ -24,6 +24,7 @@ services:
       SEPOLIA_RPC_URL: https://ethereum-sepolia-rpc.publicnode.com
       DATABASE_URL: postgres://sodera:sodera_local_only@postgres:5432/sodera
       ENS_CHALLENGE_IP_KEY: sodera-local-proof-ip-hash-key-only
+      ENS_CLAIMS_ENABLED: ${ENS_CLAIMS_ENABLED:-0}
     ports:
       - "127.0.0.1:8082:8080"
     depends_on:

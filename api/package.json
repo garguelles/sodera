@@ -9,6 +9,9 @@
   },
   "scripts": {
     "dev": "tsx watch --env-file-if-exists=.env src/server.ts",
+    "issuer:dev": "tsx watch --env-file-if-exists=.env.issuer.local src/issuer/worker.ts",
+    "issuer:start": "node --env-file-if-exists=.env.issuer.local dist/issuer/worker.js",
+    "verify:issuer-resolver": "tsx --env-file-if-exists=.env src/issuer/verify-resolver.ts",
     "test:db": "TEST_DATABASE_URL=postgres://sodera:sodera_local_only@127.0.0.1:5433/sodera vitest run",
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/server.js",

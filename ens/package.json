@@ -12,6 +12,7 @@
     "build": "tsc --noEmit && vite build",
     "verify:namespace": "node --env-file-if-exists=.env.local ./scripts/verify-namespace.mjs",
     "prepare:registry": "node --env-file-if-exists=.env.local ./scripts/prepare-registry.mjs",
+    "prepare:issuer-grant": "node --env-file-if-exists=.env.local ./scripts/prepare-issuer-grant.mjs",
     "verify:issuer": "node --env-file-if-exists=.env.local ./scripts/verify-issuer.mjs"
   },
   "dependencies": {
