@@ -107,6 +107,27 @@ export async function readAquaHoldings(
   return { wethBalance, position: position?.status === 'active' ? position : null };
 }
 
+/**
+ * Balances with the USDC an active Earn position has committed taken out, so Send and Swap cannot
+ * spend tokens the position needs to fill trades. If the position cannot be read, balances pass
+ * through unchanged: spending then still works, and only the position's trades would fail.
+ */
+export async function withoutCommittedUsdc<T extends { USDC: bigint }>(
+  account: Address,
+  balances: T,
+  { client, store = aquaPositionStore }: { client?: AquaReadClient; store?: Pick<typeof aquaPositionStore, 'read'> } = {},
+): Promise<T> {
+  try {
+    const record = await store.read(account);
+    if (!record) return balances;
+    const position = await readAquaPosition(client ?? rpcReadClient(), record);
+    if (position.status !== 'active') return balances;
+    return { ...balances, USDC: availableAfterCommitment(balances.USDC, position.usdc) };
+  } catch {
+    return balances;
+  }
+}
+
 /** Aqua and WETH are not linked in MultiBaas, so these reads go to the Sepolia RPC. */
 export function rpcReadClient(): AquaReadClient {
   const client = sepoliaClient();
