@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { recipientDetail } from '@/agent/plan-encoder';
 import type { EnrichedPlan, Violation } from '@/agent/policy';
-import type { PlannerState } from '@/agent/use-agent-planner';
+import type { PlannerAnswer, PlannerState } from '@/agent/use-agent-planner';
 import { VIOLATION_TITLES } from '@/agent/violation-copy';
 import { platinum } from '@/constants/theme';
 import { shortenAddress } from '@/wallet/sepolia';
@@ -49,6 +49,8 @@ export function PlanCard({
       );
     case 'question':
       return <QuestionCard question={state.question} active={active} />;
+    case 'answer':
+      return <AnswerCard answer={state.answer} />;
     case 'blocked':
       return (
         <BlockedCard
@@ -136,6 +138,8 @@ function PlanResultCard({
         </View>
       </View>
 
+      <Text style={styles.body}>{plan.summary}</Text>
+
       {plan.actions.map((item, index) => (
         <View key={index} style={styles.actionRow}>
           <View style={styles.actionNumber}>
@@ -198,6 +202,52 @@ function QuestionCard({ question, active }: { question: string; active: boolean 
   );
 }
 
+function AnswerCard({ answer }: { answer: PlannerAnswer }) {
+  const range = answer.source ? describeRange(answer.source) : null;
+  const label = [answer.text.replace(/[.\s]+$/, ''), ...answer.facts.map((fact) => `${fact.label}, ${fact.value}`), range ? `From MultiBaas, ${range}` : null]
+    .filter(Boolean)
+    .join('. ');
+  return (
+    <View accessible accessibilityLabel={label} accessibilityLiveRegion="polite" style={styles.card}>
+      <View style={styles.eyebrowRow}>
+        <SymbolView
+          importantForAccessibility="no"
+          name={{ ios: 'chart.bar', android: 'bar_chart', web: 'bar_chart' }}
+          size={16}
+          tintColor={colors.ethereum}
+        />
+        <Text style={styles.accentEyebrow}>ANSWER</Text>
+      </View>
+      <Text style={styles.answerText}>{answer.text}</Text>
+      {answer.facts.length > 0 ? (
+        <View style={styles.facts}>
+          {answer.facts.map((fact) => (
+            <View key={`${fact.label}-${fact.value}`} style={styles.factRow}>
+              <Text style={[styles.factLabel, styles.grow]}>{fact.label}</Text>
+              <Text style={styles.factValue}>{fact.value}</Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
+      {range ? <Text style={styles.faint}>From MultiBaas · {range}</Text> : null}
+    </View>
+  );
+}
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** "Sep 1 – Sep 26, 2026 UTC" for the days a summary covered; `to` is the exclusive end day. */
+export function describeRange({ from, to }: { from: string; to: string }) {
+  const start = new Date(`${from}T00:00:00Z`);
+  const end = new Date(Date.parse(`${to}T00:00:00Z`) - 86_400_000);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
+  const day = (date: Date) => `${MONTHS[date.getUTCMonth()]} ${date.getUTCDate()}`;
+  const year = end.getUTCFullYear();
+  if (start.getTime() >= end.getTime()) return `${day(start)}, ${start.getUTCFullYear()} UTC`;
+  const startYear = start.getUTCFullYear() === year ? '' : `, ${start.getUTCFullYear()}`;
+  return `${day(start)}${startYear} – ${day(end)}, ${year} UTC`;
+}
+
 function BlockedCard({
   violations,
   onOpenSend,
@@ -210,6 +260,8 @@ function BlockedCard({
   const [first] = violations;
   const title = first ? VIOLATION_TITLES[first.code] ?? VIOLATION_TITLES.schema : VIOLATION_TITLES.schema;
   const aboutSwap = first?.code === 'action_disabled' && first.message.startsWith('Swaps');
+  // A question that could not be answered has nothing to hand over to a manual screen.
+  const aboutAnswer = first?.code === 'ungrounded';
   return (
     <View accessibilityRole="alert" style={styles.card}>
       <View style={styles.eyebrowRow}>
@@ -219,7 +271,7 @@ function BlockedCard({
       <Text style={styles.heading}>{title}</Text>
       {first ? <Text style={styles.body}>{first.message}</Text> : null}
       <Text style={styles.faint}>checked by the planner and again on this phone</Text>
-      {(aboutSwap ? onOpenSwap : onOpenSend) ? (
+      {!aboutAnswer && (aboutSwap ? onOpenSwap : onOpenSend) ? (
         <Pressable
           accessibilityRole="button"
           onPress={aboutSwap ? onOpenSwap : onOpenSend}
@@ -301,6 +353,11 @@ const styles = StyleSheet.create({
   accentCaption: { ...typography.label, color: colors.ethereum },
   faint: { ...typography.labelSmall, color: colors.faintText },
   heading: { ...typography.cardTitle, color: colors.platinum },
+  answerText: { ...typography.body, color: colors.platinum },
+  facts: { gap: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.md },
+  factRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', justifyContent: 'space-between', columnGap: spacing.md },
+  factLabel: { ...typography.bodySmall, color: colors.mutedText, minWidth: '40%' },
+  factValue: { ...typography.label, color: colors.platinum, flexShrink: 1, textAlign: 'right' },
   body: { ...typography.bodySmall, color: colors.secondaryText },
   skeleton: { height: 14, borderRadius: radius.full, backgroundColor: colors.glassRaised },
   skeletonButton: { height: 48, borderRadius: radius.xl, backgroundColor: colors.glass, marginTop: spacing.xs },

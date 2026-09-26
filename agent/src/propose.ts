@@ -1,6 +1,8 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import type { BetaRunnableTool } from '@anthropic-ai/sdk/lib/tools/BetaRunnableTool';
 
+import { formatUnits, parseUnits } from 'viem';
+
 import { AGENT_OUTPUT_FORMAT } from './output-format.ts';
 import { AgentOutputSchema, type AgentContext, type AgentOutput } from './schema.ts';
 
@@ -86,8 +88,9 @@ export function renderUserMessage(intent: string, context: AgentContext, valueCa
     '',
     'Wallet snapshot:',
     `- Time: ${context.now}`,
-    `- ETH balance: ${context.balances.eth}`,
+    `- ETH balance: ${context.balances.eth}${ethSummary(context)}`,
     `- USDC balance: ${context.balances.usdc}`,
+    ...(totalUsd(context) ? [`- Total value: about $${totalUsd(context)} (ETH at the price below, plus USDC and the vault)`] : []),
     `- ETH price: ${context.prices.ethUsd === null ? 'unknown' : `$${context.prices.ethUsd}`}`,
     `- Vault: ${context.vaultPosition ? `${context.vaultPosition.assetsUsdc} USDC` : 'none'}`,
     `- Sponsored operations: ${
@@ -99,4 +102,39 @@ export function renderUserMessage(intent: string, context: AgentContext, valueCa
     `- Address book: ${names.length > 0 ? names.join(', ') : 'empty'}`,
     `- Actions: ${capabilities}`,
   ].join('\n');
+}
+
+const USD_DECIMALS = 8;
+
+/** Rounds base units to `places` decimals, half up, for display figures the model can quote. */
+export function roundUnits(value: bigint, decimals: number, places: number) {
+  const step = 10n ** BigInt(decimals - places);
+  return formatUnits(((value + step / 2n) / step) * step, decimals);
+}
+
+function ethUsdCents(context: AgentContext) {
+  if (context.prices.ethUsd === null) return null;
+  const wei = parseUnits(context.balances.eth, 18);
+  const price = parseUnits(context.prices.ethUsd, USD_DECIMALS);
+  return (wei * price) / 10n ** BigInt(18 + USD_DECIMALS - 2);
+}
+
+function cents(value: bigint) {
+  return formatUnits(value, 2).replace(/^(\d+)$/, '$1.00').replace(/\.(\d)$/, '.$10');
+}
+
+/** Rounded ETH and its dollar value, so answers can quote them instead of computing. */
+function ethSummary(context: AgentContext) {
+  const rounded = roundUnits(parseUnits(context.balances.eth, 18), 18, 6);
+  const usd = ethUsdCents(context);
+  const parts = [...(rounded === context.balances.eth ? [] : [`about ${rounded} ETH`]), ...(usd === null ? [] : [`about $${cents(usd)}`])];
+  return parts.length > 0 ? ` (${parts.join(', ')})` : '';
+}
+
+function totalUsd(context: AgentContext) {
+  const eth = ethUsdCents(context);
+  if (eth === null) return null;
+  const usdc = parseUnits(context.balances.usdc, 6) / 10_000n;
+  const vault = context.vaultPosition ? parseUnits(context.vaultPosition.assetsUsdc, 6) / 10_000n : 0n;
+  return cents(eth + usdc + vault);
 }

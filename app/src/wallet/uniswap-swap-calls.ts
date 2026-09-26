@@ -1,5 +1,5 @@
 import { Actions, V4Planner } from '@uniswap/v4-sdk';
-import { encodeFunctionData, erc20Abi, maxUint128, parseAbi, type Hex } from 'viem';
+import { encodeFunctionData, erc20Abi, maxUint128, parseAbi, type Address, type Hex } from 'viem';
 
 import type { KernelExecutionCall } from './kernel-passkey-execution';
 import {
@@ -76,13 +76,33 @@ export function buildSwapCalls({
   if (zeroForOne) return [swap];
 
   return [
+    ...buildUsdcPermit2Approvals({
+      spender: SEPOLIA_UNISWAP_UNIVERSAL_ROUTER_ADDRESS,
+      amount: amountIn,
+      expiration: Number(deadline),
+    }),
+    swap,
+  ];
+}
+
+/** Lets `spender` pull at most `amount` USDC through Permit2 until `expiration` (unix seconds). */
+export function buildUsdcPermit2Approvals({
+  spender,
+  amount,
+  expiration,
+}: {
+  spender: Address;
+  amount: bigint;
+  expiration: number;
+}): KernelExecutionCall[] {
+  return [
     {
       to: SEPOLIA_USDC_ADDRESS,
       value: 0n,
       data: encodeFunctionData({
         abi: erc20Abi,
         functionName: 'approve',
-        args: [SEPOLIA_PERMIT2_ADDRESS, amountIn],
+        args: [SEPOLIA_PERMIT2_ADDRESS, amount],
       }),
     },
     {
@@ -91,14 +111,8 @@ export function buildSwapCalls({
       data: encodeFunctionData({
         abi: permit2Abi,
         functionName: 'approve',
-        args: [
-          SEPOLIA_USDC_ADDRESS,
-          SEPOLIA_UNISWAP_UNIVERSAL_ROUTER_ADDRESS,
-          amountIn,
-          Number(deadline),
-        ],
+        args: [SEPOLIA_USDC_ADDRESS, spender, amount, expiration],
       }),
     },
-    swap,
   ];
 }

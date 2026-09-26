@@ -1,37 +1,58 @@
 import { SymbolView } from 'expo-symbols';
-import * as Clipboard from 'expo-clipboard';
-import { type ReactNode, useRef } from 'react';
-import { type GestureResponderEvent, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { type ReactNode, type RefObject, useRef, useState } from 'react';
+import { type GestureResponderEvent, type NativeScrollEvent, type NativeSyntheticEvent, Pressable, type ScrollView as RNScrollView, StyleSheet, Text, View } from 'react-native';
+// Gesture handler's ScrollView, so a widget drag can block scrolling instead of racing it.
+import { ScrollView } from 'react-native-gesture-handler';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { platinum } from '@/constants/theme';
-import { shortenAddress } from '@/wallet/sepolia';
 
 type LauncherScreenProps = {
-  accountAddress?: string | null;
-  username?: string | null;
-  ensVerified?: boolean;
+  /** The widget grid. */
   homeContent: ReactNode;
-  onOpenWallet: () => void;
   onOpenPhone: () => void;
   onOpenSettings: () => void;
   /** Shows the assistant button left of settings when the agent is configured. */
   onOpenAssistant?: () => void;
+  /** Edit mode: the header shows `EDIT HOME` and a Done pill, and swipe-up is disabled. */
+  editing?: boolean;
+  onDone?: () => void;
+  /** Drawn over everything below the header, such as the widgets sheet in edit mode; the header stays usable. */
+  overlay?: ReactNode;
+  /** Extra space at the end of the scroll content so an overlay does not cover the last row. */
+  contentInsetBottom?: number;
+  scrollRef?: RefObject<RNScrollView | null>;
+  /** False while a widget is being dragged. */
+  scrollEnabled?: boolean;
+  /** Scroll offset and visible height of the home scroll view. */
+  onScrollMetrics?: (metrics: { offset: number; viewportHeight: number }) => void;
 };
 
 const { colors, radius, spacing, typography } = platinum;
 
 export function LauncherScreen({
-  accountAddress,
-  username,
-  ensVerified = false,
   homeContent,
-  onOpenWallet,
   onOpenPhone,
   onOpenSettings,
   onOpenAssistant,
+  editing = false,
+  onDone,
+  overlay,
+  contentInsetBottom = 0,
+  scrollRef,
+  scrollEnabled = true,
+  onScrollMetrics,
 }: LauncherScreenProps) {
   const touchStart = useRef<{ x: number; y: number } | null>(null);
+  const scrollMetrics = useRef({ offset: 0, viewportHeight: 0 });
+  const [headerBottom, setHeaderBottom] = useState(0);
+  const measureHeader = (event: { nativeEvent: { layout: { y: number; height: number } } }) =>
+    setHeaderBottom(event.nativeEvent.layout.y + event.nativeEvent.layout.height);
+
+  const reportScroll = (next: Partial<{ offset: number; viewportHeight: number }>) => {
+    scrollMetrics.current = { ...scrollMetrics.current, ...next };
+    onScrollMetrics?.(scrollMetrics.current);
+  };
 
   const handleTouchStart = (event: GestureResponderEvent) => {
     touchStart.current = { x: event.nativeEvent.pageX, y: event.nativeEvent.pageY };
@@ -40,7 +61,7 @@ export function LauncherScreen({
   const handleTouchEnd = (event: GestureResponderEvent) => {
     const start = touchStart.current;
     touchStart.current = null;
-    if (!start) return;
+    if (!start || editing) return;
     const deltaX = event.nativeEvent.pageX - start.x;
     const deltaY = event.nativeEvent.pageY - start.y;
     if (deltaY < -60 && Math.abs(deltaY) > Math.abs(deltaX)) onOpenPhone();
@@ -48,109 +69,65 @@ export function LauncherScreen({
 
   return (
     <SafeAreaView style={styles.screen}>
-      <View style={styles.header}>
-        <View style={styles.brand}>
-          <View style={styles.mark}><View style={styles.markCore} /></View>
-          <Text style={styles.wordmark}>SODERA</Text>
+      {editing ? (
+        <View onLayout={measureHeader} style={styles.header}>
+          <Text style={styles.editTitle}>EDIT HOME</Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Done editing home"
+            hitSlop={{ top: 3, bottom: 3 }}
+            onPress={onDone}
+            style={({ pressed }) => [styles.doneButton, pressed && styles.pressed]}>
+            <Text style={styles.doneText}>Done</Text>
+          </Pressable>
         </View>
-        <View style={styles.headerActions}>
-          {onOpenAssistant ? (
+      ) : (
+        <View onLayout={measureHeader} style={styles.header}>
+          <View style={styles.brand}>
+            <View style={styles.mark}><View style={styles.markCore} /></View>
+            <Text style={styles.wordmark}>SODERA</Text>
+          </View>
+          <View style={styles.headerActions}>
+            {onOpenAssistant ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Open Dera"
+                onPress={onOpenAssistant}
+                style={({ pressed }) => [styles.settingsButton, pressed && styles.pressed]}>
+                <SymbolView name={{ ios: 'sparkles', android: 'auto_awesome', web: 'auto_awesome' }} size={20} tintColor={colors.ethereum} />
+              </Pressable>
+            ) : null}
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Open Dera"
-              onPress={onOpenAssistant}
+              accessibilityLabel="Open launcher settings"
+              onPress={onOpenSettings}
               style={({ pressed }) => [styles.settingsButton, pressed && styles.pressed]}>
-              <SymbolView name={{ ios: 'sparkles', android: 'auto_awesome', web: 'auto_awesome' }} size={20} tintColor={colors.ethereum} />
-            </Pressable>
-          ) : null}
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Open launcher settings"
-            onPress={onOpenSettings}
-            style={({ pressed }) => [styles.settingsButton, pressed && styles.pressed]}>
-            <SymbolView name={{ ios: 'gearshape', android: 'settings', web: 'settings' }} size={20} tintColor={colors.secondaryText} />
-          </Pressable>
-        </View>
-      </View>
-      <ScrollView style={styles.content} contentContainerStyle={styles.contentInner} contentInsetAdjustmentBehavior="automatic">
-        <View style={styles.identity}>
-          <View style={styles.identityTop}>
-            <View style={styles.identityMark}>
-              <View style={styles.identityAvatar}>
-                <SymbolView name={{ ios: 'person.fill', android: 'person', web: 'person' }} size={22} tintColor={colors.platinum} />
-              </View>
-              {accountAddress ? <View style={styles.presenceDot} /> : null}
-            </View>
-            <View style={styles.identityCopy}>
-              <Text style={styles.identityTitle}>{username ?? 'Your smart account'}</Text>
-              {accountAddress ? (
-                <Pressable accessibilityRole="button" accessibilityLabel="Copy account address" onPress={() => void Clipboard.setStringAsync(accountAddress)} style={styles.addressRow}>
-                  <Text style={styles.identityAddress}>{shortenAddress(accountAddress)}</Text>
-                  <SymbolView name={{ ios: 'square.on.square', android: 'content_copy', web: 'content_copy' }} size={12} tintColor={colors.faintText} />
-                </Pressable>
-              ) : <Text style={styles.identityAddress}>Smart wallet</Text>}
-            </View>
-            <Pressable accessibilityRole="button" accessibilityLabel="View smart account" onPress={onOpenWallet} style={styles.identityArrow}>
-              <Text style={styles.arrowText}>›</Text>
-            </Pressable>
-          </View>
-          <View style={styles.identityFooter}>
-            <Text style={styles.identityChip}>ETHEREUM</Text>
-            <Text style={ensVerified ? styles.identityChipActive : styles.identityChip}>
-              {ensVerified ? 'ENS VERIFIED' : 'ADDRESS ONLY'}
-            </Text>
-            <Pressable accessibilityRole="button" accessibilityLabel="Open profile wallet" onPress={onOpenWallet} style={styles.identityFooterArrow}>
-              <Text style={styles.footerArrowText}>›</Text>
+              <SymbolView name={{ ios: 'gearshape', android: 'settings', web: 'settings' }} size={20} tintColor={colors.secondaryText} />
             </Pressable>
           </View>
         </View>
-        <View style={styles.primaryRow}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Open Wallet"
-            onPress={onOpenWallet}
-            style={({ pressed }) => [styles.wallet, pressed && styles.pressed]}>
-            <View style={styles.walletIcon}>
-              <SymbolView
-                importantForAccessibility="no"
-                name={{ ios: 'wallet.bifold.fill', android: 'account_balance_wallet', web: 'wallet' }}
-                size={26}
-                tintColor={colors.onPlatinum}
-              />
-            </View>
-            <View style={styles.walletCopy}>
-              <Text style={styles.walletTitle}>Wallet</Text>
-              <Text style={styles.walletSubtitle}>Your onchain life, one tap away</Text>
-            </View>
-            <Text style={styles.walletArrow}>›</Text>
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Open Phone"
-            onPress={onOpenPhone}
-            style={({ pressed }) => [styles.phone, pressed && styles.pressed]}>
-            <View style={styles.phoneIcon}>
-              <SymbolView
-                importantForAccessibility="no"
-                name={{ ios: 'square.grid.2x2.fill', android: 'apps', web: 'apps' }}
-                size={24}
-                tintColor={colors.cyan}
-              />
-            </View>
-            <View style={styles.phoneCopy}>
-              <Text style={styles.phoneTitle}>Phone</Text>
-              <Text style={styles.phoneSubtitle}>All your apps, in one place</Text>
-            </View>
-            <Text style={styles.phoneArrow}>›</Text>
-          </Pressable>
-        </View>
+      )}
+      <ScrollView
+        ref={scrollRef}
+        scrollEnabled={scrollEnabled}
+        style={styles.content}
+        contentContainerStyle={[styles.contentInner, editing && styles.contentEditing, { paddingBottom: spacing.md + contentInsetBottom }]}
+        contentInsetAdjustmentBehavior="automatic"
+        onLayout={(event) => reportScroll({ viewportHeight: event.nativeEvent.layout.height })}
+        onScroll={(event: NativeSyntheticEvent<NativeScrollEvent>) => reportScroll({ offset: event.nativeEvent.contentOffset.y })}
+        scrollEventThrottle={32}>
         {homeContent}
       </ScrollView>
-      <View onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd} style={styles.gestureArea}>
+      <View onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd} style={[styles.gestureArea, editing && styles.gestureDisabled]}>
         <Text style={styles.gestureChevron}>⌃</Text>
         <Text style={styles.gestureText}>SWIPE UP FOR PHONE</Text>
         <View style={styles.gestureBar} />
       </View>
+      {overlay ? (
+        <View pointerEvents="box-none" style={[styles.overlay, { top: headerBottom }]}>
+          {overlay}
+        </View>
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -164,37 +141,16 @@ const styles = StyleSheet.create({
   markCore: { width: 13, height: 13, borderRadius: radius.full, backgroundColor: colors.platinum },
   wordmark: { ...typography.label, color: colors.platinum, letterSpacing: 3 },
   settingsButton: { width: 38, height: 38, borderRadius: radius.full, backgroundColor: colors.glass, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
+  overlay: { position: 'absolute', left: 0, right: 0, bottom: 0 },
+  editTitle: { ...typography.label, color: colors.platinum, letterSpacing: 3 },
+  // 38 tall like the header buttons, so the header does not change height; the hit slop brings it to 44.
+  doneButton: { height: 38, paddingHorizontal: spacing.lg, borderRadius: radius.full, backgroundColor: colors.platinum, alignItems: 'center', justifyContent: 'center' },
+  doneText: { ...typography.bodySmall, fontFamily: typography.subheading.fontFamily, color: colors.onPlatinum },
   content: { flex: 1 },
+  // Room above the top row for the remove button and size tag, which sit outside the selected cell.
+  contentEditing: { paddingTop: spacing.lg },
   contentInner: { flexGrow: 1, paddingHorizontal: spacing.lg, paddingBottom: spacing.md, gap: spacing.md },
-  identity: { minHeight: 106, paddingHorizontal: spacing.md, paddingTop: spacing.md, borderRadius: radius.xl, borderCurve: 'continuous', backgroundColor: colors.surfaceLowest, borderWidth: 1, borderColor: colors.border, gap: spacing.sm },
-  identityTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  identityMark: { width: 42, height: 42, borderRadius: radius.full, backgroundColor: colors.cyan, padding: 3, alignItems: 'center', justifyContent: 'center' },
-  identityAvatar: { width: 36, height: 36, borderRadius: radius.full, backgroundColor: colors.surfaceHigh, alignItems: 'center', justifyContent: 'center' },
-  presenceDot: { position: 'absolute', width: 11, height: 11, borderRadius: radius.full, backgroundColor: colors.emerald, borderWidth: 2, borderColor: colors.canvas, bottom: -1, right: -1 },
-  identityCopy: { flex: 1, gap: spacing.xs },
-  identityTitle: { ...typography.bodySmall, fontFamily: typography.subheading.fontFamily, color: colors.platinum },
-  addressRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, minHeight: 20 },
-  identityAddress: { ...typography.micro, color: colors.mutedText },
-  identityArrow: { width: 30, height: 30, borderRadius: radius.full, backgroundColor: colors.glassRaised, alignItems: 'center', justifyContent: 'center' },
-  arrowText: { ...typography.subheading, color: colors.mutedText },
-  identityFooter: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, borderTopWidth: 1, borderTopColor: colors.border, paddingVertical: spacing.sm },
-  identityChip: { ...typography.micro, color: colors.mutedText, backgroundColor: colors.glass, borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
-  identityChipActive: { ...typography.micro, color: colors.emerald, backgroundColor: colors.emeraldWash, borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
-  identityFooterArrow: { marginLeft: 'auto', minWidth: 20, alignItems: 'flex-end' },
-  footerArrowText: { ...typography.subheading, color: colors.mutedText },
-  primaryRow: { flexDirection: 'row', alignItems: 'stretch', gap: spacing.md },
-  wallet: { flex: 1, minWidth: 0, minHeight: 148, borderRadius: radius.xl, borderCurve: 'continuous', padding: spacing.md, backgroundColor: colors.platinum, boxShadow: platinum.shadow.raised, justifyContent: 'space-between' },
-  walletCopy: { gap: spacing.xs },
-  walletTitle: { ...typography.cardTitle, color: colors.onPlatinum },
-  walletSubtitle: { ...typography.caption, color: colors.onPlatinum },
-  walletArrow: { ...typography.subheading, color: colors.faintText, position: 'absolute', right: spacing.md, top: spacing.md },
-  walletIcon: { width: 40, height: 40, borderRadius: radius.full, backgroundColor: platinum.colors.platinumSoft, alignItems: 'center', justifyContent: 'center' },
-  phone: { flex: 1, minWidth: 0, minHeight: 148, borderRadius: radius.xl, borderCurve: 'continuous', padding: spacing.md, backgroundColor: colors.surfaceLowest, borderWidth: 1, borderColor: colors.border, justifyContent: 'space-between' },
-  phoneIcon: { width: 40, height: 40, borderRadius: radius.full, backgroundColor: colors.glassRaised, alignItems: 'center', justifyContent: 'center' },
-  phoneCopy: { gap: spacing.xs },
-  phoneTitle: { ...typography.cardTitle, color: colors.platinum },
-  phoneSubtitle: { ...typography.caption, color: colors.mutedText },
-  phoneArrow: { ...typography.subheading, color: colors.mutedText, position: 'absolute', top: spacing.md, right: spacing.md },
+  gestureDisabled: { opacity: 0.3 },
   gestureArea: { minHeight: 54, alignItems: 'center', justifyContent: 'center', gap: spacing.xs },
   gestureChevron: { ...typography.caption, color: colors.faintText },
   gestureText: { ...typography.micro, color: colors.faintText, letterSpacing: 2 },

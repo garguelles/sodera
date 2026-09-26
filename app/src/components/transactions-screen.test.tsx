@@ -5,7 +5,11 @@ import type { Address, Hash } from 'viem';
 import { TransactionsScreen } from './transactions-screen';
 import { platinum } from '@/constants/theme';
 import { sepoliaTransactionUrl } from '@/wallet/sepolia';
-import type { TransactionActivityProvider } from '@/wallet/transaction-activity';
+import type {
+  TransactionActivityEarn,
+  TransactionActivityOperationSummary,
+  TransactionActivityProvider,
+} from '@/wallet/transaction-activity';
 
 const account = '0x1111111111111111111111111111111111111111' as Address;
 const counterparty = '0x2222222222222222222222222222222222222222' as Address;
@@ -113,6 +117,105 @@ describe('TransactionsScreen', () => {
     ).toBeOnTheScreen();
     expect(screen.getByText('-1.5')).toBeOnTheScreen();
     expect(screen.getByText('Sponsored · gas 0.000012 ETH')).toBeOnTheScreen();
+  });
+
+  it('shows an Earn deposit with its operation and opens its transaction', async () => {
+    const openTransaction = jest.fn().mockResolvedValue(undefined);
+    await act(async () => {
+      render(
+        <TransactionsScreen
+          openTransaction={openTransaction}
+          provider={createProvider({
+            status: 'ready',
+            account,
+            items: [
+              earnItem({
+                direction: 'deposit',
+                amount: '50',
+                pairedAmount: '0.018587360594795539',
+                operation: { userOperationHash, success: true, sponsored: true, actualGasCostWei: '12000000000000' },
+              }),
+            ],
+          })}
+        />,
+      );
+    });
+
+    const row = await screen.findByRole('link', {
+      name: 'Earn deposit, 50 USDC and 0.018587 WETH, 1inch Aqua, tokens stay in your wallet, Sponsored, gas 0.000012 ETH',
+    });
+    expect(screen.getByText('Earn deposit · 50 USDC')).toBeOnTheScreen();
+    expect(screen.getByText('+ 0.018587 WETH · 1inch Aqua')).toBeOnTheScreen();
+    expect(screen.getByText('Sponsored · gas 0.000012 ETH')).toBeOnTheScreen();
+    // Tokens never leave the wallet, so the row shows no sent or received amount.
+    expect(screen.queryByText('-50')).not.toBeOnTheScreen();
+
+    await act(async () => fireEvent.press(row));
+    expect(openTransaction).toHaveBeenCalledWith(sepoliaTransactionUrl(transactionHash));
+  });
+
+  it('shows an Earn withdrawal, and one whose amounts are unknown', async () => {
+    await act(async () => {
+      render(
+        <TransactionsScreen
+          provider={createProvider({
+            status: 'ready',
+            account,
+            items: [
+              earnItem({ id: 'earn-1', direction: 'withdraw', amount: '50.25', pairedAmount: '0.018' }),
+              earnItem({ id: 'earn-2', direction: 'withdraw', amount: null, pairedAmount: null }),
+            ],
+          })}
+        />,
+      );
+    });
+
+    expect(await screen.findByText('Earn withdrawal · 50.25 USDC')).toBeOnTheScreen();
+    expect(screen.getByText('+ 0.018 WETH · 1inch Aqua')).toBeOnTheScreen();
+    expect(
+      screen.getByRole('link', { name: 'Earn withdrawal, 50.25 USDC and 0.018 WETH, 1inch Aqua, tokens stay in your wallet' }),
+    ).toBeOnTheScreen();
+    expect(screen.getByText('Earn withdrawal')).toBeOnTheScreen();
+    expect(
+      screen.getByRole('link', { name: 'Earn withdrawal, amount unavailable, 1inch Aqua, tokens stay in your wallet' }),
+    ).toBeOnTheScreen();
+  });
+
+  it('shows a Pay with payment as one row with what was swapped', async () => {
+    await act(async () => {
+      render(
+        <TransactionsScreen
+          provider={createProvider({
+            status: 'ready',
+            account,
+            items: [
+              {
+                kind: 'payment',
+                id: 'pay-1',
+                transactionHash,
+                asset: 'USDC',
+                amount: '10',
+                counterparty,
+                paidAsset: 'ETH',
+                paidAmount: '0.00028241',
+                paidAmountIsMaximum: false,
+                timestamp: '2026-09-12T20:54:24.000Z',
+                blockNumber: 10,
+                operation: { userOperationHash, success: true, sponsored: true, actualGasCostWei: '12000000000000' },
+              },
+            ],
+          })}
+        />,
+      );
+    });
+
+    expect(
+      await screen.findByRole('link', {
+        name: 'Paid 10 USDC, To 0x2222...2222, Swapped from 0.00028241 ETH, Sponsored, gas 0.000012 ETH',
+      }),
+    ).toBeOnTheScreen();
+    expect(screen.getByText('Paid USDC')).toBeOnTheScreen();
+    expect(screen.getByText('-10')).toBeOnTheScreen();
   });
 
   it('renders a standalone account operation without an amount', async () => {
@@ -254,6 +357,35 @@ function operationItem({ success, sponsored }: { success: boolean; sponsored: bo
     actualGasCostWei: '12000000000000',
     timestamp: '2026-09-12T20:54:24.000Z',
     blockNumber: 10,
+  };
+}
+
+function earnItem({
+  id = 'earn-0',
+  direction,
+  amount,
+  pairedAmount,
+  operation = null,
+}: {
+  id?: string;
+  direction: 'deposit' | 'withdraw';
+  amount: string | null;
+  pairedAmount: string | null;
+  operation?: TransactionActivityOperationSummary | null;
+}): TransactionActivityEarn {
+  return {
+    kind: 'earn',
+    id,
+    transactionHash,
+    direction,
+    asset: 'USDC',
+    amount,
+    pairedAsset: 'WETH',
+    pairedAmount,
+    strategyHash: `0x${'55'.repeat(32)}` as Hash,
+    timestamp: '2026-09-12T20:54:24.000Z',
+    blockNumber: 10,
+    operation,
   };
 }
 

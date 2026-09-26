@@ -1,4 +1,5 @@
-import { AgentUnavailableError, createAgentClient, readAgentConfigFromEnv } from './agent-client';
+import { ethForTenUsdc, PAY_FIXTURE_ACCOUNT } from '../wallet/pay-with-swap-fixtures';
+import { AgentUnavailableError, createAgentClient, PayQuoteError, readAgentConfigFromEnv } from './agent-client';
 
 const config = { baseUrl: 'https://agent.example', token: 'token' };
 const request = { account: '0x1111111111111111111111111111111111111111', intent: 'hi', context: {} as never };
@@ -20,6 +21,19 @@ describe('agent client', () => {
     expect(JSON.parse(init.body)).toEqual(request);
   });
 
+  it('accepts answers with their facts and source', async () => {
+    const answer = {
+      kind: 'answer',
+      text: 'You sent 42.5 USDC to alice.',
+      facts: [{ label: 'Sent to alice', value: '42.5 USDC' }],
+      source: { from: '2026-09-01', to: '2026-09-27' },
+    };
+    await expect(createAgentClient({ config, fetcher: respond(200, answer) }).propose(request)).resolves.toEqual(answer);
+    await expect(
+      createAgentClient({ config, fetcher: respond(200, { ...answer, source: undefined }) }).propose(request),
+    ).rejects.toThrow('invalid data');
+  });
+
   it('treats network failures, HTTP errors, bad data, and timeouts as the planner being unavailable', async () => {
     const offline = createAgentClient({ config, fetcher: jest.fn().mockRejectedValue(new TypeError('Network request failed')) });
     await expect(offline.propose(request)).rejects.toThrow(new AgentUnavailableError('The planner could not be reached'));
@@ -34,6 +48,29 @@ describe('agent client', () => {
     await expect(createAgentClient({ config, fetcher: hanging as never, timeoutMs: 10 }).propose(request)).rejects.toThrow(
       'took too long',
     );
+  });
+
+  it('asks the backend for a pay quote and validates the answer', async () => {
+    const payRequest = { account: PAY_FIXTURE_ACCOUNT, payAsset: 'ETH', receiveAsset: 'USDC', amountOut: '10000000' } as const;
+    const fetcher = respond(200, ethForTenUsdc);
+
+    await expect(createAgentClient({ config, fetcher }).payQuote(payRequest)).resolves.toEqual(ethForTenUsdc);
+    const [url, init] = fetcher.mock.calls[0];
+    expect(url).toBe('https://agent.example/pay/quote');
+    expect(init.headers.authorization).toBe('Bearer token');
+    expect(JSON.parse(init.body)).toEqual(payRequest);
+
+    const failure = (status: number, body: unknown) =>
+      createAgentClient({ config, fetcher: respond(status, body) }).payQuote(payRequest);
+    await expect(failure(422, { error: { code: 'no_route' } })).rejects.toMatchObject({ reason: 'no_route' });
+    await expect(failure(503, { error: { code: 'busy' } })).rejects.toMatchObject({ reason: 'busy' });
+    await expect(failure(503, { error: { code: 'pay_unavailable' } })).rejects.toMatchObject({ reason: 'error' });
+    await expect(failure(504, { error: { code: 'upstream_timeout' } })).rejects.toMatchObject({ reason: 'timeout' });
+    await expect(failure(200, { ...ethForTenUsdc, swap: { ...ethForTenUsdc.swap, value: '-1' } })).rejects.toMatchObject({
+      reason: 'error',
+    });
+    const offline = createAgentClient({ config, fetcher: jest.fn().mockRejectedValue(new TypeError('Network request failed')) });
+    await expect(offline.payQuote(payRequest)).rejects.toEqual(new PayQuoteError('unreachable'));
   });
 
   it('reads the optional settings', () => {

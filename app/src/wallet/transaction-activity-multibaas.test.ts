@@ -2,9 +2,14 @@ import { zeroAddress, type Address, type Hash, type Hex } from 'viem';
 
 import type { MultiBaasClient } from './multibaas';
 import type { ReceivedEthReader } from './received-eth-blockscout';
+import { buildOpenPositionCalls } from './aqua-calls';
+import { buildAquaOrder } from './aqua-strategy';
+import { SEPOLIA_AQUA_ADDRESS, SEPOLIA_AQUA_SWAP_VM_ROUTER_ADDRESS, SEPOLIA_USDC_ADDRESS, SEPOLIA_WETH_ADDRESS } from './sepolia';
 import type { TransactionActivityTransfer } from './transaction-activity';
 import {
   createMultiBaasTransactionActivityProvider,
+  mergeEarnActivity,
+  normalizeAquaActivity,
   normalizeMultiBaasActivity,
   parseBytes32,
   parseTimestamp,
@@ -21,6 +26,14 @@ const account = '0x1111111111111111111111111111111111111111' as Address;
 const other = '0x2222222222222222222222222222222222222222' as Address;
 const paymaster = '0x5555555555555555555555555555555555555555' as Address;
 const hash = (byte: string) => `0x${byte.repeat(32)}` as Hash;
+// A 1,000 USDC + 0.4 WETH Earn position shipped by the account, as the Earn screen builds it.
+const position = buildAquaOrder({ maker: account, salt: 1_790_000_000n });
+const openCalls = buildOpenPositionCalls({
+  order: position.order,
+  usdcAmount: 1_000_000_000n,
+  wethAmount: 400_000_000_000_000_000n,
+  wrapWei: 400_000_000_000_000_000n,
+});
 
 describe('normalizeMultiBaasActivity', () => {
   it('lists USDC transfers in and out newest first', () => {
@@ -229,6 +242,161 @@ describe('normalizeMultiBaasActivity', () => {
   });
 });
 
+describe('normalizeAquaActivity', () => {
+  const shipCalls = new Map([
+    [hash('cc'), openCalls.map((call) => ({ to: call.to, valueWei: call.value.toString(), data: call.data }))],
+  ]);
+
+  it('reads a deposit from the ship call of its operation', () => {
+    const result = normalizeAquaActivity({
+      shipped: [aquaRow({ txHash: hash('aa'), strategyHash: position.strategyHash, block: 30 })],
+      docked: [],
+      pulled: [],
+      pushed: [],
+      operations: [operationRow({ txHash: hash('aa'), userOpHash: hash('cc') })],
+      operationCalls: shipCalls,
+    });
+
+    expect(result).toEqual({
+      skippedCount: 0,
+      items: [
+        {
+          kind: 'earn',
+          id: `earn:deposit:${position.strategyHash}:${hash('aa')}`,
+          transactionHash: hash('aa'),
+          direction: 'deposit',
+          asset: 'USDC',
+          amount: '1000',
+          pairedAsset: 'WETH',
+          pairedAmount: '0.4',
+          strategyHash: position.strategyHash,
+          timestamp: '2026-09-26T01:00:00.000Z',
+          blockNumber: 30,
+          operation: null,
+        },
+      ],
+    });
+  });
+
+  it('reads a withdrawal as the deposit plus every trade since', () => {
+    const result = normalizeAquaActivity({
+      shipped: [aquaRow({ txHash: hash('aa'), strategyHash: position.strategyHash, block: 30 })],
+      docked: [aquaRow({ txHash: hash('bb'), strategyHash: position.strategyHash, block: 40 })],
+      // One round trip: the taker's 100 USDC in, 0.03 WETH out, then the WETH back for 99.5 USDC.
+      pushed: [
+        flowRow({ strategyHash: position.strategyHash, token: SEPOLIA_USDC_ADDRESS, amount: '100000000' }),
+        flowRow({ strategyHash: position.strategyHash, token: SEPOLIA_WETH_ADDRESS, amount: '30000000000000000' }),
+      ],
+      pulled: [
+        flowRow({ strategyHash: position.strategyHash, token: SEPOLIA_WETH_ADDRESS, amount: '30000000000000000' }),
+        flowRow({ strategyHash: position.strategyHash, token: SEPOLIA_USDC_ADDRESS, amount: '99500000' }),
+      ],
+      operations: [operationRow({ txHash: hash('aa'), userOpHash: hash('cc') })],
+      operationCalls: shipCalls,
+    });
+
+    expect(result.skippedCount).toBe(0);
+    expect(result.items).toEqual([
+      expect.objectContaining({ direction: 'deposit', amount: '1000', pairedAmount: '0.4' }),
+      expect.objectContaining({
+        kind: 'earn',
+        direction: 'withdraw',
+        transactionHash: hash('bb'),
+        amount: '1000.5',
+        pairedAmount: '0.4',
+        blockNumber: 40,
+      }),
+    ]);
+  });
+
+  it('leaves amounts unknown when the deposit is missing or trades may be cut off', () => {
+    const docked = [aquaRow({ txHash: hash('bb'), strategyHash: position.strategyHash })];
+    const withoutDeposit = normalizeAquaActivity({ shipped: [], docked, pulled: [], pushed: [], operations: [] });
+    const truncated = normalizeAquaActivity({
+      shipped: [aquaRow({ txHash: hash('aa'), strategyHash: position.strategyHash })],
+      docked,
+      pulled: [],
+      pushed: [],
+      operations: [operationRow({ txHash: hash('aa'), userOpHash: hash('cc') })],
+      operationCalls: shipCalls,
+      flowsComplete: false,
+    });
+
+    expect(withoutDeposit.items).toEqual([expect.objectContaining({ direction: 'withdraw', amount: null, pairedAmount: null })]);
+    expect(truncated.items).toEqual([
+      expect.objectContaining({ direction: 'deposit', amount: '1000' }),
+      expect.objectContaining({ direction: 'withdraw', amount: null, pairedAmount: null }),
+    ]);
+  });
+
+  it('counts malformed Aqua rows as skipped', () => {
+    const result = normalizeAquaActivity({
+      shipped: [aquaRow({ strategyHash: 'bad' })],
+      docked: [],
+      pulled: [flowRow({ strategyHash: position.strategyHash, token: SEPOLIA_USDC_ADDRESS, amount: '-1' })],
+      pushed: [],
+      operations: [],
+    });
+
+    expect(result).toEqual({ items: [], skippedCount: 2 });
+  });
+});
+
+describe('mergeEarnActivity', () => {
+  it('folds the operation, the wrap, and a USDC transfer of the same transaction into the Earn row', () => {
+    const earn = normalizeAquaActivity({
+      shipped: [aquaRow({ txHash: hash('aa'), strategyHash: position.strategyHash })],
+      docked: [],
+      pulled: [],
+      pushed: [],
+      operations: [],
+    }).items;
+    const indexed = normalize({
+      usdcSent: [
+        transferRow({ txHash: hash('aa'), from: account, to: other, value: '5000000' }),
+        transferRow({ txHash: hash('dd'), from: account, to: other, value: '2000000', block: 5 }),
+      ],
+      operations: [operationRow({ txHash: hash('aa'), userOpHash: hash('cc') })],
+      ethTransfers: new Map([[hash('cc'), [{ to: SEPOLIA_WETH_ADDRESS, valueWei: '400000000000000000' }]]]),
+    }).items;
+
+    const merged = mergeEarnActivity(indexed, earn);
+
+    expect(merged).toHaveLength(2);
+    expect(merged).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: 'transfer', transactionHash: hash('dd'), amount: '2' }),
+        expect.objectContaining({
+          kind: 'earn',
+          transactionHash: hash('aa'),
+          operation: expect.objectContaining({ userOperationHash: hash('cc') }),
+        }),
+      ]),
+    );
+  });
+
+  it('keeps a standalone operation as the Earn row operation', () => {
+    const earn = normalizeAquaActivity({
+      shipped: [],
+      docked: [aquaRow({ txHash: hash('bb'), strategyHash: position.strategyHash })],
+      pulled: [],
+      pushed: [],
+      operations: [],
+    }).items;
+    const indexed = normalize({
+      operations: [operationRow({ txHash: hash('bb'), userOpHash: hash('ee'), paymaster: zeroAddress })],
+    }).items;
+
+    expect(mergeEarnActivity(indexed, earn)).toEqual([
+      expect.objectContaining({
+        kind: 'earn',
+        direction: 'withdraw',
+        operation: expect.objectContaining({ userOperationHash: hash('ee'), sponsored: false }),
+      }),
+    ]);
+  });
+});
+
 describe('parseBytes32', () => {
   it('accepts hex and the byte array form MultiBaas returns', () => {
     const bytes = Array.from({ length: 32 }, (_, index) => index * 8);
@@ -262,7 +430,7 @@ describe('parseTimestamp', () => {
 });
 
 describe('createMultiBaasTransactionActivityProvider', () => {
-  it('sends the three event queries and reports an empty account', async () => {
+  it('sends the transfer, operation, and Aqua event queries and reports an empty account', async () => {
     const client = createClient();
     const provider = createMultiBaasTransactionActivityProvider({
       storage: createStorage(),
@@ -275,11 +443,52 @@ describe('createMultiBaasTransactionActivityProvider', () => {
     await expect(provider.load()).resolves.toEqual({ status: 'empty', account });
 
     expect(provider.source).toBe('multibaas');
-    expect(client.executeEventQuery).toHaveBeenCalledTimes(3);
+    expect(client.executeEventQuery).toHaveBeenCalledTimes(7);
     const calls = jest.mocked(client.executeEventQuery).mock.calls;
     for (const [, options] of calls) expect(options).toEqual({ limit: 50 });
 
-    const [sent, received, operations] = calls.map(([query]) => query);
+    const queries = calls.map(([query]) => query);
+    const byEvent = (name: string) => queries.filter((query) => query.events[0].eventName === name);
+    const [sent, received] = byEvent('Transfer');
+    const [operations] = byEvent('UserOperationEvent');
+    const aquaFilter = {
+      rule: 'and',
+      children: [
+        { fieldType: 'contract_address', operator: 'equal', value: SEPOLIA_AQUA_ADDRESS },
+        { fieldType: 'input', inputIndex: 0, operator: 'equal', value: account },
+        { fieldType: 'input', inputIndex: 1, operator: 'equal', value: SEPOLIA_AQUA_SWAP_VM_ROUTER_ADDRESS.toLowerCase() },
+      ],
+    };
+    const baseSelect = [
+      { type: 'tx_hash', alias: 'txHash' },
+      { type: 'block_number', alias: 'blockNumber' },
+      { type: 'triggered_at', alias: 'timestamp' },
+      { type: 'input', inputIndex: 2, alias: 'strategyHash' },
+    ];
+    for (const eventName of ['Shipped', 'Docked']) {
+      expect(byEvent(eventName)).toEqual([
+        { events: [{ eventName, select: baseSelect, filter: aquaFilter }], orderBy: 'timestamp', order: 'DESC' },
+      ]);
+    }
+    for (const eventName of ['Pulled', 'Pushed']) {
+      expect(byEvent(eventName)).toEqual([
+        {
+          events: [
+            {
+              eventName,
+              select: [
+                ...baseSelect,
+                { type: 'input', inputIndex: 3, alias: 'token' },
+                { type: 'input', inputIndex: 4, alias: 'amount' },
+              ],
+              filter: aquaFilter,
+            },
+          ],
+          orderBy: 'timestamp',
+          order: 'DESC',
+        },
+      ]);
+    }
     expect(sent).toEqual({
       events: [
         {
@@ -449,6 +658,62 @@ describe('createMultiBaasTransactionActivityProvider', () => {
     });
   });
 
+  it('shows an Earn deposit as one row with the amounts its operation shipped', async () => {
+    const reader = createReader(encodeBundle(account, 9n, await encodeKernelCalls(openCalls)));
+    const provider = createMultiBaasTransactionActivityProvider({
+      storage: createStorage(),
+      receivedEth: createReceivedEth(),
+      client: createClient({
+        operations: [{ ...operationRow({ txHash: hash('aa'), userOpHash: hash('cc'), block: 30 }), nonce: '9' }],
+        // MultiBaas returns bytes32 inputs as byte arrays.
+        shipped: [aquaRow({ txHash: hash('aa'), strategyHash: byteArray(position.strategyHash), block: 30 })],
+      }),
+      transactionReader: reader,
+    });
+
+    const result = await provider.load();
+
+    // The wrap reads as an ETH send in the same operation; it folds into the Earn row too.
+    expect(result).toEqual({
+      status: 'ready',
+      account,
+      items: [
+        expect.objectContaining({
+          kind: 'earn',
+          direction: 'deposit',
+          asset: 'USDC',
+          amount: '1000',
+          pairedAsset: 'WETH',
+          pairedAmount: '0.4',
+          strategyHash: position.strategyHash,
+          transactionHash: hash('aa'),
+          operation: expect.objectContaining({ userOperationHash: hash('cc'), sponsored: true }),
+        }),
+      ],
+    });
+  });
+
+  it('keeps the rest of the feed when Aqua events cannot be loaded', async () => {
+    const client = createClient({ sent: [transferRow({ from: account, to: other })] });
+    const execute = jest.mocked(client.executeEventQuery).getMockImplementation()!;
+    jest.mocked(client.executeEventQuery).mockImplementation(async (query, options) => {
+      if (query.events[0].eventName === 'Docked') throw new Error('MultiBaas returned HTTP 500');
+      return execute(query, options);
+    });
+    const provider = createMultiBaasTransactionActivityProvider({
+      storage: createStorage(),
+      receivedEth: createReceivedEth(),
+      client,
+      transactionReader: createReader(),
+    });
+
+    await expect(provider.load()).resolves.toMatchObject({
+      status: 'partial',
+      message: 'Earn activity could not be loaded from MultiBaas.',
+      items: [expect.objectContaining({ asset: 'USDC' })],
+    });
+  });
+
   it('surfaces MultiBaas failures to the screen', async () => {
     const client = createClient();
     jest.mocked(client.executeEventQuery).mockRejectedValue(new Error('MultiBaas returned HTTP 401'));
@@ -522,11 +787,37 @@ function operationRow({
   };
 }
 
-function createClient(rows: { sent?: unknown[]; received?: unknown[]; operations?: unknown[] } = {}) {
+function aquaRow({
+  txHash = hash('aa'),
+  strategyHash,
+  block = 10,
+  timestamp = '2026-09-26T01:00:00Z',
+}: {
+  txHash?: string;
+  strategyHash: string;
+  block?: number;
+  timestamp?: string;
+}) {
+  return { txHash, blockNumber: block, timestamp, strategyHash };
+}
+
+function flowRow({ strategyHash, token, amount }: { strategyHash: string; token: string; amount: string }) {
+  return { ...aquaRow({ txHash: hash('ff'), strategyHash, block: 35 }), token: token.toLowerCase(), amount };
+}
+
+function byteArray(value: Hash) {
+  return JSON.stringify(Array.from({ length: 32 }, (_, index) => parseInt(value.slice(2 + index * 2, 4 + index * 2), 16)));
+}
+
+type AquaRows = { shipped?: unknown[]; docked?: unknown[]; pulled?: unknown[]; pushed?: unknown[] };
+
+function createClient(rows: { sent?: unknown[]; received?: unknown[]; operations?: unknown[] } & AquaRows = {}) {
   const client: MultiBaasClient = {
     executeEventQuery: jest.fn(async (query) => {
       const event = query.events[0];
       if (event.eventName === 'UserOperationEvent') return (rows.operations ?? []) as Record<string, unknown>[];
+      const aqua = { Shipped: rows.shipped, Docked: rows.docked, Pulled: rows.pulled, Pushed: rows.pushed };
+      if (event.eventName in aqua) return (aqua[event.eventName as keyof typeof aqua] ?? []) as Record<string, unknown>[];
       const filter = event.filter as { children: { inputIndex?: number }[] };
       const sent = filter.children.some((child) => child.inputIndex === 0);
       return ((sent ? rows.sent : rows.received) ?? []) as Record<string, unknown>[];

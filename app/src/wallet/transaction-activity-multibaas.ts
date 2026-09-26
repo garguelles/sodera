@@ -1,12 +1,14 @@
 import { AppState } from 'react-native';
 import {
   createPublicClient,
+  decodeFunctionData,
   formatEther,
   formatUnits,
   getAddress,
   http,
   isAddress,
   isHash,
+  keccak256,
   zeroAddress,
   type Address,
   type Hash,
@@ -23,15 +25,22 @@ import {
   type EventQueryField,
   type MultiBaasClient,
 } from './multibaas';
+import { aquaAbi } from './aqua-calls';
+import { SEPOLIA_USDC_ADDRESS, SEPOLIA_WETH_ADDRESS } from './sepolia';
 import type {
+  TransactionActivityEarn,
   TransactionActivityItem,
   TransactionActivityOperation,
+  TransactionActivityOperationSummary,
   TransactionActivityProvider,
   TransactionActivityTransfer,
 } from './transaction-activity';
 import { createBlockscoutReceivedEthReader, type ReceivedEthReader } from './received-eth-blockscout';
+import { groupPayWithActivity } from './pay-with-activity';
 import {
-  readUserOperationEthTransfers,
+  ethTransfersOf,
+  readUserOperationCalls,
+  type UserOperationCall,
   type UserOperationEthTransfer,
   type UserOperationTransactionReader,
 } from './user-operation-calls';
@@ -78,6 +87,53 @@ export function buildUsdcTransferQuery(account: Address, direction: 'sent' | 're
               inputIndex: direction === 'sent' ? 0 : 1,
               operator: 'equal',
               value: formatAddressFilterValue(account),
+            },
+          ],
+        },
+      },
+    ],
+    orderBy: 'timestamp',
+    order: 'DESC',
+  };
+}
+
+const AQUA_SELECT: EventQueryField[] = [
+  { type: 'tx_hash', alias: 'txHash' },
+  { type: 'block_number', alias: 'blockNumber' },
+  { type: 'triggered_at', alias: 'timestamp' },
+  { type: 'input', inputIndex: 2, alias: 'strategyHash' },
+];
+
+const AQUA_FLOW_SELECT: EventQueryField[] = [
+  ...AQUA_SELECT,
+  { type: 'input', inputIndex: 3, alias: 'token' },
+  { type: 'input', inputIndex: 4, alias: 'amount' },
+];
+
+/**
+ * Aqua events for the account's Earn positions. Shipped opens a position (deposit) and Docked closes
+ * it (withdraw); neither carries amounts. Pulled and Pushed are the trades that change a position's
+ * balances, which give the amounts a withdrawal closed with. All four start (maker, app, strategyHash).
+ */
+export const AQUA_EVENT_NAMES = ['Shipped', 'Docked', 'Pulled', 'Pushed'] as const;
+export type AquaEventName = (typeof AQUA_EVENT_NAMES)[number];
+
+export function buildAquaEventQuery(account: Address, eventName: AquaEventName): EventQuery {
+  return {
+    events: [
+      {
+        eventName,
+        select: eventName === 'Pulled' || eventName === 'Pushed' ? AQUA_FLOW_SELECT : AQUA_SELECT,
+        filter: {
+          rule: 'and',
+          children: [
+            { fieldType: 'contract_address', operator: 'equal', value: MULTIBAAS_CONTRACTS.aqua.address },
+            { fieldType: 'input', inputIndex: 0, operator: 'equal', value: formatAddressFilterValue(account) },
+            {
+              fieldType: 'input',
+              inputIndex: 1,
+              operator: 'equal',
+              value: formatAddressFilterValue(MULTIBAAS_CONTRACTS.aquaSwapVmRouter.address),
             },
           ],
         },
@@ -150,15 +206,29 @@ export function createMultiBaasTransactionActivityProvider({
         (value) => ({ ok: true as const, value }),
         () => ({ ok: false as const }),
       );
+      // Earn rows are extra detail: when Aqua's events cannot be read, the rest of the feed still loads.
+      const aquaLoad = Promise.all(
+        AQUA_EVENT_NAMES.map((eventName) =>
+          multiBaas.executeEventQuery(buildAquaEventQuery(account, eventName), { limit }),
+        ),
+      ).then(
+        ([shipped, docked, pulled, pushed]) => ({ ok: true as const, shipped, docked, pulled, pushed }),
+        () => ({ ok: false as const }),
+      );
       const [usdcSent, usdcReceived, operations] = await Promise.all([
         multiBaas.executeEventQuery(buildUsdcTransferQuery(account, 'sent'), { limit }),
         multiBaas.executeEventQuery(buildUsdcTransferQuery(account, 'received'), { limit }),
         multiBaas.executeEventQuery(buildUserOperationQuery(account), { limit }),
       ]);
-      const ethTransfers = await readEthTransfers({
+      const operationCalls = await readOperationCalls({
         account,
         reader: getReader(),
         operationRows: operations,
+      });
+      const ethTransfers = new Map<string, UserOperationEthTransfer[]>();
+      operationCalls.forEach((calls, hash) => {
+        const sends = ethTransfersOf(calls);
+        if (sends && sends.length > 0) ethTransfers.set(hash, sends);
       });
       const indexed = normalizeMultiBaasActivity({
         account,
@@ -167,17 +237,34 @@ export function createMultiBaasTransactionActivityProvider({
         operations,
         ethTransfers,
       });
-      const received = await receivedEthLoad;
-      const items = sortActivity([
-        ...indexed.items,
-        ...(received.ok ? received.value.items : []),
-      ]);
-      const skippedCount = indexed.skippedCount + (received.ok ? received.value.skippedCount : 0);
+      const [received, aqua] = await Promise.all([receivedEthLoad, aquaLoad]);
+      const earn = aqua.ok
+        ? normalizeAquaActivity({
+            ...aqua,
+            operations,
+            operationCalls,
+            // A full page may leave out older trades, so withdrawal amounts would be wrong.
+            flowsComplete: aqua.pulled.length < limit && aqua.pushed.length < limit,
+          })
+        : { items: [], skippedCount: 0 };
+      const items = sortActivity(
+        mergeEarnActivity(
+          groupPayWithActivity({
+            items: [...indexed.items, ...(received.ok ? received.value.items : [])],
+            operationCalls,
+            receivedEthLoaded: received.ok,
+          }),
+          earn.items,
+        ),
+      );
+      const skippedCount =
+        indexed.skippedCount + earn.skippedCount + (received.ok ? received.value.skippedCount : 0);
       const messages = [
         ...(skippedCount > 0
           ? [`${skippedCount} malformed ${skippedCount === 1 ? 'record was' : 'records were'} omitted.`]
           : []),
         ...(received.ok ? [] : ['Received ETH could not be loaded from Blockscout.']),
+        ...(aqua.ok ? [] : ['Earn activity could not be loaded from MultiBaas.']),
       ];
       if (messages.length > 0) {
         return { status: 'partial', account, items, message: messages.join(' ') };
@@ -210,12 +297,13 @@ function createSepoliaTransactionReader(): UserOperationTransactionReader {
 }
 
 /**
- * Native ETH transfers emit no events, so MultiBaas only sees the user operation. Read the ETH
- * calls of every operation from its bundle transaction: a batched operation can move USDC and
- * send ETH at once, such as a swap followed by a send. A failed lookup leaves the operation's
- * ETH sends out, and the row still shows its USDC transfers or a plain account operation.
+ * Native ETH transfers emit no events, so MultiBaas only sees the user operation. Read the calls
+ * of every operation from its bundle transaction: a batched operation can move USDC and send ETH
+ * at once, such as a swap followed by a send, and the calls also identify Pay with operations.
+ * A failed lookup leaves the operation's ETH sends out, and the row still shows its USDC
+ * transfers or a plain account operation.
  */
-export async function readEthTransfers({
+export async function readOperationCalls({
   account,
   reader,
   operationRows,
@@ -224,7 +312,7 @@ export async function readEthTransfers({
   reader: UserOperationTransactionReader;
   operationRows: readonly EventRow[];
 }) {
-  const result = new Map<string, UserOperationEthTransfer[]>();
+  const result = new Map<string, UserOperationCall[]>();
   await Promise.all(
     operationRows.map(async (row) => {
       const transactionHash = parseHash(row.txHash);
@@ -232,12 +320,12 @@ export async function readEthTransfers({
       const nonce = parseUint(row.nonce);
       if (!transactionHash || !userOperationHash || nonce === null) return;
       try {
-        const transfers = await readUserOperationEthTransfers(reader, {
+        const calls = await readUserOperationCalls(reader, {
           transactionHash,
           sender: account,
           nonce,
         });
-        if (transfers && transfers.length > 0) result.set(userOperationHash.toLowerCase(), transfers);
+        if (calls && calls.length > 0) result.set(userOperationHash.toLowerCase(), calls);
       } catch {
         // The operation row still shows success, sponsorship, and gas.
       }
@@ -369,6 +457,174 @@ export function normalizeMultiBaasActivity({
   }
 
   return { items: sortActivity(items), skippedCount };
+}
+
+type TokenAmounts = { usdc: bigint; weth: bigint };
+
+/**
+ * Earn rows from Aqua's events. A deposit's amounts come from the `ship` call of the account's
+ * operation in the same transaction. A withdrawal closes with the deposit plus every trade since:
+ * Pushed adds to the position, Pulled takes from it. An amount that cannot be derived is null.
+ */
+export function normalizeAquaActivity({
+  shipped,
+  docked,
+  pulled,
+  pushed,
+  operations,
+  operationCalls = new Map(),
+  flowsComplete = true,
+}: {
+  shipped: readonly EventRow[];
+  docked: readonly EventRow[];
+  pulled: readonly EventRow[];
+  pushed: readonly EventRow[];
+  operations: readonly EventRow[];
+  operationCalls?: ReadonlyMap<string, readonly UserOperationCall[]>;
+  flowsComplete?: boolean;
+}) {
+  let skippedCount = 0;
+  const operationByTransaction = new Map<string, Hash>();
+  for (const row of operations) {
+    const transactionHash = parseHash(row.txHash);
+    const userOperationHash = parseBytes32(row.userOpHash);
+    if (transactionHash && userOperationHash) {
+      operationByTransaction.set(transactionHash.toLowerCase(), userOperationHash);
+    }
+  }
+
+  const items: TransactionActivityEarn[] = [];
+  const deposits = new Map<string, TokenAmounts | null>();
+  for (const row of shipped) {
+    const base = parseRowBase(row);
+    const strategyHash = parseBytes32(row.strategyHash);
+    if (!base || !strategyHash) {
+      skippedCount += 1;
+      continue;
+    }
+    const userOperationHash = operationByTransaction.get(base.transactionHash.toLowerCase());
+    const calls = userOperationHash ? operationCalls.get(userOperationHash.toLowerCase()) : undefined;
+    const amounts = calls ? shippedAmounts(calls, strategyHash) : null;
+    deposits.set(strategyHash.toLowerCase(), amounts);
+    items.push(earnItem('deposit', base, strategyHash, amounts));
+  }
+
+  const flows = new Map<string, TokenAmounts>();
+  for (const [sign, rows] of [
+    [1n, pushed],
+    [-1n, pulled],
+  ] as const) {
+    for (const row of rows) {
+      const base = parseRowBase(row);
+      const strategyHash = parseBytes32(row.strategyHash);
+      const token = parseAddress(row.token);
+      const amount = parseUint(row.amount);
+      if (!base || !strategyHash || !token || amount === null) {
+        skippedCount += 1;
+        continue;
+      }
+      const key = strategyHash.toLowerCase();
+      const net = flows.get(key) ?? { usdc: 0n, weth: 0n };
+      if (token === getAddress(SEPOLIA_USDC_ADDRESS)) net.usdc += sign * amount;
+      else if (token === getAddress(SEPOLIA_WETH_ADDRESS)) net.weth += sign * amount;
+      flows.set(key, net);
+    }
+  }
+
+  for (const row of docked) {
+    const base = parseRowBase(row);
+    const strategyHash = parseBytes32(row.strategyHash);
+    if (!base || !strategyHash) {
+      skippedCount += 1;
+      continue;
+    }
+    const key = strategyHash.toLowerCase();
+    const deposit = deposits.get(key) ?? null;
+    const net = flows.get(key) ?? { usdc: 0n, weth: 0n };
+    const closing =
+      flowsComplete && deposit ? { usdc: deposit.usdc + net.usdc, weth: deposit.weth + net.weth } : null;
+    items.push(earnItem('withdraw', base, strategyHash, closing && closing.usdc >= 0n && closing.weth >= 0n ? closing : null));
+  }
+
+  return { items, skippedCount };
+}
+
+/** The USDC and WETH a batch's `Aqua.ship` gave the strategy with this hash. */
+function shippedAmounts(calls: readonly UserOperationCall[], strategyHash: Hash): TokenAmounts | null {
+  for (const call of calls) {
+    if (call.to.toLowerCase() !== MULTIBAAS_CONTRACTS.aqua.address.toLowerCase()) continue;
+    let decoded;
+    try {
+      decoded = decodeFunctionData({ abi: aquaAbi, data: call.data });
+    } catch {
+      continue;
+    }
+    if (decoded.functionName !== 'ship') continue;
+    const [, strategy, tokens, amounts] = decoded.args;
+    if (keccak256(strategy).toLowerCase() !== strategyHash.toLowerCase()) continue;
+    const amountOf = (token: string) => {
+      const index = tokens.findIndex((candidate) => candidate.toLowerCase() === token.toLowerCase());
+      return index === -1 ? null : amounts[index];
+    };
+    const usdc = amountOf(SEPOLIA_USDC_ADDRESS);
+    const weth = amountOf(SEPOLIA_WETH_ADDRESS);
+    return usdc === null || weth === null ? null : { usdc, weth };
+  }
+  return null;
+}
+
+function earnItem(
+  direction: TransactionActivityEarn['direction'],
+  base: RowBase,
+  strategyHash: Hash,
+  amounts: TokenAmounts | null,
+): TransactionActivityEarn {
+  return {
+    kind: 'earn',
+    id: `earn:${direction}:${strategyHash}:${base.transactionHash}`,
+    transactionHash: base.transactionHash,
+    direction,
+    asset: 'USDC',
+    amount: amounts ? formatUnits(amounts.usdc, USDC_DECIMALS) : null,
+    pairedAsset: 'WETH',
+    pairedAmount: amounts ? formatEther(amounts.weth) : null,
+    strategyHash,
+    timestamp: base.timestamp,
+    blockNumber: base.blockNumber,
+    operation: null,
+  };
+}
+
+/**
+ * An Earn deposit or withdrawal is one row. The account operation that carried it, and any transfer
+ * from the same transaction (such as wrapping ETH into WETH, or the ETH an unwrap returns), fold into
+ * it the way a USDC send folds in its operation.
+ */
+export function mergeEarnActivity(
+  items: readonly TransactionActivityItem[],
+  earnItems: readonly TransactionActivityEarn[],
+): TransactionActivityItem[] {
+  if (earnItems.length === 0) return [...items];
+  const byTransaction = new Map(earnItems.map((item) => [item.transactionHash.toLowerCase(), { ...item }]));
+  const kept: TransactionActivityItem[] = [];
+  for (const item of items) {
+    const earn = item.transactionHash ? byTransaction.get(item.transactionHash.toLowerCase()) : undefined;
+    if (!earn || item.kind === 'earn') {
+      kept.push(item);
+      continue;
+    }
+    earn.operation ??= item.kind === 'operation' ? operationSummary(item) : item.operation;
+  }
+  return [...kept, ...byTransaction.values()];
+}
+
+function operationSummary(operation: TransactionActivityOperation): TransactionActivityOperationSummary {
+  return {
+    userOperationHash: operation.userOperationHash,
+    success: operation.success,
+    sponsored: operation.sponsored,
+    actualGasCostWei: operation.actualGasCostWei,
+  };
 }
 
 export function sortActivity(items: TransactionActivityItem[]) {

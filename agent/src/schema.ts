@@ -34,12 +34,21 @@ export const ClarificationSchema = z.object({
   question: z.string().min(1).max(200),
 });
 
-export const AgentOutputSchema = z.discriminatedUnion('kind', [ProposalSchema, ClarificationSchema]);
+export const AnswerSchema = z.object({
+  kind: z.literal('answer'),
+  text: z.string().min(1).max(400),
+  facts: z
+    .array(z.object({ label: z.string().min(1).max(40), value: z.string().min(1).max(60) }))
+    .max(4),
+});
+
+export const AgentOutputSchema = z.discriminatedUnion('kind', [ProposalSchema, ClarificationSchema, AnswerSchema]);
 // --- shared schema end ---
 
 export type Action = z.infer<typeof ActionSchema>;
 export type ActionType = Action['type'];
 export type Proposal = z.infer<typeof ProposalSchema>;
+export type Answer = z.infer<typeof AnswerSchema>;
 export type AgentOutput = z.infer<typeof AgentOutputSchema>;
 
 export const ACTION_TYPES = ['send_eth', 'send_usdc', 'swap', 'vault_deposit', 'vault_withdraw'] as const;

@@ -16,9 +16,17 @@ export type PlannerState =
   | { phase: 'planning'; intent: string }
   | { phase: 'plan'; intent: string; plan: EnrichedPlan }
   | { phase: 'question'; intent: string; question: string }
+  | { phase: 'answer'; intent: string; answer: PlannerAnswer }
   | { phase: 'blocked'; intent: string; violations: Violation[] }
   | { phase: 'declined'; intent: string; message: string }
   | { phase: 'offline'; intent: string; reason: 'timeout' | 'unavailable' };
+
+/** A reply about the wallet rather than a plan; it needs no review or signature. */
+export type PlannerAnswer = {
+  text: string;
+  facts: { label: string; value: string }[];
+  source: { from: string; to: string } | null;
+};
 
 /** One exchange in the conversation: the user's sentence and the planner's current answer. */
 export type PlannerTurn = { id: number; state: Exclude<PlannerState, { phase: 'idle' }>; signed?: boolean };
@@ -70,6 +78,9 @@ export function useAgentPlanner({
 
         if (response.kind === 'clarification') {
           setState({ phase: 'question', intent, question: response.question }, current);
+        } else if (response.kind === 'answer') {
+          const { text, facts, source } = response;
+          setState({ phase: 'answer', intent, answer: { text, facts, source } }, current);
         } else if (response.kind === 'declined') {
           setState({ phase: 'declined', intent, message: response.message }, current);
         } else if (response.kind === 'rejected') {

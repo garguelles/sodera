@@ -5,10 +5,14 @@ import {
   shortenHash,
 } from './send-screen';
 import type {
+  KernelExecutionCall,
   KernelOperationEvidence,
   KernelOperationReview,
   KernelPasskeyExecutionClient,
 } from '@/wallet/kernel-passkey-execution';
+import { PayQuoteError } from '@/agent/agent-client';
+import { buildPayWithCalls } from '@/wallet/pay-with-swap';
+import { ethForTenUsdc, PAY_FIXTURE_ACCOUNT } from '@/wallet/pay-with-swap-fixtures';
 import { parseSendTransfer } from '@/wallet/send-transfer';
 import type { PasskeyCeremonyClient, RegisteredPrimaryPasskey } from '@/wallet/passkey-ceremony';
 import { CURRENT_WALLET_IDENTITY_PINS, type WalletIdentityStorage } from '@/wallet/wallet-identity';
@@ -190,6 +194,107 @@ describe('SendScreen', () => {
   });
 });
 
+describe('SendScreen pay with', () => {
+  const quotedAt = Date.parse(ethForTenUsdc.quotedAt);
+  const payRequest = { account: PAY_FIXTURE_ACCOUNT, payAsset: 'ETH', receiveAsset: 'USDC', amountOut: '10000000' } as const;
+
+  function renderPayWith({
+    quotePay = jest.fn().mockResolvedValue(ethForTenUsdc),
+    simulatePayWith = jest.fn().mockResolvedValue({ spent: 282_410_166_306_545n }),
+    now = jest.fn(() => quotedAt),
+  }: { quotePay?: jest.Mock; simulatePayWith?: jest.Mock; now?: jest.Mock } = {}) {
+    const executionClient = { ...createExecutionClient(), account: PAY_FIXTURE_ACCOUNT };
+    executionClient.prepare = jest.fn(async (calls: readonly KernelExecutionCall[] = []) => ({
+      ...review,
+      account: PAY_FIXTURE_ACCOUNT,
+      calls: calls.map((call) => ({
+        to: call.to,
+        valueWei: call.value.toString(),
+        data: call.data,
+      })),
+    }));
+    const props = { quotePay, simulatePayWith, now, executionClient };
+    return render(
+      <SendScreen
+        ceremonyClient={createCeremonyClient()}
+        createExecutionClient={jest.fn().mockResolvedValue(executionClient)}
+        quotePay={quotePay}
+        simulatePayWith={simulatePayWith}
+        now={now}
+        recordSend={jest.fn().mockResolvedValue(undefined)}
+        resolveRecipient={jest.fn().mockResolvedValue({ address: recipient, name: null })}
+        readBalances={jest.fn().mockResolvedValue({ ETH: 10n ** 18n, USDC: 0n })}
+        storage={createStorage(PAY_FIXTURE_ACCOUNT)}
+      />,
+    ).then(() => props);
+  }
+
+  async function enterPayment() {
+    await act(async () => fireEvent.changeText(screen.getByLabelText('Recipient ENS name or address'), recipient));
+    await press('Continue');
+    await press('Select USDC');
+    await act(async () => fireEvent.changeText(screen.getByLabelText('USDC amount'), '10'));
+    await press('Pay with ETH');
+  }
+
+  it('quotes, verifies, simulates and prepares the swap with the exact transfer to the payee', async () => {
+    const { quotePay, simulatePayWith, executionClient } = await renderPayWith();
+    await enterPayment();
+    await press('Get quote');
+
+    expect(await screen.findByText('RECIPIENT GETS EXACTLY')).toBeOnTheScreen();
+    const calls = buildPayWithCalls({ request: payRequest, quote: ethForTenUsdc, recipient, nowMs: quotedAt });
+    expect(quotePay).toHaveBeenCalledWith(payRequest);
+    expect(simulatePayWith).toHaveBeenCalledWith(expect.objectContaining({ recipient, request: payRequest, calls }));
+    expect(executionClient.prepare).toHaveBeenCalledWith(calls);
+    expect(screen.getByText('10 USDC')).toBeOnTheScreen();
+    expect(screen.getByText('0.000282410166306545 ETH (at most 0.000283822217138077)')).toBeOnTheScreen();
+    expect(screen.getByText('Uniswap v4 · 2 hops')).toBeOnTheScreen();
+    expect(screen.getByText('1.49%')).toBeOnTheScreen();
+
+    await press('Confirm with passkey');
+    await waitFor(() => expect(executionClient.submit).toHaveBeenCalledWith(operationHash));
+    expect(await screen.findByText('Transaction submitted')).toBeOnTheScreen();
+  });
+
+  it('expires the quote after 30 seconds instead of signing it', async () => {
+    let time = quotedAt;
+    const { executionClient } = await renderPayWith({ now: jest.fn(() => time) });
+    await enterPayment();
+    await press('Get quote');
+    await screen.findByText('RECIPIENT GETS EXACTLY');
+
+    time += 31_000;
+    await press('Confirm with passkey');
+
+    expect(executionClient.submit).not.toHaveBeenCalled();
+    expect(await screen.findByText('The quote expired. Get a new quote to continue.')).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Get quote' })).toBeOnTheScreen();
+  });
+
+  it('offers paying with the same asset when there is no route', async () => {
+    const { executionClient } = await renderPayWith({ quotePay: jest.fn().mockRejectedValue(new PayQuoteError('no_route')) });
+    await enterPayment();
+    await press('Get quote');
+
+    expect(await screen.findByText('Uniswap found no route for this amount')).toBeOnTheScreen();
+    expect(executionClient.prepare).not.toHaveBeenCalled();
+    await press('Pay with USDC instead');
+    expect(screen.getByRole('button', { name: 'Review transfer' })).toBeOnTheScreen();
+  });
+
+  it('does not prepare a payment whose simulation fails its checks', async () => {
+    const { executionClient } = await renderPayWith({
+      simulatePayWith: jest.fn().mockRejectedValue(new Error('The simulated payment does not give the recipient the exact amount')),
+    });
+    await enterPayment();
+    await press('Get quote');
+
+    expect(await screen.findByText('The simulated payment does not give the recipient the exact amount')).toBeOnTheScreen();
+    expect(executionClient.prepare).not.toHaveBeenCalled();
+  });
+});
+
 async function press(name: string) {
   await act(async () => {
     fireEvent.press(screen.getByRole('button', { name }));
@@ -207,13 +312,13 @@ async function enterTransfer(to: string, amount: string) {
   });
 }
 
-function createStorage(): WalletIdentityStorage {
+function createStorage(walletAccount: string = account): WalletIdentityStorage {
   let value = JSON.stringify({
     schemaVersion: 1,
     phase: 'accountDeployed',
     pins: CURRENT_WALLET_IDENTITY_PINS,
     credential,
-    account,
+    account: walletAccount,
   });
   return {
     async read() {

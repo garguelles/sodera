@@ -24,6 +24,9 @@ import {
 } from 'viem';
 import { sepolia } from 'viem/chains';
 
+import { AssetLogo } from '@/components/asset-logo';
+import { platinum } from '@/constants/theme';
+import { withoutCommittedUsdc } from '@/wallet/aqua-position';
 import {
   createKernelPasskeyExecutionClient,
   type KernelExecutionCall,
@@ -351,10 +354,11 @@ export function SwapScreen({
                 inputMode="decimal"
                 onChangeText={editAmount}
                 placeholder="0.0"
-                placeholderTextColor="#66665d"
+                placeholderTextColor={platinum.colors.faintText}
                 style={styles.amountInput}
                 value={amount}
               />
+              <AssetLogo asset={input} size={28} />
               <Text style={styles.asset}>{input}</Text>
             </View>
             <View style={styles.balanceRow}>
@@ -391,13 +395,16 @@ export function SwapScreen({
 
           <View style={styles.card}>
             <Text style={styles.label}>YOU RECEIVE (ESTIMATED)</Text>
-            <Text accessibilityLiveRegion="polite" style={styles.receiveAmount}>
-              {quoteState.kind === 'loading'
-                ? 'Getting quote...'
-                : readyQuote
-                  ? `${formatSwapAmount(readyQuote.amountOut, output)} ${output}`
-                  : `0 ${output}`}
-            </Text>
+            <View style={styles.amountRow}>
+              <Text accessibilityLiveRegion="polite" style={styles.receiveAmount}>
+                {quoteState.kind === 'loading'
+                  ? 'Getting quote...'
+                  : readyQuote
+                    ? `${formatSwapAmount(readyQuote.amountOut, output)} ${output}`
+                    : `0 ${output}`}
+              </Text>
+              <AssetLogo asset={output} size={28} />
+            </View>
           </View>
 
           {readyQuote ? (
@@ -482,7 +489,7 @@ export function SwapScreen({
       {step === 'authorizing' ? (
         <View accessibilityLiveRegion="polite" style={styles.centeredStep}>
           <View style={styles.progressIcon}>
-            <ActivityIndicator color="#171713" size="large" />
+            <ActivityIndicator color={platinum.colors.emerald} size="large" />
           </View>
           <Text style={styles.centeredTitle}>Confirm on your device</Text>
           <Text style={styles.centeredBody}>
@@ -759,7 +766,8 @@ async function readSepoliaSwapBalances(account: Address): Promise<SwapBalances> 
       args: [account],
     }),
   ]);
-  return { ETH: eth, USDC: usdc };
+  // USDC committed to an open Earn position stays in the wallet but is not swappable.
+  return withoutCommittedUsdc(account, { ETH: eth, USDC: usdc });
 }
 
 const SWAP_ERROR_MESSAGES: { pattern: RegExp; message: string }[] = [
@@ -797,78 +805,78 @@ function describeError(error: unknown) {
   return message.replace(/https?:\/\/\S+/g, '[redacted RPC URL]');
 }
 
+const { colors, spacing, radius, typography } = platinum;
+
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#171713' },
-  content: { flexGrow: 1, padding: 22, paddingBottom: 48, gap: 16 },
+  screen: { flex: 1, backgroundColor: colors.canvas },
+  content: { flexGrow: 1, padding: spacing.lg, paddingBottom: spacing.xxl, gap: spacing.lg },
   successContent: {
     flexGrow: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 24,
-    gap: 26,
+    padding: spacing.xl,
+    gap: spacing.xl,
   },
   backButton: { alignSelf: 'flex-start', minHeight: 44, justifyContent: 'center' },
-  back: { color: '#d4f06a', fontSize: 14, fontWeight: '700' },
-  heading: { gap: 9, paddingBottom: 6 },
-  eyebrow: { color: '#d4f06a', fontSize: 11, fontWeight: '800', letterSpacing: 1.4 },
-  title: { color: '#f3f0e8', fontSize: 38, lineHeight: 43, fontWeight: '800', letterSpacing: -1.2 },
-  body: { color: '#aaa89f', fontSize: 16, lineHeight: 23 },
+  back: { ...typography.bodySmall, color: colors.secondaryText },
+  heading: { gap: spacing.sm, paddingBottom: spacing.xs },
+  eyebrow: { ...typography.labelSmall, color: colors.emerald },
+  title: { ...typography.display, color: colors.platinum },
+  body: { ...typography.body, color: colors.mutedText },
   card: {
-    borderRadius: 20,
+    borderRadius: radius.xl,
     borderCurve: 'continuous',
-    backgroundColor: '#24241f',
-    padding: 18,
-    gap: 10,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.lg,
+    gap: spacing.md,
   },
-  label: { color: '#929188', fontSize: 11, fontWeight: '800', letterSpacing: 1.1 },
-  amountRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  label: { ...typography.labelSmall, color: colors.mutedText },
+  amountRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   amountInput: {
+    ...typography.title,
     flex: 1,
     minHeight: 52,
-    color: '#f3f0e8',
-    fontSize: 28,
-    fontWeight: '700',
+    color: colors.platinum,
     fontVariant: ['tabular-nums'],
     padding: 0,
   },
-  asset: { color: '#d4f06a', fontSize: 16, fontWeight: '800' },
-  balanceRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
-  balanceText: { color: '#aaa89f', fontSize: 13, fontVariant: ['tabular-nums'], flexShrink: 1 },
+  asset: { ...typography.label, color: colors.emerald },
+  balanceRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md },
+  balanceText: { ...typography.label, color: colors.secondaryText, fontVariant: ['tabular-nums'], flexShrink: 1 },
   maxButton: {
     minHeight: 32,
     justifyContent: 'center',
-    paddingHorizontal: 12,
-    borderRadius: 10,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.sm,
     borderCurve: 'continuous',
-    backgroundColor: '#34342d',
+    borderWidth: 1,
+    borderColor: colors.borderLit,
+    backgroundColor: colors.glassRaised,
   },
-  maxButtonText: { color: '#d4f06a', fontSize: 13, fontWeight: '800' },
-  fieldError: { color: '#f4d4b5', fontSize: 13, lineHeight: 19 },
+  maxButtonText: { ...typography.label, color: colors.platinum },
+  fieldError: { ...typography.bodySmall, color: colors.warning },
   switchButton: {
     alignSelf: 'center',
     minHeight: 44,
     justifyContent: 'center',
-    paddingHorizontal: 18,
-    borderRadius: 22,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.full,
     borderCurve: 'continuous',
-    backgroundColor: '#34342d',
+    borderWidth: 1,
+    borderColor: colors.borderLit,
+    backgroundColor: colors.surfaceLow,
   },
-  switchButtonText: { color: '#f3f0e8', fontSize: 14, fontWeight: '800' },
-  receiveAmount: {
-    color: '#f3f0e8',
-    fontSize: 28,
-    lineHeight: 34,
-    fontWeight: '700',
-    fontVariant: ['tabular-nums'],
-  },
-  details: { paddingHorizontal: 4 },
-  detailRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 12, paddingVertical: 12 },
-  detailDivider: { borderBottomWidth: 1, borderBottomColor: '#383831' },
-  detailLabel: { color: '#929188', fontSize: 13, fontWeight: '700' },
+  switchButtonText: { ...typography.label, color: colors.platinum },
+  receiveAmount: { ...typography.title, flex: 1, color: colors.platinum, fontVariant: ['tabular-nums'] },
+  details: { paddingHorizontal: spacing.xs },
+  detailRow: { flexDirection: 'row', justifyContent: 'space-between', gap: spacing.md, paddingVertical: spacing.md },
+  detailDivider: { borderBottomWidth: 1, borderBottomColor: colors.border },
+  detailLabel: { ...typography.bodySmall, color: colors.mutedText },
   detailValue: {
-    color: '#f3f0e8',
-    fontSize: 13,
-    fontWeight: '600',
+    ...typography.label,
+    color: colors.platinum,
     fontVariant: ['tabular-nums'],
     flexShrink: 1,
     textAlign: 'right',
@@ -876,117 +884,114 @@ const styles = StyleSheet.create({
   primaryButton: {
     minHeight: 56,
     alignSelf: 'stretch',
-    borderRadius: 18,
+    borderRadius: radius.lg,
     borderCurve: 'continuous',
-    backgroundColor: '#d4f06a',
+    backgroundColor: colors.platinum,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 16,
-    marginTop: 4,
+    paddingHorizontal: spacing.lg,
+    marginTop: spacing.xs,
   },
-  primaryButtonText: { color: '#202515', fontSize: 16, fontWeight: '800' },
+  primaryButtonText: { ...typography.body, fontFamily: typography.subheading.fontFamily, color: colors.onPlatinum },
   disabled: { opacity: 0.4 },
   pressed: { opacity: 0.65, transform: [{ scale: 0.98 }] },
-  reviewSection: { gap: 16 },
-  amountSummary: { alignItems: 'center', gap: 5, paddingVertical: 8 },
+  reviewSection: { gap: spacing.lg },
+  amountSummary: { alignItems: 'center', gap: spacing.xs, paddingVertical: spacing.sm },
   reviewAmount: {
-    color: '#f3f0e8',
-    fontSize: 36,
-    lineHeight: 42,
-    fontWeight: '800',
-    letterSpacing: -1.2,
+    ...typography.display,
+    color: colors.platinum,
     fontVariant: ['tabular-nums'],
-    marginBottom: 10,
+    marginBottom: spacing.sm,
   },
-  reviewReceive: {
-    color: '#d4f06a',
-    fontSize: 26,
-    lineHeight: 32,
-    fontWeight: '800',
-    fontVariant: ['tabular-nums'],
-  },
-  reviewDetails: { paddingHorizontal: 4 },
-  friendlyReviewRow: { gap: 6, paddingVertical: 14 },
-  friendlyReviewLabel: { color: '#929188', fontSize: 12, fontWeight: '700' },
-  friendlyReviewValue: { color: '#f3f0e8', fontSize: 15, lineHeight: 21, fontWeight: '600' },
-  cautionValue: { color: '#ffc46b' },
-  technicalToggle: { alignSelf: 'center', minHeight: 44, justifyContent: 'center', paddingHorizontal: 12 },
-  technicalToggleText: { color: '#aaa89f', fontSize: 13, fontWeight: '700' },
+  reviewReceive: { ...typography.heading, color: colors.emerald, fontVariant: ['tabular-nums'] },
+  reviewDetails: { paddingHorizontal: spacing.xs },
+  friendlyReviewRow: { gap: spacing.sm, paddingVertical: spacing.md },
+  friendlyReviewLabel: { ...typography.caption, color: colors.mutedText },
+  friendlyReviewValue: { ...typography.bodySmall, fontFamily: typography.subheading.fontFamily, color: colors.platinum },
+  cautionValue: { color: colors.warning },
+  technicalToggle: { alignSelf: 'center', minHeight: 44, justifyContent: 'center', paddingHorizontal: spacing.md },
+  technicalToggleText: { ...typography.label, color: colors.mutedText },
   technicalDetails: {
     borderTopWidth: 1,
-    borderTopColor: '#383831',
-    paddingHorizontal: 4,
-    paddingTop: 16,
-    gap: 12,
+    borderTopColor: colors.border,
+    paddingHorizontal: spacing.xs,
+    paddingTop: spacing.lg,
+    gap: spacing.md,
   },
-  reviewRow: { gap: 2 },
-  reviewLabel: { color: '#929188', fontSize: 10, fontWeight: '700', letterSpacing: 0.8 },
-  reviewValue: { color: '#f3f0e8', fontFamily: 'monospace', fontSize: 11, lineHeight: 17 },
-  reassurance: { color: '#77766f', fontSize: 13, lineHeight: 19, textAlign: 'center' },
+  reviewRow: { gap: spacing.xs },
+  reviewLabel: { ...typography.micro, color: colors.mutedText },
+  reviewValue: { ...typography.labelSmall, color: colors.platinum },
+  reassurance: { ...typography.bodySmall, color: colors.faintText, textAlign: 'center' },
   statusCard: {
-    borderRadius: 14,
+    borderRadius: radius.lg,
     borderCurve: 'continuous',
-    backgroundColor: '#352a22',
-    padding: 14,
+    backgroundColor: colors.surfaceHigh,
+    padding: spacing.md,
   },
-  statusText: { color: '#f4d4b5', fontSize: 14, lineHeight: 20 },
+  statusText: { ...typography.bodySmall, color: colors.warning },
   centeredStep: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 18,
-    padding: 32,
+    gap: spacing.lg,
+    padding: spacing.xxl,
   },
   progressIcon: {
     width: 88,
     height: 88,
-    borderRadius: 44,
+    borderRadius: radius.full,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#d4f06a',
+    backgroundColor: colors.emeraldWash,
   },
-  centeredTitle: { color: '#f3f0e8', fontSize: 28, fontWeight: '800', textAlign: 'center' },
-  centeredBody: { color: '#aaa89f', fontSize: 16, lineHeight: 24, textAlign: 'center' },
+  centeredTitle: { ...typography.title, color: colors.platinum, textAlign: 'center' },
+  centeredBody: { ...typography.body, color: colors.mutedText, textAlign: 'center' },
   successIcon: {
     width: 112,
     height: 112,
-    borderRadius: 56,
+    borderRadius: radius.full,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#d4f06a',
+    backgroundColor: colors.emeraldWash,
   },
-  successIconText: { color: '#171713', fontSize: 62, lineHeight: 70, fontWeight: '800' },
-  successHeading: { alignItems: 'center', gap: 8 },
-  successTitle: { color: '#f3f0e8', fontSize: 30, lineHeight: 36, fontWeight: '800', textAlign: 'center' },
+  successIconText: { color: colors.emerald, fontSize: 62, lineHeight: 70 },
+  successHeading: { alignItems: 'center', gap: spacing.sm },
+  successTitle: { ...typography.title, color: colors.platinum, textAlign: 'center' },
   transactionCard: {
     alignSelf: 'stretch',
-    gap: 12,
-    padding: 18,
-    borderRadius: 20,
+    gap: spacing.md,
+    padding: spacing.lg,
+    borderRadius: radius.xl,
     borderCurve: 'continuous',
-    backgroundColor: '#24241f',
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
-  shortHash: { color: '#f3f0e8', fontFamily: 'monospace', fontSize: 16, lineHeight: 22 },
-  transactionActions: { flexDirection: 'row', gap: 10 },
+  shortHash: { ...typography.label, color: colors.platinum },
+  transactionActions: { flexDirection: 'row', gap: spacing.md },
   secondaryButton: {
     minHeight: 48,
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 15,
+    borderRadius: radius.lg,
     borderCurve: 'continuous',
-    backgroundColor: '#34342d',
+    borderWidth: 1,
+    borderColor: colors.borderLit,
+    backgroundColor: colors.glassRaised,
   },
-  secondaryButtonText: { color: '#f3f0e8', fontSize: 14, fontWeight: '800' },
+  secondaryButtonText: { ...typography.label, color: colors.platinum },
   explorerLink: {
     minHeight: 48,
     flex: 1.6,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 15,
+    borderRadius: radius.lg,
     borderCurve: 'continuous',
-    backgroundColor: '#34342d',
+    borderWidth: 1,
+    borderColor: colors.borderLit,
+    backgroundColor: colors.glassRaised,
   },
-  explorerLinkText: { color: '#d4f06a', fontSize: 14, fontWeight: '800' },
-  errorText: { color: '#ffd9d4', fontSize: 13, lineHeight: 19, textAlign: 'center' },
+  explorerLinkText: { ...typography.label, color: colors.emerald },
+  errorText: { ...typography.bodySmall, color: colors.negative, textAlign: 'center' },
 });

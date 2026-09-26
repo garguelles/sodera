@@ -509,7 +509,7 @@ export function OnboardingScreen({
                 <Text style={styles.eyebrow}>RECOVER WALLET</Text>
                 <Text style={styles.title}>Recovery is coming later.</Text>
                 <Text style={styles.description}>
-                  Recovery is not available in this testnet build. No existing wallet has been changed.
+                  Recovery is not available in this build. No existing wallet has been changed.
                 </Text>
               </View>
               <View style={styles.actions}>

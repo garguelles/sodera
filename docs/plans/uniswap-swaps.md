@@ -74,6 +74,8 @@ The Uniswap Trading API is not used for these reasons:
 - It chooses its own route, so it cannot guarantee the pinned pool or a team-created demo pool.
 - On Sepolia it routes through the same thin, mispriced testnet pools, so it adds no liquidity.
 
+> **Correction (2026-09-26).** The second reason was wrong. `/swap_5792` returns EIP-5792 `calls[]` (approvals plus one Universal Router call) that a smart account can batch, with no typed-data signature. [Pay with any token](pay-with-any-token.md) now uses it behind the agent backend, which holds the key. The returned approvals are unlimited, so the wallet keeps only the router call, checks it, and builds its own approvals capped at the quoted maximum. The other reasons still hold for Swap, which keeps its pinned pool and hand-built calls.
+
 The Uniswap SDKs (`@uniswap/sdk-core`, `@uniswap/v4-sdk`, `@uniswap/universal-router-sdk`) are not used for these reasons:
 
 - Their value would go unused. It lies in route encoding, pool math, and multi-hop support, but this swap uses one fixed pool and one fixed action sequence. Quotes and approvals would remain direct contract calls even with the SDKs.
@@ -87,7 +89,9 @@ Revisit this when Sodera supports more tokens or mainnet. Routing is the hard pa
 2. Optionally, the SDKs encode the chosen route.
 3. The swap screen, review, and passkey flow stay unchanged. Quoting and call building remain isolated in `uniswap-quote.ts` and `uniswap-swap-calls.ts`.
 
-[The SDK adoption plan](uniswap-sdk-adoption.md) later revisited the SDK decision on a separate branch. It adopts `@uniswap/sdk-core` and `@uniswap/v4-sdk` for currencies, the pool key, trade math and `V4Planner` encoding. The Quoter call, approvals and RPC stay on `viem`, and the swap calldata is unchanged byte for byte. The reasons for not using the Trading API still apply.
+Pay with follows steps 1 and 3 of this design. The SDK only decodes the Trading API's calldata so the wallet can verify it; it does not encode the route.
+
+[The SDK adoption plan](uniswap-sdk-adoption.md) later revisited the SDK decision on a separate branch. It adopts `@uniswap/sdk-core` and `@uniswap/v4-sdk` for currencies, the pool key, trade math and `V4Planner` encoding. The Quoter call, approvals and RPC stay on `viem`, and the swap calldata is unchanged byte for byte. For Swap, the reasons for not using the Trading API still apply, except the smart-account one corrected above.
 
 ## Pull requests
 

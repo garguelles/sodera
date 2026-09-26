@@ -13,11 +13,13 @@ import {
 type LauncherSettingsScreenProps = {
   client: LauncherClient;
   preferencesStorage: LauncherPreferencesStorage;
+  /** Shows an "Edit home" row above the pinned apps. */
+  onEditHome?: () => void;
 };
 
 const { colors, radius, spacing, typography } = platinum;
 
-export function LauncherSettingsScreen({ client, preferencesStorage }: LauncherSettingsScreenProps) {
+export function LauncherSettingsScreen({ client, preferencesStorage, onEditHome }: LauncherSettingsScreenProps) {
   const [preferencesRepository] = useState(() => createLauncherPreferencesRepository(preferencesStorage));
   const [favoritePackageNames, setFavoritePackageNames] = useState<string[]>([]);
   const favoritePackageNamesRef = useRef<string[]>([]);
@@ -80,7 +82,7 @@ export function LauncherSettingsScreen({ client, preferencesStorage }: LauncherS
     favoritePackageNamesRef.current = next;
     setFavoritePackageNames(next);
     setError(null);
-    void preferencesRepository.save(next).catch((saveError) => {
+    void preferencesRepository.save({ favoritePackageNames: next }).catch((saveError) => {
       if (change !== latestPreferenceChange.current) return;
       favoritePackageNamesRef.current = previous;
       setFavoritePackageNames(previous);
@@ -99,6 +101,19 @@ export function LauncherSettingsScreen({ client, preferencesStorage }: LauncherS
 
   return (
     <SafeAreaView edges={['bottom']} style={styles.screen}>
+      {onEditHome ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Edit home"
+          onPress={onEditHome}
+          style={({ pressed }) => [styles.editHome, pressed && styles.pressed]}>
+          <View style={styles.editHomeCopy}>
+            <Text style={styles.editHomeTitle}>Edit home</Text>
+            <Text style={styles.editHomeDescription}>Resize and remove widgets</Text>
+          </View>
+          <Text style={styles.editHomeChevron}>›</Text>
+        </Pressable>
+      ) : null}
       <View style={styles.header}>
         <Text style={styles.eyebrow}>PERSONALIZE YOUR PHONE</Text>
         <Text style={styles.title}>Pinned apps</Text>
@@ -184,6 +199,11 @@ function getErrorMessage(error: unknown) {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.canvas },
+  editHome: { marginHorizontal: spacing.lg, marginTop: spacing.lg, paddingHorizontal: spacing.lg, minHeight: 62, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  editHomeCopy: { flex: 1, gap: 2 },
+  editHomeTitle: { ...typography.bodySmall, fontFamily: typography.subheading.fontFamily, color: colors.platinum },
+  editHomeDescription: { ...typography.caption, color: colors.mutedText },
+  editHomeChevron: { ...typography.heading, color: colors.secondaryText },
   header: { paddingHorizontal: spacing.lg, paddingTop: spacing.lg, gap: spacing.xs },
   eyebrow: { ...typography.micro, color: colors.emerald },
   title: { ...typography.title, color: colors.platinum },

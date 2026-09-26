@@ -5,6 +5,7 @@ import { JetBrainsMono_400Regular, JetBrainsMono_500Medium, useFonts as useMonoF
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { OnboardingProvider, useOnboarding } from '@/onboarding/onboarding-context';
 import { platinum } from '@/constants/theme';
@@ -15,10 +16,12 @@ export default function RootLayout() {
   if ((!geistLoaded && !geistError) || (!monoLoaded && !monoError)) return null;
 
   return (
-    <OnboardingProvider>
-      <StatusBar style="light" />
-      <RootNavigator />
-    </OnboardingProvider>
+    <GestureHandlerRootView style={styles.root}>
+      <OnboardingProvider>
+        <StatusBar style="light" />
+        <RootNavigator />
+      </OnboardingProvider>
+    </GestureHandlerRootView>
   );
 }
 
@@ -57,5 +60,6 @@ function RootNavigator() {
 }
 
 const styles = StyleSheet.create({
+  root: { flex: 1 },
   loading: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: platinum.colors.canvas },
 });

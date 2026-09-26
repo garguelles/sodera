@@ -7,6 +7,7 @@
     "node": ">=22.9.0"
   },
   "dependencies": {
+    "@1inch/swap-vm-sdk": "0.4.4",
     "@expo-google-fonts/geist": "^0.4.2",
     "@expo-google-fonts/jetbrains-mono": "^0.4.1",
     "@expo/ui": "~57.0.16",
@@ -16,6 +17,7 @@
     "@zerodev/passkey-validator": "5.6.0",
     "@zerodev/sdk": "5.5.10",
     "@zerodev/webauthn-key": "5.5.0",
+    "assert": "2.1.0",
     "expo": "~57.0.20",
     "expo-clipboard": "~57.0.2",
     "expo-constants": "~57.0.17",
@@ -76,10 +78,15 @@
     "verify:webauthn-provenance": "node --env-file-if-exists=.env.local ./scripts/verify-webauthn-provenance.mjs",
     "verify:webauthn-vectors": "node --env-file-if-exists=.env.local ./scripts/verify-webauthn-vectors.mjs",
     "verify:uniswap": "node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --disable-warning=ExperimentalWarning --import ./scripts/lib/register-ts-resolver.mjs --env-file-if-exists=.env.local ./scripts/verify-uniswap-route.mjs",
+    "verify:aqua": "node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --disable-warning=ExperimentalWarning --import ./scripts/lib/register-ts-resolver.mjs --env-file-if-exists=.env.local ./scripts/verify-aqua-earn.mjs",
+    "demo:aqua-trade": "node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --disable-warning=ExperimentalWarning --import ./scripts/lib/register-ts-resolver.mjs --env-file-if-exists=.env.local ./scripts/aqua-demo-trade.mjs",
     "verify:multibaas": "node --env-file-if-exists=.env.local ./scripts/verify-multibaas.mjs"
   },
   "jest": {
-    "preset": "jest-expo"
+    "preset": "jest-expo",
+    "setupFiles": [
+      "./jest.setup.js"
+    ]
   },
   "private": true
 }

@@ -1,15 +1,20 @@
 # Sodera agent
 
-A small Hono service that turns a wallet request such as "send 0.01 eth to alice" into a plan the Sodera app can review and sign. Claude proposes the plan through a fixed list of actions, the service checks it against the safety rules in `src/policy.ts`, and the app checks it again before encoding anything. The service never signs, never builds transactions, and holds no keys to the wallet.
+A small Hono service that turns a wallet request such as "send 0.01 eth to alice" into a plan the Sodera app can review and sign. It also proxies Uniswap Trading API quotes for paying with another asset, so the Uniswap API key never ships in the app. Claude proposes the plan through a fixed list of actions, the service checks it against the safety rules in `src/policy.ts`, and the app checks it again before encoding anything. The service never signs, never builds transactions, and holds no keys to the wallet.
 
 ## Endpoints
 
 | Method and path | Purpose |
 | --- | --- |
 | `GET /healthz` | Returns `{ "ok": true }`. |
-| `POST /agent/propose` | Takes `{ account, intent, context, reset? }` and returns a `plan`, `clarification`, `rejected`, or `declined` response. Requires `Authorization: Bearer <AGENT_APP_TOKEN>`. |
+| `POST /agent/propose` | Takes `{ account, intent, context, reset? }` and returns a `plan`, `clarification`, `answer`, `rejected`, or `declined` response. Requires `Authorization: Bearer <AGENT_APP_TOKEN>`. |
+| `POST /pay/quote` | Takes `{ account, payAsset, receiveAsset, amountOut }` (`ETH` or `USDC`, different assets, `amountOut` in base units) and returns an exact-output Uniswap quote with the single Universal Router call. The app adds its own approvals, the transfer to the payee and its own checks. Requires the same bearer token; answers `503 pay_unavailable` when `UNISWAP_API_KEY` is not set. |
 
-Requests are limited to 32 KB, 10 per account per minute, and 60 per IP per minute. Follow-up memory and rate limits live in memory, so run a single instance.
+Questions about the wallet ("how much did I send alice this month?") return `{ kind: "answer", text, facts, source }`. The `summarize_activity` tool computes the figures with MultiBaas grouped queries over whole UTC days, and `source` is the range it covered. Every number in `facts` must appear in a tool result or the wallet snapshot; otherwise the service answers `rejected` with the `ungrounded` violation. The snapshot includes rounded ETH, its dollar value, and the total value so answers can quote them rather than compute them.
+
+Requests are limited to 32 KB. `/agent/propose` allows 10 per account per minute and 60 per IP per minute. `/pay/quote` allows 20 per account per minute, 60 per IP per minute, and 3 per second across all users, because each quote makes two Uniswap requests and the key allows 6 per second. Follow-up memory and rate limits live in memory, so run a single instance.
+
+`/pay/quote` errors: `422 no_route` when Uniswap finds no route, `503 busy` when Uniswap is rate limiting (after one retry), `504 upstream_timeout` after 8 seconds, and `502 unexpected_quote` when the returned calls are not the single router call. See `docs/plans/pay-with-any-token.md`.
 
 ## Local development
 
@@ -29,6 +34,7 @@ pnpm dev
 | `PLAN_VALUE_CAP_USD` | Largest plan value in US dollars. Default `250`. |
 | `AGENT_MODEL` | Default `claude-sonnet-5`. |
 | `AGENT_EFFORT` | `low`, `medium`, `high`, `xhigh`, or `max`. Default `high`. |
+| `UNISWAP_API_KEY` | Uniswap Trading API key for `/pay/quote`. Optional; without it the endpoint answers 503. Keep it server-side only. |
 
 ## Checks
 
@@ -36,6 +42,8 @@ pnpm dev
 pnpm test
 pnpm typecheck
 pnpm build
+pnpm verify:pay-with   # live Trading API check on Sepolia; needs UNISWAP_API_KEY and SEPOLIA_RPC_URL
+VERIFY_ACCOUNT=0x... pnpm verify:activity   # live MultiBaas check of the summarize_activity queries
 ```
 
 The schema and policy tests read the shared vectors in `../docs/plans/agent-schema-vectors.json` and `../docs/plans/agent-policy-vectors.json`. The app's copies of the schema and policy must pass the same files.
@@ -76,6 +84,7 @@ propose() {
 propose 'send 0.01 eth to alice'   # expect "kind": "plan"
 propose 'send some eth to alice'   # expect "kind": "clarification"
 propose 'send 100 eth to alice'    # expect "kind": "clarification" naming the 0.5 ETH balance
+propose 'how much usdc did I send this month?'   # expect "kind": "answer" with a source range
 ```
 
 Each request logs one JSON line with the outcome, tool calls, token usage and latency. From the second identical request on, `cacheReadInputTokens` should be above zero. The log never contains the request sentence or address book.

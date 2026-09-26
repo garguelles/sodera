@@ -8,7 +8,7 @@ This record captures clarifications to `sodera.md`. Epic specifications and impl
 
 - Build window: 10 days.
 - Release boundary: testnet-only hackathon build, not a production-ready wallet.
-- Required: Android launcher, primary-passkey-controlled Kernel wallet, Ethereum Sepolia payments, ENSv2 identity, The Graph portfolio/activity and Morpho vault data, Uniswap swaps, Morpho USDC vault integration, fiat valuation, and independent passkey recovery.
+- Required: Android launcher, primary-passkey-controlled Kernel wallet, Ethereum Sepolia payments, ENSv2 identity, The Graph portfolio/activity data, Uniswap swaps, Earn through 1inch Aqua and SwapVM (replacing the Morpho USDC vault; see [Morpho and Portfolio Data](#morpho-and-portfolio-data)), fiat valuation, and independent passkey recovery.
 - Ethereum Sepolia is the single required network for all hackathon flows, subject to early feasibility verification. Base is deferred; Arc remains stretch. Do not silently switch networks if a required integration fails verification.
 - Stretch: Arc payments and recovery using a second Android device.
 - Extract the eight architecture decisions embedded in `sodera.md` into standalone ADRs during documentation restructuring. Preserve their history, but record the subsequently agreed Ethereum-Sepolia-only hackathon scope as a revision to the Base-first decision, not as an unchanged accepted decision.
@@ -50,6 +50,8 @@ This record captures clarifications to `sodera.md`. Epic specifications and impl
 - Verify and pin the exact test token and an executable Uniswap route with testnet liquidity. Mock swaps do not satisfy the required demonstration.
 
 ## Morpho and Portfolio Data
+
+> **Revision (2026-09-27).** Earn uses [1inch Aqua and SwapVM](plans/aqua-earn.md) instead of a Morpho vault. Morpho is live on Sepolia, but its Circle USDC vaults are third-party test deployments earning about 0%, and no Morpho code had been written. The official Aqua and SwapVM router are deployed on Sepolia ([evidence](research/aqua-swapvm-sepolia.md)). The position stays in the Kernel wallet, and it is read from Aqua on-chain rather than from The Graph. The review, simulation, confirmation, WebAuthn and fiat-valuation rules below still apply to Earn. The Morpho-specific rules are superseded.
 
 - Include Morpho USDC vaults as a required integration, with The Graph providing vault-related data.
 - Support one curated USDC vault with deposit, position display, and withdrawal through the Kernel account.
