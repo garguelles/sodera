@@ -1,11 +1,16 @@
-export type WidgetId = 'intent-bar' | 'identity' | 'wallet' | 'phone' | 'market-pulse' | 'swap-earn' | 'activity';
+export type WidgetId = 'identity' | 'wallet' | 'phone' | 'market-pulse' | 'swap-earn' | 'activity';
 export type WidgetSize = { w: number; h: number };
 export type HomeLayoutItem = { id: WidgetId; x: number; y: number; w: number; h: number };
 export type HomeLayout = { columns: 4; items: HomeLayoutItem[] };
-export type GridMetrics = { columnWidth: number; rowHeight: number; gap: number };
+/**
+ * Grid geometry. Rows take their height from the widgets in them (see `rowHeights`);
+ * rows past the end of `rowHeights` use `HOME_GRID.rowHeight`.
+ */
+export type GridMetrics = { columnWidth: number; gap: number; rowHeights: readonly number[] };
 export type GridCell = { x: number; y: number };
 export type CellRect = { left: number; top: number; width: number; height: number };
 
+/** `rowHeight` is only the height of an empty row, such as the extra row shown in edit mode. */
 export const HOME_GRID = { columns: 4, rowHeight: 72, gap: 12 } as const;
 
 /** Number of rows occupied by the lowest item; 0 when the layout is empty. */
@@ -81,21 +86,66 @@ export function columnWidth(gridWidth: number): number {
   return (gridWidth - (HOME_GRID.columns - 1) * HOME_GRID.gap) / HOME_GRID.columns;
 }
 
+/**
+ * Height of each row from 0 to `rows − 1`. Single-row items set their row's height to at least their own;
+ * then each multi-row item spreads any missing height evenly over its rows. Rows nothing occupies get
+ * `HOME_GRID.rowHeight`. The result reproduces each widget's natural height with no gaps when rows are
+ * shared by widgets of the same height, as in the default layout.
+ */
+export function rowHeights(
+  items: readonly HomeLayoutItem[],
+  heightOf: (item: HomeLayoutItem) => number,
+  rows: number,
+  gap: number = HOME_GRID.gap,
+): number[] {
+  const heights = Array.from({ length: rows }, () => 0);
+  for (const item of items) {
+    if (item.h === 1 && item.y < rows) heights[item.y] = Math.max(heights[item.y], heightOf(item));
+  }
+  for (const item of [...items].filter((entry) => entry.h > 1).sort((a, b) => a.h - b.h)) {
+    const span = heights.slice(item.y, item.y + item.h);
+    if (span.length < item.h) continue;
+    const deficit = heightOf(item) - (span.reduce((sum, height) => sum + height, 0) + (item.h - 1) * gap);
+    if (deficit > 0) {
+      for (let y = item.y; y < item.y + item.h; y += 1) heights[y] += deficit / item.h;
+    }
+  }
+  return heights.map((height) => (height > 0 ? height : HOME_GRID.rowHeight));
+}
+
+function rowHeightAt(metrics: GridMetrics, y: number): number {
+  return metrics.rowHeights[y] ?? HOME_GRID.rowHeight;
+}
+
+/** Offset of the top of row `y` from the top of the grid. */
+export function rowTop(metrics: GridMetrics, y: number): number {
+  let top = 0;
+  for (let row = 0; row < y; row += 1) top += rowHeightAt(metrics, row) + metrics.gap;
+  return top;
+}
+
+/** Total height of `rows` rows. */
+export function gridHeight(metrics: GridMetrics, rows: number): number {
+  return rows > 0 ? rowTop(metrics, rows) - metrics.gap : 0;
+}
+
 export function cellRect(item: Pick<HomeLayoutItem, 'x' | 'y' | 'w' | 'h'>, metrics: GridMetrics): CellRect {
   return {
     left: item.x * (metrics.columnWidth + metrics.gap),
-    top: item.y * (metrics.rowHeight + metrics.gap),
+    top: rowTop(metrics, item.y),
     width: item.w * metrics.columnWidth + (item.w - 1) * metrics.gap,
-    height: item.h * metrics.rowHeight + (item.h - 1) * metrics.gap,
+    height: rowTop(metrics, item.y + item.h) - rowTop(metrics, item.y) - metrics.gap,
   };
 }
 
 /** Nearest top-left cell for a widget of `size` whose top-left corner is at `point`, clamped to the columns. */
 export function slotAt(point: { x: number; y: number }, size: WidgetSize, metrics: GridMetrics): GridCell {
   const x = Math.round(point.x / (metrics.columnWidth + metrics.gap));
-  const y = Math.round(point.y / (metrics.rowHeight + metrics.gap));
+  let y = 0;
+  while (rowTop(metrics, y + 1) <= point.y) y += 1;
+  if (point.y - rowTop(metrics, y) > rowTop(metrics, y + 1) - point.y) y += 1;
   return {
     x: Math.min(Math.max(x, 0), Math.max(HOME_GRID.columns - size.w, 0)),
-    y: Math.max(y, 0),
+    y,
   };
 }

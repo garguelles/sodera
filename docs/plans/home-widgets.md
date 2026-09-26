@@ -1,35 +1,37 @@
 # Home widgets plan
 
-Status: approved scope. Section 1 implemented; sections 2 to 6 not yet implemented. Branch: `feat/home-widgets`. No Linear ticket; commits use `{type}: {description}`.
+Status: approved scope. Sections 1 and 2 implemented; sections 3 to 5 not yet implemented. Branch: `feat/home-widgets`. No Linear ticket; commits use `{type}: {description}`.
 
-This document is one large ticket split into sub-tickets numbered 1 to 6. Each section is written so that a fresh model can implement it without the conversation that produced this plan. Read "Scope decisions" and "Shared context" before any section. Section 2 depends on section 1. Sections 3 and 5 depend on section 2. Section 4 depends on section 3. Section 6 depends on sections 3 and 4.
+This document is one large ticket split into sub-tickets numbered 1 to 5. Each section is written so that a fresh model can implement it without the conversation that produced this plan. Read "Scope decisions" and "Shared context" before any section. Section 2 depends on section 1. Section 3 depends on section 2. Section 4 depends on section 3. Section 5 depends on sections 3 and 4.
 
-Priority: sections 1 to 4 are the deliverable: the home becomes a grid of widgets with an edit mode that matches the mockup. Section 5 puts the intent bar on the home. Section 6 adds dragging and is last because it is the riskiest gesture work; tap-to-add from section 4 already covers adding widgets without it.
+Priority: sections 1 to 4 are the deliverable: the home becomes a grid of widgets with an edit mode that matches the mockup. Section 5 adds dragging and is last because it is the riskiest gesture work; tap-to-add from section 4 already covers adding widgets without it.
 
 Reference: the "Edit mode (redesign)" Claude Design mock, section 4a, supplied as a screenshot, and `docs/screenshots/sodera-home-redesign.png` for the normal home (mock 3a). The mock's caption: the selected widget gets a blue outline, resize handles, and a size tag; the other widgets fade back; empty grid cells show a dashed "+" drop target; each item in the list shows the grid sizes it supports, and those numbers are the spec to build to.
 
 ## Scope decisions
 
 - The home is a 4-column grid. Each widget occupies a rectangle of whole cells. Widgets fill the cell rectangle they are given; they do not size themselves.
-- Seven widgets, with the sizes from the mock. `phone` is not in the mock's sheet because it is the launcher's app-drawer entry and cannot be removed; it is still a grid item that can be moved and resized.
+- Widgetizing must not change the home. The default layout reproduces the pre-widget home (`sodera-home-redesign.png`) in the same order and arrangement: Identity; Wallet and Phone side by side; Swap and Earn side by side across the full width; the full-width Pulse with price cards and sparklines; Activity. Other sizes exist only as edit-mode options.
+- Six widgets, with the sizes from the mock. `phone` is not in the mock's sheet because it is the launcher's app-drawer entry and cannot be removed; it is still a grid item that can be moved and resized.
 
   | Widget id | Title | Subtitle | Sizes (w×h) | Default | Removable | Data |
   | --- | --- | --- | --- | --- | --- | --- |
-  | `intent-bar` | Intent bar | Ask your wallet | 4×1 | 4×1 | yes | none; submits to `/assistant` |
   | `identity` | Identity | ENS name, address, links | 4×2 | 4×2 | yes | onboarding profile |
   | `wallet` | Wallet | Balance, opens wallet | 2×2, 4×1 | 2×2 | yes | `walletHomeLiveProvider` |
   | `phone` | Phone | All your apps | 2×2, 4×1 | 2×2 | no | none; opens `/phone` |
-  | `market-pulse` | Market pulse | BTC, ETH · 24h | 2×2, 4×2 | 2×2 | yes | `loadMarketPrices`, `loadMarketTrends` |
-  | `swap-earn` | Swap / Earn | Quick entry points | 2×2, 2×1 | 2×2 | yes | none; opens `/swap`, `/earn` |
+  | `market-pulse` | Market pulse | BTC, ETH · 24h | 4×2, 2×2 | 4×2 | yes | `loadMarketPrices`, `loadMarketTrends` |
+  | `swap-earn` | Swap / Earn | Quick entry points | 4×1, 2×2, 2×1 | 4×1 | yes | none; opens `/swap`, `/earn` |
   | `activity` | Activity | Latest transaction | 4×1 | 4×1 | yes | `multiBaasTransactionActivityProvider` |
 
+  `swap-earn` 4×1 is not in the mock's sheet. It is added so the default layout can keep Swap and Earn side by side across the full width, as on the pre-widget home.
+
 - One instance of each widget. The sheet dims a widget that is already on the home.
-- `intent-bar` is available only when the agent is configured and the account is known, the same condition that shows the Dera header button today. The Dera header button stays.
+- No intent bar widget. The mock's intent bar is a reference only; Dera stays the header button that opens `/assistant`, and its chat composer stays inside the assistant. Every widget is always available, so there is no availability context.
 - No auto-compaction. Empty cells stay empty, as on Android's home. Row count is derived from the lowest item, so trailing empty rows disappear on their own.
 - Layout is persisted in the existing launcher preferences JSON. No Kotlin change. `homeLayout: null` means "use the default layout for the current widget availability"; the layout is persisted only after the first edit.
 - The balance-visibility toggle moves from `WalletHome` local state into the same preferences, so the home widget and the wallet screen agree.
 - Entering edit mode uses `Pressable.onLongPress`, not a gesture-handler long press, so tile taps keep working without gesture composition. Settings gets an "Edit home" row because long-press is undiscoverable.
-- Adding a widget is tap-to-add in section 4; dragging from the sheet is section 6.
+- Adding a widget is tap-to-add in section 4; dragging from the sheet is section 5.
 - Out of scope: Android app widgets (`AppWidgetHost`), duplicates, folders, wallpaper, per-widget settings, and animations beyond drag follow and the fade.
 
 ## Shared context
@@ -44,23 +46,22 @@ Reference: the "Edit mode (redesign)" Claude Design mock, section 4a, supplied a
 - Wallet data: `walletHomeLiveProvider` (`app/src/wallet/wallet-home-live.ts`) exposes `load()` returning `WalletHomeResult` (`ready`, `indexing`, `empty`) and `subscribeToChanges`. `getPortfolioTotalUsdCents(snapshot)` in `wallet-home.ts` returns cents or `null`. `WalletHome` (`components/wallet-home.tsx`) keeps `amountsVisible` in `useState` and renders hidden amounts as `$••••••` through `FinancialAmount`.
 - Activity data: `multiBaasTransactionActivityProvider` (`app/src/wallet/transaction-activity-multibaas.ts`) returns `TransactionActivityResult` (`ready`, `partial`, `empty`) with items sorted newest first; `TransactionActivityTransfer` has `direction`, `asset`, `amount`, `counterparty`, `timestamp`; `TransactionActivityOperation` has `success`, `sponsored`. `transactions-screen.tsx` has `formatTimestamp` and `describeOperation` helpers worth reusing.
 - Market data: `loadMarketPrices(signal)` and `loadMarketTrends(signal)` in `app/src/launcher/market-prices.ts`. `MarketPulse` in `launcher-home.tsx` owns the refresh-on-foreground, stale, error, and retry logic.
-- Assistant: `app/src/app/assistant.tsx` renders `AssistantScreen` when `readAgentConfigFromEnv()` and the account exist. `useAgentPlanner().submit(sentence)` starts a plan. `IntentBar` (`components/intent-bar.tsx`) is the composer with `mode`, `value`, `highlighted`, `onChangeText`, `onSubmit`.
 - Design tokens: `platinum` in `app/src/constants/theme.ts`. Selection accent is `colors.cyan` (`#38bdf8`). Mono labels use `typography.micro` / `typography.label` (JetBrains Mono). Tiles use `radius.xl`, `colors.surfaceLowest`, `colors.border`; the Wallet tile is `colors.platinum` with `platinum.shadow.raised`.
 
 ### Grid facts
 
-- `columns = 4`, `gap = spacing.md` (12), `rowHeight = 72`. Column width is `(gridWidth − 3 × gap) / 4`, about 73 on a 360-wide screen, so cells are roughly square. A 2×2 tile is 156 tall (today's Wallet tile is 148), 4×1 is 72 (today's Activity row is 66), 4×2 is 156 (today's Identity card is 106+). Tune `rowHeight` once on a device if 2×2 tiles look cramped; nothing else depends on the value.
-- Cell rectangle for `{ x, y, w, h }`: `left = x × (columnWidth + gap)`, `top = y × (rowHeight + gap)`, `width = w × columnWidth + (w − 1) × gap`, `height = h × rowHeight + (h − 1) × gap`.
-- Default layout when `intent-bar` is available (shift every `y` by −1 when it is not):
+- `columns = 4`, `gap = spacing.md` (12). Column width is `(gridWidth − 3 × gap) / 4`. Positions and sizes are whole cells, but rows are not a fixed height: each row takes its height from the widgets in it, so every widget keeps its pre-widget height and there is no empty space inside or between tiles. A fixed row height cannot do this, because today's heights (Identity 106, Wallet and Phone 148, Swap / Earn 110, Pulse 194, Activity 66) share no common unit.
+- Every size in the registry declares its natural height in dp (`heights`, keyed `${w}x${h}`). `rowHeights(items, heightOf, rows)` sets each single-row item's row to at least its height, then spreads any missing height of each multi-row item evenly over its rows. Rows nothing occupies, including the extra edit-mode row, use `HOME_GRID.rowHeight` (72).
+- Cell rectangle for `{ x, y, w, h }`: `left = x × (columnWidth + gap)`, `top = rowTop(y)` (the sum of the heights of rows above plus one gap each), `width = w × columnWidth + (w − 1) × gap`, `height = rowTop(y + h) − rowTop(y) − gap`.
+- Default layout:
 
   | Item | x | y | w | h |
   | --- | --- | --- | --- | --- |
-  | `intent-bar` | 0 | 0 | 4 | 1 |
-  | `identity` | 0 | 1 | 4 | 2 |
-  | `wallet` | 0 | 3 | 2 | 2 |
-  | `phone` | 2 | 3 | 2 | 2 |
-  | `swap-earn` | 0 | 5 | 2 | 2 |
-  | `market-pulse` | 2 | 5 | 2 | 2 |
+  | `identity` | 0 | 0 | 4 | 2 |
+  | `wallet` | 0 | 2 | 2 | 2 |
+  | `phone` | 2 | 2 | 2 | 2 |
+  | `swap-earn` | 0 | 4 | 4 | 1 |
+  | `market-pulse` | 0 | 5 | 4 | 2 |
   | `activity` | 0 | 7 | 4 | 1 |
 
 ## Section 1: Layout engine, widget registry, preferences v2
@@ -97,12 +98,12 @@ Modify:
 `app/src/launcher/home-layout.ts` exports:
 
 ```ts
-export type WidgetId = 'intent-bar' | 'identity' | 'wallet' | 'phone' | 'market-pulse' | 'swap-earn' | 'activity';
+export type WidgetId = 'identity' | 'wallet' | 'phone' | 'market-pulse' | 'swap-earn' | 'activity';
 export type WidgetSize = { w: number; h: number };
 export type HomeLayoutItem = { id: WidgetId; x: number; y: number; w: number; h: number };
 export type HomeLayout = { columns: 4; items: HomeLayoutItem[] };
-export const HOME_GRID = { columns: 4, rowHeight: 72, gap: 12 } as const;
-export type GridMetrics = { columnWidth: number; rowHeight: number; gap: number };
+export const HOME_GRID = { columns: 4, rowHeight: 72, gap: 12 } as const; // rowHeight: empty rows only
+export type GridMetrics = { columnWidth: number; gap: number; rowHeights: readonly number[] }; // rows past the end use HOME_GRID.rowHeight
 
 export function rowCount(layout: HomeLayout): number;                   // max(y + h), 0 when empty
 export function fits(layout: HomeLayout, rect: HomeLayoutItem): boolean; // in bounds and no overlap with items other than rect.id
@@ -113,6 +114,9 @@ export function removeWidget(layout: HomeLayout, id: WidgetId): HomeLayout;
 export function cellRect(item: HomeLayoutItem, metrics: GridMetrics): { left: number; top: number; width: number; height: number };
 export function slotAt(point: { x: number; y: number }, size: WidgetSize, metrics: GridMetrics): { x: number; y: number }; // nearest slot, clamped to columns
 export function columnWidth(gridWidth: number): number;
+export function rowHeights(items: readonly HomeLayoutItem[], heightOf: (item: HomeLayoutItem) => number, rows: number, gap?: number): number[];
+export function rowTop(metrics: GridMetrics, y: number): number;
+export function gridHeight(metrics: GridMetrics, rows: number): number;
 ```
 
 Every function is pure and returns a new layout. `moveWidget` and `resizeWidget` return `null` when the result would not fit; callers revert. `placeWidget` removes an existing item with the same id first. `x` may not exceed `columns − w`; `y` has no upper bound.
@@ -122,25 +126,25 @@ Every function is pure and returns a new layout. `moveWidget` and `resizeWidget`
 `app/src/launcher/widget-registry.ts` exports:
 
 ```ts
-export type WidgetContext = { agentConfigured: boolean; account: Address | null };
 export type WidgetDefinition = {
   id: WidgetId;
   title: string;
   subtitle: string;
   icon: { ios: string; android: string; web: string }; // SymbolView names
   sizes: readonly WidgetSize[];
+  heights: Readonly<Record<string, number>>; // natural height in dp per size, keyed `${w}x${h}`
   defaultSize: WidgetSize;
   removable: boolean;
-  isAvailable(context: WidgetContext): boolean;
 };
 export const WIDGET_REGISTRY: readonly WidgetDefinition[];
 export function getWidgetDefinition(id: WidgetId): WidgetDefinition;
 export function isWidgetId(value: unknown): value is WidgetId;
 export function supportsSize(definition: WidgetDefinition, size: WidgetSize): boolean;
-export function defaultHomeLayout(context: WidgetContext): HomeLayout; // the table in Grid facts
+export function widgetHeight(definition: WidgetDefinition, size: WidgetSize): number;
+export function defaultHomeLayout(): HomeLayout; // the table in Grid facts
 ```
 
-Titles, subtitles, sizes, and defaults come from the Scope decisions table. Icons reuse those already on the home: sparkles / `auto_awesome`, person, wallet, apps, `trending_up`, `swap_horiz`, history.
+Titles, subtitles, sizes, and defaults come from the Scope decisions table. Icons reuse those already on the home: person, wallet, apps, `trending_up`, `swap_horiz`, history.
 
 **1.3 Preferences v2.**
 
@@ -164,7 +168,7 @@ export function parseHomeLayout(value: unknown): HomeLayout | null;
 ### Tests
 
 - `home-layout.test.ts`: `fits` rejects overlap and `x + w > 4`; `placeWidget` fills row-major, skips occupied cells, appends below when full, and replaces an existing instance; `moveWidget` and `resizeWidget` return `null` on collision and succeed when the only overlap is the item itself; `removeWidget` lowers `rowCount`; `cellRect` and `slotAt` round-trip for every cell.
-- `widget-registry.test.ts`: `defaultHomeLayout` passes `fits` for every item with and without the agent; every definition's `defaultSize` is in `sizes`; `intent-bar` is unavailable without agent or account.
+- `widget-registry.test.ts`: `defaultHomeLayout` passes `fits` for every item and keeps the pre-widget arrangement; every definition's `defaultSize` is in `sizes`.
 - `launcher-preferences.test.ts`: v1 JSON parses to v2 with `homeLayout: null` and `amountsVisible: true`; a corrupt or overlapping `homeLayout` parses to `null` while favourites survive; `save({ homeLayout })` keeps favourites and `save({ favoritePackageNames })` keeps the layout; the four-favourite cap still applies.
 
 ### Acceptance criteria
@@ -206,14 +210,14 @@ Create:
 - `app/src/components/widgets/identity-widget.tsx` (4×2)
 - `app/src/components/widgets/wallet-widget.tsx` (2×2, 4×1)
 - `app/src/components/widgets/phone-widget.tsx` (2×2, 4×1)
-- `app/src/components/widgets/swap-earn-widget.tsx` (2×2, 2×1)
-- `app/src/components/widgets/market-pulse-widget.tsx` (2×2, 4×2) with `Price` and `Sparkline` moved from `launcher-home.tsx`
+- `app/src/components/widgets/swap-earn-widget.tsx` (4×1, 2×2, 2×1)
+- `app/src/components/widgets/market-pulse-widget.tsx` (4×2, 2×2) with `Price` and `Sparkline` moved from `launcher-home.tsx`
 - `app/src/components/widgets/activity-widget.tsx` (4×1)
 - `app/src/components/widgets/*.test.tsx` — moved and new tests.
 
 Modify:
 - `app/src/components/launcher-screen.tsx` — remove the identity card and the Wallet and Phone tiles; keep the header, `ScrollView`, `homeContent`, and the swipe-up area.
-- `app/src/app/index.tsx` — build the `WidgetContext`, load preferences, render `HomeGrid` as `homeContent`.
+- `app/src/app/index.tsx` — load preferences, render `HomeGrid` as `homeContent`.
 - `app/src/app/_layout.tsx` — wrap the navigator in `GestureHandlerRootView` with `style={{ flex: 1 }}`.
 - `app/src/components/wallet-home.tsx` and `app/src/app/wallet.tsx` — `amountsVisible` and `onToggleAmounts` become props fed from preferences.
 
@@ -232,36 +236,52 @@ type HomeGridProps = {
   renderWidget(item: HomeLayoutItem): ReactNode;
   extraRows?: number;                    // section 3 renders +1 in edit mode
   renderEmptyCell?(cell: { x: number; y: number }): ReactNode; // section 3
-  onLayoutMetrics?(metrics: GridMetrics): void;                // section 6
+  onLayoutMetrics?(metrics: GridMetrics): void;                // section 5
 };
 ```
 
-`HomeGrid` reads its width from `onLayout`, computes `columnWidth`, sets its own height to `rowCount × (rowHeight + gap) − gap`, and renders each item in an absolutely positioned `View` from `cellRect`. Items whose widget is unavailable in the current context are skipped (their cells render empty).
+`HomeGrid` reads its width from `onLayout`, computes `columnWidth`, computes `rowHeights` from the items' `widgetHeight`, sets its own height to `gridHeight`, and renders each item in an absolutely positioned `View` from `cellRect`.
 
 **2.3 Widgets.**
 - `identity`: the current identity card verbatim, including the copy-address action, the presence dot, the placeholder social chips, and the arrow to `/wallet`.
 - `wallet` 2×2: platinum tile with the icon, "Wallet", the portfolio total from `walletHomeLiveProvider` and `getPortfolioTotalUsdCents`, and an eye button toggling `amountsVisible`; hidden renders `$••••••`. Loading shows an `ActivityIndicator`; `empty`/`null` total shows "—"; a load error shows the previous subtitle "Your onchain life, one tap away". 4×1: a row with icon, "Wallet", the total, chevron.
 - `phone` 2×2: the current Phone tile. 4×1: a row with icon, "Phone", "All your apps", chevron.
-- `swap-earn` 2×2: two stacked rows (Swap, Earn) with icon, title, description. 2×1: two side-by-side icon buttons with the title only.
-- `market-pulse` 4×2: today's heading, status pill, two price cards with sparklines, and the footnote. 2×2: the heading and two compact rows (ticker, price, change) with no sparkline or footnote. Both use `useMarketPulse()` and show the unavailable state with retry inside the cell.
+- `swap-earn` 4×1 (default): two side-by-side tiles (Swap, Earn), each with icon, title, and description, as on the pre-widget home. 2×2: the same two tiles stacked. 2×1: two side-by-side icon buttons with the title only.
+- `market-pulse` 4×2 (default): today's heading, status pill, two price cards with sparklines, and the footnote. 2×2: the heading and two compact rows (ticker, price, change) with no sparkline or footnote. Both use `useMarketPulse()` and show the unavailable state with retry inside the cell.
 - `activity`: the newest item from the provider as one row: icon, "Activity", then "Sent 0.01 ETH to 0x12…34 · 2h ago" or "Received …" or "Account operation · Sponsored"; "No activity yet" when empty; the previous subtitle on error; chevron to `/transactions`.
 
-**2.4 Home route.** `index.tsx` computes `context = { agentConfigured, account }`, calls `useLauncherPreferences(launcherPreferencesNativeStorage)`, uses `preferences.homeLayout ?? defaultHomeLayout(context)`, and maps widget ids to components with the same callbacks it passes today. Until preferences load, render the default layout.
+**2.4 Home route.** `index.tsx` calls `useLauncherPreferences(launcherPreferencesNativeStorage)`, uses `preferences.homeLayout ?? defaultHomeLayout()`, and maps widget ids to components with the same callbacks it passes today. Until preferences load, render the default layout.
 
 ### Tests
 
 - Move the two market tests to `market-pulse-widget.test.tsx` and add a 2×2 render.
 - `wallet-widget.test.tsx`: total shown, hidden as `$••••••` when `amountsVisible` is false, toggle calls back, empty result shows "—".
 - `activity-widget.test.tsx`: newest transfer formatted, empty copy, error copy.
-- `home-grid.test.tsx`: given a fixed width via `onLayout`, each item gets the `cellRect` position and unavailable widgets are skipped.
+- `home-grid.test.tsx`: given a fixed width via `onLayout`, each item gets the `cellRect` position and its natural height.
 
 ### Acceptance criteria
 
-- Fresh install: home matches `sodera-home-redesign.png` apart from the Market pulse tile being 2×2 beside Swap / Earn.
+- Fresh install: the home keeps the pre-widget arrangement of `sodera-home-redesign.png`: Swap and Earn side by side, then the full-width Pulse, then Activity. Cell heights may differ slightly.
 - Existing install with v1 preferences: favourites survive; the home shows the default layout.
 - Hide amounts in the wallet screen, go home: the wallet widget shows `$••••••`; relaunch keeps it hidden.
 - Kill the network: market pulse shows its unavailable state with retry inside the cell; wallet and activity fall back to their subtitles; the grid does not reflow.
 - Swipe up for Phone still works.
+
+### Implementation notes
+
+Implemented as specified and checked on an Android device: the default layout renders, and hiding amounts on the home or in the wallet screen syncs both ways. Differences and additions:
+
+- `LauncherScreen` no longer takes `accountAddress`, `username`, or `onOpenWallet`.
+- `WalletHome` takes `amountsVisible` and `onToggleAmounts` as optional controlled props and falls back to local state when they are omitted, so its existing tests are unchanged.
+- The Activity widget reads `pendingSends.provider`, the same provider as `/transactions`. It wraps `multiBaasTransactionActivityProvider` and also shows sends that are still pending.
+- Wallet 2×2: the eye button takes the place of the chevron. The tile's open action and the eye are sibling `Pressable`s rather than nested ones, so screen readers can reach both. The 4×1 row has no toggle but respects the setting.
+- Default layout: first built with Swap / Earn and Market pulse as 2×2 tiles side by side, as this plan originally specified. That changed the home, so the defaults were corrected to 4×1 and 4×2, and `swap-earn` gained the 4×1 size.
+- Market pulse 4×2: to fit 156 dp, the price cards drop the "24h change" caption, and the error state shows a one-line "Last prices · time" note with the retry link in place of the footnote. The 2×2 variant is a bordered tile; the 4×2 variant keeps today's unboxed look.
+- Row heights: first built with a fixed 72 dp row, which made Identity 156 tall (an empty band inside the card) and shrank Swap / Earn and the Pulse. Replaced by content-sized rows (see Grid facts): each size declares its pre-widget height, and on the device every widget now matches `main` in size and position. `swap-earn` 4×1 and `market-pulse` 4×2 use the pre-widget tile and pulse designs, including the "24h change" caption.
+- Known difference: the grid uses one 12 dp gap everywhere, where the pre-widget home had 16 dp above and below the Pulse.
+- Intent bar removed: the plan originally had an `intent-bar` widget (default row 0, shown only with the agent configured) and a section for it. It was a reference from the mock, not a feature, so the widget, its section, and the availability context (`WidgetContext`, `isAvailable`) are gone. Stored layouts that name `intent-bar` fail `parseHomeLayout` and fall back to the default.
+- `@testing-library/react-native` 14 makes `fireEvent` async; new tests `await` it to avoid overlapping `act()` calls.
+- Tests added beyond the plan: `identity-widget.test.tsx`, and `swap-earn-widget.test.tsx`, which also covers `PhoneWidget` in both sizes. `launcher-screen.test.tsx` now covers only the header, home content, and swipe-up.
 
 ## Section 3: Edit mode with resize and remove
 
@@ -300,7 +320,7 @@ Modify:
 
 **3.1 Chrome components** in `home-edit-chrome.tsx`: `SelectionOutline`, `SizeTag`, `RemoveButton`, `ResizeHandle({ edge: 'right' | 'bottom' })`, `EmptyCell`. Pure presentation with callbacks.
 
-**3.2 Resize.** Each handle carries a `Gesture.Pan()` from `react-native-gesture-handler`. On update, translate the handle with a shared value. On end, compute the candidate size: right handle `w = round((width + translationX + gap) / (columnWidth + gap))`, bottom handle likewise for `h`; snap to the nearest entry in the definition's `sizes` on that axis; call `resizeWidget`; on `null` reset the shared value and do nothing. Use `scheduleOnRN` to reach JS, as `animated-icon.tsx` does. Tapping the size tag cycles through `sizes` in order and applies the first that fits, as a fallback for small targets.
+**3.2 Resize.** Each handle carries a `Gesture.Pan()` from `react-native-gesture-handler`. On update, translate the handle with a shared value. On end, compute the candidate size: right handle `w = round((width + translationX + gap) / (columnWidth + gap))`; bottom handle: the `h` whose bottom edge `rowTop(y + h) − gap` is nearest to `height + translationY`; snap to the nearest entry in the definition's `sizes` on that axis; call `resizeWidget`; on `null` reset the shared value and do nothing. Use `scheduleOnRN` to reach JS, as `animated-icon.tsx` does. Tapping the size tag cycles through `sizes` in order and applies the first that fits, as a fallback for small targets.
 
 **3.3 Remove.** × calls `removeWidget` and clears the selection.
 
@@ -315,7 +335,7 @@ Modify:
 ### Acceptance criteria
 
 - Long-press Wallet: cyan outline, `2×2` tag, ×, two handles; Phone and the rest fade.
-- Drag the right handle: Wallet becomes 4×1 and Phone stays where it was; drag it back: 2×2 again. Dragging onto an occupied slot snaps back.
+- Drag Market pulse's right handle left: it becomes 2×2; drag it back: 4×2 again. Drag Wallet's right handle: 4×1 would overlap Phone, so it snaps back.
 - × on Market pulse removes it; relaunch: still gone.
 - Phone shows no ×.
 - Done and the back button exit; the "Edit home" row in Settings enters.
@@ -328,7 +348,7 @@ The bottom sheet from mock 4a listing every available widget with its supported 
 
 ### Outcome
 
-Any removed widget can be put back; the intent bar can be added once section 5 lands.
+Any removed widget can be put back.
 
 ### Dependencies
 
@@ -350,7 +370,7 @@ A plain reanimated `View` anchored to the bottom, no sheet library: 55 % of the 
 
 ### Steps
 
-**4.1 Sheet component.** Props: `{ definitions: WidgetDefinition[]; placedIds: Set<WidgetId>; open: boolean; onOpenChange(open): void; onAdd(id): void }`. Definitions are `WIDGET_REGISTRY.filter(d => d.isAvailable(context))`.
+**4.1 Sheet component.** Props: `{ definitions: WidgetDefinition[]; placedIds: Set<WidgetId>; open: boolean; onOpenChange(open): void; onAdd(id): void }`. Definitions are `WIDGET_REGISTRY`.
 
 **4.2 Tap to add.** `onAdd(id)` calls `placeWidget(layout, id, definition.defaultSize)`, selects the new item, saves, and scrolls the `ScrollView` to the new cell when it is below the fold (`scrollTo` using `cellRect`). `onAddAt(cell)` from an empty cell opens the sheet and remembers the cell; the next `onAdd` tries `{ ...cell, ...defaultSize }` through `fits` first and falls back to `placeWidget`.
 
@@ -364,48 +384,7 @@ A plain reanimated `View` anchored to the bottom, no sheet library: 55 % of the 
 - Wallet shows "On home" while placed.
 - Tap a `+` cell, then a widget that fits there: it lands in that cell.
 
-## Section 5: Intent bar home widget
-
-### Goal
-
-The `IntentBar` on the home as a 4×1 widget that hands the sentence to Dera.
-
-### Outcome
-
-Typing on the home and pressing Plan opens the assistant already planning that sentence.
-
-### Dependencies
-
-Section 2. Can be built alongside sections 3 and 4.
-
-### Files
-
-Create:
-- `app/src/components/widgets/intent-bar-widget.tsx`
-- `app/src/components/widgets/intent-bar-widget.test.tsx`
-
-Modify:
-- `app/src/app/assistant.tsx` — reads `intent` with `useLocalSearchParams` and passes `initialIntent`.
-- `app/src/components/assistant-screen.tsx` — optional `initialIntent?: string`, submitted once on mount behind a ref guard.
-- `app/src/app/index.tsx` — maps `intent-bar` to the widget; `onSubmit` does `router.push({ pathname: '/assistant', params: { intent } })`.
-
-### Steps
-
-**5.1 Widget.** Local `text` state; renders `IntentBar` with `mode="start"`, `highlighted={false}`; `onSubmit` calls the prop with the trimmed text and clears. The placeholder stays "Ask Dera". Keyboard handling is unchanged because the home already scrolls.
-
-**5.2 Assistant.** `initialIntent` is submitted through the existing `submit` after the planner is ready; the ref guard prevents a second submit on re-render. The assistant remains a normal conversation afterwards.
-
-### Tests
-
-- `intent-bar-widget.test.tsx`: typing and pressing Plan calls `onSubmit` with the trimmed text and clears the field; empty text does not submit.
-- `assistant-screen.test.tsx`: `initialIntent` triggers one `propose` call with that sentence.
-
-### Acceptance criteria
-
-- With the agent configured, the intent bar is in row 0 by default and in the sheet; typing "send 0.01 eth to alice" opens Dera planning that sentence.
-- With the agent unconfigured, it is absent from the home and the sheet, and no cell is left empty in the default layout.
-
-## Section 6: Drag to move and drag from the sheet
+## Section 5: Drag to move and drag from the sheet
 
 ### Goal
 
@@ -428,9 +407,9 @@ Modify:
 
 ### Steps
 
-**6.1 Move.** `Gesture.Pan().minDistance(8)` on the selected cell body. The cell follows the finger through `translateX/Y` shared values. On end: `slotAt({ x: left + translationX, y: top + translationY }, size, metrics)` then `moveWidget`; on `null` spring back. While active, `scrollEnabled` is false (`scheduleOnRN` to a state setter). The candidate slot is highlighted with a `colors.cyanWash` fill when `fits` succeeds, `colors.negativeWash` otherwise.
+**5.1 Move.** `Gesture.Pan().minDistance(8)` on the selected cell body. The cell follows the finger through `translateX/Y` shared values. On end: `slotAt({ x: left + translationX, y: top + translationY }, size, metrics)` then `moveWidget`; on `null` spring back. While active, `scrollEnabled` is false (`scheduleOnRN` to a state setter). The candidate slot is highlighted with a `colors.cyanWash` fill when `fits` succeeds, `colors.negativeWash` otherwise.
 
-**6.2 Drag from the sheet.** On pan start the sheet collapses to its handle so the grid is visible; the row's icon and title float under the finger in a portal-like `View` at the root. The grid measures its window position with `measureInWindow` on drag start and reads the current scroll offset from the `ScrollView`'s `onScroll`. On end, the drop point in grid coordinates is `(absoluteX − gridLeft, absoluteY − gridTop + scrollOffset)`; `slotAt` with the default size, then `fits`; on success `placeWidget`-style insertion at that slot, otherwise revert and reopen the sheet. Auto-scroll while dragging is out of scope.
+**5.2 Drag from the sheet.** On pan start the sheet collapses to its handle so the grid is visible; the row's icon and title float under the finger in a portal-like `View` at the root. The grid measures its window position with `measureInWindow` on drag start and reads the current scroll offset from the `ScrollView`'s `onScroll`. On end, the drop point in grid coordinates is `(absoluteX − gridLeft, absoluteY − gridTop + scrollOffset)`; `slotAt` with the default size, then `fits`; on success `placeWidget`-style insertion at that slot, otherwise revert and reopen the sheet. Auto-scroll while dragging is out of scope.
 
 ### Tests
 
@@ -438,7 +417,7 @@ Device only. `react-native-gesture-handler/jest-utils` (`fireGestureHandler`) ma
 
 ### Acceptance criteria
 
-- Move Swap / Earn below Market pulse; relaunch: it stays.
+- Move Swap / Earn below Activity; relaunch: it stays.
 - Dropping onto an occupied slot springs back.
 - Drag Activity from the sheet onto an empty 4×1 row: it lands there and is selected.
 - Scrolling still works when nothing is being dragged, on Android and on web.
@@ -447,11 +426,10 @@ Device only. `react-native-gesture-handler/jest-utils` (`fireGestureHandler`) ma
 
 | Question | Resolved by | Consumers |
 | --- | --- | --- |
-| `rowHeight = 72` looks right for 2×2 tiles on a 360-wide device | Section 2 device check | all |
-| `Pressable.onLongPress` on cells does not conflict with `GestureDetector` pans in edit mode | Section 3 device check | sections 3, 6 |
+| Declared widget heights match the pre-widget home | Section 2 device check: resolved, all widgets match `main` | all |
+| `Pressable.onLongPress` on cells does not conflict with `GestureDetector` pans in edit mode | Section 3 device check | sections 3, 5 |
 | `pointerEvents="none"` on widgets in edit mode still lets the cell `Pressable` receive taps on Android | Section 3 device check | sections 3, 4 |
-| `measureInWindow` plus scroll offset gives correct drop slots on web | Section 6 | section 6 |
-| `useLocalSearchParams` delivers `intent` to an already-mounted assistant route | Section 5 | section 5 |
+| `measureInWindow` plus scroll offset gives correct drop slots on web | Section 5 | section 5 |
 
 ## Sources
 

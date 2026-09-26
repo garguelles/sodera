@@ -2,12 +2,15 @@ import {
   cellRect,
   columnWidth,
   fits,
+  gridHeight,
   HOME_GRID,
   moveWidget,
   placeWidget,
   removeWidget,
   resizeWidget,
   rowCount,
+  rowHeights,
+  rowTop,
   slotAt,
   type GridMetrics,
   type HomeLayout,
@@ -15,7 +18,8 @@ import {
 
 const layoutOf = (...items: HomeLayout['items']): HomeLayout => ({ columns: 4, items });
 
-const metrics: GridMetrics = { columnWidth: columnWidth(360), rowHeight: HOME_GRID.rowHeight, gap: HOME_GRID.gap };
+const metrics: GridMetrics = { columnWidth: columnWidth(360), gap: HOME_GRID.gap, rowHeights: [] };
+const uneven: GridMetrics = { columnWidth: columnWidth(360), gap: HOME_GRID.gap, rowHeights: [49, 49, 68, 68, 110] };
 
 describe('home layout', () => {
   it('counts rows from the lowest item', () => {
@@ -70,10 +74,10 @@ describe('home layout', () => {
     it('fills a gap left in the middle of the grid', () => {
       const layout = placeWidget(
         layoutOf({ id: 'identity', x: 0, y: 0, w: 4, h: 2 }, { id: 'activity', x: 0, y: 3, w: 4, h: 1 }),
-        'intent-bar',
+        'swap-earn',
         { w: 4, h: 1 },
       );
-      expect(layout.items.at(-1)).toEqual({ id: 'intent-bar', x: 0, y: 2, w: 4, h: 1 });
+      expect(layout.items.at(-1)).toEqual({ id: 'swap-earn', x: 0, y: 2, w: 4, h: 1 });
     });
 
     it('appends below the content when no slot is free', () => {
@@ -139,6 +143,42 @@ describe('home layout', () => {
     expect(rowCount(removed)).toBeLessThan(rowCount(layout));
   });
 
+  describe('rowHeights', () => {
+    const heightOf = (item: HomeLayout['items'][number]) =>
+      ({ identity: 106, wallet: 148, phone: 148, 'swap-earn': 110, activity: 66 } as Record<string, number>)[item.id] ?? 0;
+
+    it('gives each widget its natural height with no gaps', () => {
+      const items: HomeLayout['items'] = [
+        { id: 'identity', x: 0, y: 0, w: 4, h: 2 },
+        { id: 'wallet', x: 0, y: 2, w: 2, h: 2 },
+        { id: 'phone', x: 2, y: 2, w: 2, h: 2 },
+        { id: 'swap-earn', x: 0, y: 4, w: 4, h: 1 },
+        { id: 'activity', x: 0, y: 5, w: 4, h: 1 },
+      ];
+      const heights = rowHeights(items, heightOf, 6);
+      const geometry = { columnWidth: 81, gap: 12, rowHeights: heights };
+
+      expect(heights).toEqual([47, 47, 68, 68, 110, 66]);
+      for (const item of items) expect(cellRect(item, geometry).height).toBe(heightOf(item));
+    });
+
+    it('uses the empty-row height for unoccupied rows and the extra edit row', () => {
+      expect(rowHeights([{ id: 'activity', x: 0, y: 1, w: 4, h: 1 }], heightOf, 3)).toEqual([72, 66, 72]);
+    });
+
+    it('lets the taller of two widgets sharing a row set its height', () => {
+      const heights = rowHeights(
+        [
+          { id: 'swap-earn', x: 0, y: 0, w: 2, h: 1 },
+          { id: 'activity', x: 2, y: 0, w: 2, h: 1 },
+        ],
+        heightOf,
+        1,
+      );
+      expect(heights).toEqual([110]);
+    });
+  });
+
   describe('geometry', () => {
     it('computes column width from the grid width', () => {
       expect(columnWidth(360)).toBe(81);
@@ -159,6 +199,22 @@ describe('home layout', () => {
           const rect = cellRect({ x, y, w: 1, h: 1 }, metrics);
           expect(slotAt({ x: rect.left, y: rect.top }, { w: 1, h: 1 }, metrics)).toEqual({ x, y });
         }
+      }
+    });
+
+    it('uses per-row heights for positions and sizes', () => {
+      expect(rowTop(uneven, 2)).toBe(49 + 12 + 49 + 12);
+      expect(cellRect({ x: 0, y: 0, w: 4, h: 2 }, uneven).height).toBe(49 + 12 + 49);
+      expect(cellRect({ x: 2, y: 2, w: 2, h: 2 }, uneven)).toMatchObject({ top: 122, height: 68 + 12 + 68 });
+      expect(cellRect({ x: 0, y: 5, w: 4, h: 1 }, uneven).height).toBe(HOME_GRID.rowHeight);
+      expect(gridHeight(uneven, 5)).toBe(49 + 49 + 68 + 68 + 110 + 4 * 12);
+      expect(gridHeight(uneven, 0)).toBe(0);
+    });
+
+    it('round-trips cellRect and slotAt with uneven rows', () => {
+      for (let y = 0; y < 7; y += 1) {
+        const rect = cellRect({ x: 0, y, w: 1, h: 1 }, uneven);
+        expect(slotAt({ x: rect.left, y: rect.top + 5 }, { w: 1, h: 1 }, uneven)).toEqual({ x: 0, y });
       }
     });
 

@@ -1,8 +1,4 @@
-import type { Address } from 'viem';
-
 import { HOME_GRID, type HomeLayout, type HomeLayoutItem, type WidgetId, type WidgetSize } from './home-layout';
-
-export type WidgetContext = { agentConfigured: boolean; account: Address | null };
 
 export type WidgetDefinition = {
   id: WidgetId;
@@ -11,33 +7,22 @@ export type WidgetDefinition = {
   /** SymbolView names. */
   icon: { ios: string; android: string; web: string };
   sizes: readonly WidgetSize[];
+  /** Natural height in dp of each size, keyed `${w}x${h}`; grid rows take their height from these. */
+  heights: Readonly<Record<string, number>>;
   defaultSize: WidgetSize;
   removable: boolean;
-  isAvailable(context: WidgetContext): boolean;
 };
 
-const always = () => true;
-
 export const WIDGET_REGISTRY: readonly WidgetDefinition[] = [
-  {
-    id: 'intent-bar',
-    title: 'Intent bar',
-    subtitle: 'Ask your wallet',
-    icon: { ios: 'sparkles', android: 'auto_awesome', web: 'auto_awesome' },
-    sizes: [{ w: 4, h: 1 }],
-    defaultSize: { w: 4, h: 1 },
-    removable: true,
-    isAvailable: (context) => context.agentConfigured && context.account !== null,
-  },
   {
     id: 'identity',
     title: 'Identity',
     subtitle: 'ENS name, address, links',
     icon: { ios: 'person.fill', android: 'person', web: 'person' },
     sizes: [{ w: 4, h: 2 }],
+    heights: { '4x2': 106 },
     defaultSize: { w: 4, h: 2 },
     removable: true,
-    isAvailable: always,
   },
   {
     id: 'wallet',
@@ -48,9 +33,9 @@ export const WIDGET_REGISTRY: readonly WidgetDefinition[] = [
       { w: 2, h: 2 },
       { w: 4, h: 1 },
     ],
+    heights: { '2x2': 148, '4x1': 66 },
     defaultSize: { w: 2, h: 2 },
     removable: true,
-    isAvailable: always,
   },
   {
     id: 'phone',
@@ -61,9 +46,9 @@ export const WIDGET_REGISTRY: readonly WidgetDefinition[] = [
       { w: 2, h: 2 },
       { w: 4, h: 1 },
     ],
+    heights: { '2x2': 148, '4x1': 66 },
     defaultSize: { w: 2, h: 2 },
     removable: false,
-    isAvailable: always,
   },
   {
     id: 'market-pulse',
@@ -71,12 +56,12 @@ export const WIDGET_REGISTRY: readonly WidgetDefinition[] = [
     subtitle: 'BTC, ETH · 24h',
     icon: { ios: 'chart.line.uptrend.xyaxis', android: 'trending_up', web: 'trending_up' },
     sizes: [
-      { w: 2, h: 2 },
       { w: 4, h: 2 },
+      { w: 2, h: 2 },
     ],
-    defaultSize: { w: 2, h: 2 },
+    heights: { '4x2': 194, '2x2': 148 },
+    defaultSize: { w: 4, h: 2 },
     removable: true,
-    isAvailable: always,
   },
   {
     id: 'swap-earn',
@@ -84,12 +69,13 @@ export const WIDGET_REGISTRY: readonly WidgetDefinition[] = [
     subtitle: 'Quick entry points',
     icon: { ios: 'arrow.left.arrow.right', android: 'swap_horiz', web: 'swap_horiz' },
     sizes: [
+      { w: 4, h: 1 },
       { w: 2, h: 2 },
       { w: 2, h: 1 },
     ],
-    defaultSize: { w: 2, h: 2 },
+    heights: { '4x1': 110, '2x2': 148, '2x1': 72 },
+    defaultSize: { w: 4, h: 1 },
     removable: true,
-    isAvailable: always,
   },
   {
     id: 'activity',
@@ -97,9 +83,9 @@ export const WIDGET_REGISTRY: readonly WidgetDefinition[] = [
     subtitle: 'Latest transaction',
     icon: { ios: 'clock.arrow.circlepath', android: 'history', web: 'history' },
     sizes: [{ w: 4, h: 1 }],
+    heights: { '4x1': 66 },
     defaultSize: { w: 4, h: 1 },
     removable: true,
-    isAvailable: always,
   },
 ];
 
@@ -115,25 +101,25 @@ export function isWidgetId(value: unknown): value is WidgetId {
   return typeof value === 'string' && DEFINITIONS_BY_ID.has(value as WidgetId);
 }
 
+/** Natural height of a widget at a size; falls back to whole 72 dp rows for sizes without an entry. */
+export function widgetHeight(definition: WidgetDefinition, size: WidgetSize): number {
+  return definition.heights[`${size.w}x${size.h}`] ?? size.h * HOME_GRID.rowHeight + (size.h - 1) * HOME_GRID.gap;
+}
+
 export function supportsSize(definition: WidgetDefinition, size: WidgetSize): boolean {
   return definition.sizes.some((supported) => supported.w === size.w && supported.h === size.h);
 }
 
-/** Default layout with the intent bar in row 0; every other item moves up a row when the bar is unavailable. */
+/** Default layout: the pre-widget home in the same order and arrangement. */
 const DEFAULT_ITEMS: readonly HomeLayoutItem[] = [
-  { id: 'intent-bar', x: 0, y: 0, w: 4, h: 1 },
-  { id: 'identity', x: 0, y: 1, w: 4, h: 2 },
-  { id: 'wallet', x: 0, y: 3, w: 2, h: 2 },
-  { id: 'phone', x: 2, y: 3, w: 2, h: 2 },
-  { id: 'swap-earn', x: 0, y: 5, w: 2, h: 2 },
-  { id: 'market-pulse', x: 2, y: 5, w: 2, h: 2 },
+  { id: 'identity', x: 0, y: 0, w: 4, h: 2 },
+  { id: 'wallet', x: 0, y: 2, w: 2, h: 2 },
+  { id: 'phone', x: 2, y: 2, w: 2, h: 2 },
+  { id: 'swap-earn', x: 0, y: 4, w: 4, h: 1 },
+  { id: 'market-pulse', x: 0, y: 5, w: 4, h: 2 },
   { id: 'activity', x: 0, y: 7, w: 4, h: 1 },
 ];
 
-export function defaultHomeLayout(context: WidgetContext): HomeLayout {
-  const intentBar = getWidgetDefinition('intent-bar').isAvailable(context);
-  const items = intentBar
-    ? DEFAULT_ITEMS.map((item) => ({ ...item }))
-    : DEFAULT_ITEMS.filter((item) => item.id !== 'intent-bar').map((item) => ({ ...item, y: item.y - 1 }));
-  return { columns: HOME_GRID.columns, items };
+export function defaultHomeLayout(): HomeLayout {
+  return { columns: HOME_GRID.columns, items: DEFAULT_ITEMS.map((item) => ({ ...item })) };
 }

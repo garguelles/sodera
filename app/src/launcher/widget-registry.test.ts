@@ -5,12 +5,7 @@ import {
   isWidgetId,
   supportsSize,
   WIDGET_REGISTRY,
-  type WidgetContext,
 } from './widget-registry';
-
-const account = '0x1234567890123456789012345678901234567890' as const;
-const withAgent: WidgetContext = { agentConfigured: true, account };
-const withoutAgent: WidgetContext = { agentConfigured: false, account };
 
 function expectValid(layout: HomeLayout) {
   for (const item of layout.items) {
@@ -22,9 +17,10 @@ function expectValid(layout: HomeLayout) {
 
 describe('widget registry', () => {
   it('lists every widget once with its default size among its sizes', () => {
-    expect(new Set(WIDGET_REGISTRY.map((definition) => definition.id)).size).toBe(7);
+    expect(new Set(WIDGET_REGISTRY.map((definition) => definition.id)).size).toBe(6);
     for (const definition of WIDGET_REGISTRY) {
       expect(supportsSize(definition, definition.defaultSize)).toBe(true);
+      for (const size of definition.sizes) expect(definition.heights[`${size.w}x${size.h}`]).toBeGreaterThan(0);
     }
   });
 
@@ -34,32 +30,29 @@ describe('widget registry', () => {
     ]);
   });
 
-  it('makes the intent bar available only with the agent and an account', () => {
-    const intentBar = getWidgetDefinition('intent-bar');
-    expect(intentBar.isAvailable(withAgent)).toBe(true);
-    expect(intentBar.isAvailable(withoutAgent)).toBe(false);
-    expect(intentBar.isAvailable({ agentConfigured: true, account: null })).toBe(false);
-  });
-
   it('recognises widget ids', () => {
     expect(isWidgetId('wallet')).toBe(true);
     expect(isWidgetId('calendar')).toBe(false);
+    expect(isWidgetId('intent-bar')).toBe(false);
     expect(isWidgetId(3)).toBe(false);
   });
 
-  it('builds a valid default layout with the intent bar in row 0', () => {
-    const layout = defaultHomeLayout(withAgent);
-    expectValid(layout);
-    expect(layout.items[0]).toEqual({ id: 'intent-bar', x: 0, y: 0, w: 4, h: 1 });
-    expect(layout.items).toHaveLength(7);
-    expect(rowCount(layout)).toBe(8);
+  it('keeps the pre-widget home arrangement: side-by-side Swap and Earn, then a full-width pulse', () => {
+    const layout = defaultHomeLayout();
+    expect(layout.items.map(({ id, x, w, h }) => [id, x, w, h])).toEqual([
+      ['identity', 0, 4, 2],
+      ['wallet', 0, 2, 2],
+      ['phone', 2, 2, 2],
+      ['swap-earn', 0, 4, 1],
+      ['market-pulse', 0, 4, 2],
+      ['activity', 0, 4, 1],
+    ]);
   });
 
-  it('shifts the default layout up without leaving an empty row when the agent is unavailable', () => {
-    const layout = defaultHomeLayout(withoutAgent);
+  it('builds a valid default layout with no empty rows', () => {
+    const layout = defaultHomeLayout();
     expectValid(layout);
-    expect(layout.items.map((item) => item.id)).not.toContain('intent-bar');
     expect(layout.items[0]).toEqual({ id: 'identity', x: 0, y: 0, w: 4, h: 2 });
-    expect(rowCount(layout)).toBe(7);
+    expect(rowCount(layout)).toBe(8);
   });
 });

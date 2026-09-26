@@ -21,6 +21,9 @@ import { shortenAddress } from '@/wallet/sepolia';
 type WalletHomeProps = {
   provider: WalletHomeProvider;
   onAction?: (action: WalletHomeAction) => void;
+  /** Controlled balance visibility; falls back to local state when omitted. */
+  amountsVisible?: boolean;
+  onToggleAmounts?: () => void;
 };
 
 export type WalletHomeAction = 'send' | 'receive' | 'swap';
@@ -30,10 +33,12 @@ type WalletHomeViewState =
   | { status: 'error'; message: string }
   | { status: 'loaded'; result: WalletHomeResult };
 
-export function WalletHome({ provider, onAction }: WalletHomeProps) {
+export function WalletHome({ provider, onAction, amountsVisible: controlledVisible, onToggleAmounts }: WalletHomeProps) {
   const { width } = useWindowDimensions();
   const compact = width < 380;
-  const [amountsVisible, setAmountsVisible] = useState(true);
+  const [localVisible, setLocalVisible] = useState(true);
+  const amountsVisible = controlledVisible ?? localVisible;
+  const toggleAmounts = onToggleAmounts ?? (() => setLocalVisible((visible) => !visible));
   const [retryCount, setRetryCount] = useState(0);
   const [viewState, setViewState] = useState<WalletHomeViewState>({ status: 'loading' });
 
@@ -98,7 +103,7 @@ export function WalletHome({ provider, onAction }: WalletHomeProps) {
           amountsVisible={amountsVisible}
           compact={compact}
           onAction={onAction}
-          onToggleAmounts={() => setAmountsVisible((visible) => !visible)}
+          onToggleAmounts={toggleAmounts}
           result={viewState.result}
         />
       )}

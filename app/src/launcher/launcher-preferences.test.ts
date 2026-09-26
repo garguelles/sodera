@@ -9,7 +9,7 @@ import { defaultHomeLayout } from './widget-registry';
 
 const DEFAULTS = { schemaVersion: 2, favoritePackageNames: [], homeLayout: null, amountsVisible: true };
 
-const layout: HomeLayout = defaultHomeLayout({ agentConfigured: false, account: null });
+const layout: HomeLayout = defaultHomeLayout();
 
 function createMemoryStorage(initial: string | null = null) {
   let value = initial;
