@@ -156,6 +156,12 @@ export function formatSwapRate({ direction, trade }: SwapQuote) {
   return `1 ETH ≈ ${trimTrailingZeros(usdcPerEth.toFixed(2, DISPLAY_FORMAT, Rounding.ROUND_DOWN))} USDC`;
 }
 
+const HIGH_PRICE_IMPACT = new Percent(1, 100);
+
+export function isHighPriceImpact(priceImpact: Percent) {
+  return priceImpact.greaterThan(HIGH_PRICE_IMPACT);
+}
+
 export function formatPriceImpact(priceImpact: Percent) {
   return priceImpact.lessThan(new Percent(1, 10_000))
     ? '<0.01%'

@@ -40,8 +40,10 @@ import {
   SWAP_ASSET_DECIMALS,
   SWAP_DIRECTIONS,
   SWAP_SLIPPAGE_LABEL,
+  formatPriceImpact,
   formatSwapAmount,
   formatSwapRate,
+  isHighPriceImpact,
   parseSwapAmount,
   quoteSwap,
   type SwapAsset,
@@ -406,6 +408,7 @@ export function SwapScreen({
               />
               <DetailRow label="Slippage limit" value={SLIPPAGE_LABEL} />
               <DetailRow label="Rate" value={formatSwapRate(readyQuote)} />
+              <PriceImpactRow priceImpact={readyQuote.priceImpact} Row={DetailRow} />
               <DetailRow label="Route" value="Uniswap v4 · ETH/USDC pool" last />
             </View>
           ) : null}
@@ -579,6 +582,7 @@ function SwapReview({
         <FriendlyReviewRow label="Minimum received" value={minimum} />
         <FriendlyReviewRow label="Slippage limit" value={SLIPPAGE_LABEL} />
         <FriendlyReviewRow label="Rate" value={formatSwapRate(quote)} />
+        <PriceImpactRow priceImpact={quote.priceImpact} Row={FriendlyReviewRow} />
         {quote.direction === 'usdc-to-eth' ? (
           <FriendlyReviewRow
             label="Approval"
@@ -618,6 +622,7 @@ function SwapReview({
           <ReviewRow label="Pay" value={`${quote.amountIn} (${input} base units)`} />
           <ReviewRow label="Quoted output" value={`${quote.amountOut} (${output} base units)`} />
           <ReviewRow label="Minimum output" value={`${quote.minAmountOut} (${output} base units)`} />
+          <ReviewRow label="Price impact" value={`${quote.priceImpact.toSignificant(6)}%`} />
           <ReviewRow label="Uniswap pool ID" value={SWAP_POOL_ID} />
           <ReviewRow label="Swap deadline" value={`${deadline} (${expiry})`} />
           {calls.map((call, index) => (
@@ -691,28 +696,38 @@ function reviewMatchesCalls(review: KernelOperationReview, calls: KernelExecutio
   );
 }
 
-function DetailRow({ label, value, last = false }: { label: string; value: string; last?: boolean }) {
+type RowProps = { label: string; value: string; last?: boolean; caution?: boolean };
+
+function PriceImpactRow({
+  priceImpact,
+  Row,
+}: {
+  priceImpact: SwapQuote['priceImpact'];
+  Row: (props: RowProps) => React.JSX.Element;
+}) {
+  const high = isHighPriceImpact(priceImpact);
+  const value = formatPriceImpact(priceImpact);
+  return <Row label="Price impact" value={high ? `${value} · high` : value} caution={high} />;
+}
+
+function DetailRow({ label, value, last = false, caution = false }: RowProps) {
   return (
     <View style={[styles.detailRow, !last && styles.detailDivider]}>
       <Text style={styles.detailLabel}>{label}</Text>
-      <Text selectable style={styles.detailValue}>{value}</Text>
+      <Text selectable style={[styles.detailValue, caution && styles.cautionValue]}>
+        {value}
+      </Text>
     </View>
   );
 }
 
-function FriendlyReviewRow({
-  label,
-  value,
-  last = false,
-}: {
-  label: string;
-  value: string;
-  last?: boolean;
-}) {
+function FriendlyReviewRow({ label, value, last = false, caution = false }: RowProps) {
   return (
     <View style={[styles.friendlyReviewRow, !last && styles.detailDivider]}>
       <Text style={styles.friendlyReviewLabel}>{label}</Text>
-      <Text selectable style={styles.friendlyReviewValue}>{value}</Text>
+      <Text selectable style={[styles.friendlyReviewValue, caution && styles.cautionValue]}>
+        {value}
+      </Text>
     </View>
   );
 }
@@ -894,6 +909,7 @@ const styles = StyleSheet.create({
   friendlyReviewRow: { gap: 6, paddingVertical: 14 },
   friendlyReviewLabel: { color: '#929188', fontSize: 12, fontWeight: '700' },
   friendlyReviewValue: { color: '#f3f0e8', fontSize: 15, lineHeight: 21, fontWeight: '600' },
+  cautionValue: { color: '#ffc46b' },
   technicalToggle: { alignSelf: 'center', minHeight: 44, justifyContent: 'center', paddingHorizontal: 12 },
   technicalToggleText: { color: '#aaa89f', fontSize: 13, fontWeight: '700' },
   technicalDetails: {
