@@ -75,10 +75,10 @@ All work lands on one branch, `feat/pay-with-any-token`, as separate commits, wi
         - the call option chosen in the spike;
         - `deadline` = now + 10 min;
         - **no `recipient`**.
-    - Normalized response: `{ quoteId, requestId, quotedAt, deadline, amountIn, maxAmountIn, amountOut, route, priceImpact, calls: [{ to, value, data }], approvals: [{ token, spender, amount }] }`. The key, upstream headers and raw body never appear in responses or logs. Logs mask the account and keep the Uniswap `requestId`.
+    - Normalized response: `{ quoteId, requestId, quotedAt, deadline, routerVersion, payAsset, receiveAsset, amountIn, maxAmountIn, amountOut, route, priceImpactPercent, swap: { to, value, data } }`. `swap` is the only call the backend passes on, and it must be the Universal Router's `execute`. The spike showed that `/swap_5792` returns unlimited approvals, so the app builds bounded ones itself. The key, upstream headers and raw body never appear in responses or logs. Logs mask the account and keep the Uniswap `requestId`.
     - Operations:
         - 8 s upstream timeout;
-        - per-account and per-IP limits, plus a global limit of 5 req/s or less to stay under the key's quota;
+        - per-account and per-IP limits, plus a global limit of 3 quotes a second, because each quote makes two Uniswap requests against the key's 6 per second;
         - errors: `NoRouteFound` maps to 422 `no_route`, upstream 429 to 503 `busy` with `retry-after`, a timeout to 504, and anything else to 502.
     - Acceptance: vitest covers auth, validation, rate limits, error mapping, and that the key never appears in responses. A smoke test passes on Railway with the env var set.
 3. **Frontend: call guard and quote client.**

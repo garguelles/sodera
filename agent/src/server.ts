@@ -8,7 +8,9 @@ import { normalize } from 'viem/ens';
 
 import { createApp } from './app.ts';
 import { createMultiBaasClient } from './multibaas.ts';
+import { createPayQuoter } from './pay-quote.ts';
 import type { Effort } from './propose.ts';
+import { createTradingApiClient } from './uniswap-trading.ts';
 import { createSwapQuoter } from './uniswap.ts';
 import { createTranscriptStore } from './transcript.ts';
 
@@ -50,6 +52,9 @@ const app = createApp({
     }
   },
   quoteSwap: createSwapQuoter(chain),
+  payQuoter: process.env.UNISWAP_API_KEY
+    ? createPayQuoter({ trading: createTradingApiClient({ apiKey: process.env.UNISWAP_API_KEY }) })
+    : null,
   transcripts: createTranscriptStore(),
 });
 
