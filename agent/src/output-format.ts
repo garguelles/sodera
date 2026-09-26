@@ -67,7 +67,7 @@ export const AGENT_OUTPUT_JSON_SCHEMA = {
       type: 'object',
       properties: {
         kind: { type: 'string', const: 'clarification' },
-        question: { type: 'string', description: 'One question, at most 200 characters.' },
+        question: { type: 'string', description: 'One short question, under 200 characters.' },
       },
       required: ['kind', 'question'],
       additionalProperties: false,

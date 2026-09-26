@@ -338,6 +338,22 @@
       }
     },
     {
+      "name": "clarification over 200 characters",
+      "valid": true,
+      "output": {
+        "kind": "clarification",
+        "question": "Your wallet only holds 0.001 ETH (must keep 0.0005 in reserve), so it can't cover 0.01 ETH, and I also couldn't find a Sodera name 'alice.sodera.eth'. Could you confirm the recipient and a smaller amount?"
+      }
+    },
+    {
+      "name": "clarification over 400 characters",
+      "valid": false,
+      "output": {
+        "kind": "clarification",
+        "question": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      }
+    },
+    {
       "name": "answer with facts",
       "valid": true,
       "output": {

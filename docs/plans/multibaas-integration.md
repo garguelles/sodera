@@ -523,7 +523,7 @@ export const ProposalSchema = z.object({
 
 export const ClarificationSchema = z.object({
   kind: z.literal('clarification'),
-  question: z.string().min(1).max(200),
+  question: z.string().min(1).max(400),
 });
 
 export const AgentOutputSchema = z.discriminatedUnion('kind', [ProposalSchema, ClarificationSchema]);
